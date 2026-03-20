@@ -1,4 +1,4 @@
-const CACHE_NAME = "novyn-shell-v38";
+const CACHE_NAME = "novyn-shell-v39";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -57,6 +57,10 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(request));
+    return;
+  }
   const isRangeRequest = request.headers.has("range");
   if (isRangeRequest || url.pathname.startsWith("/uploads/")) {
     event.respondWith(fetch(request));

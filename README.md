@@ -29,8 +29,19 @@ Set these environment variables:
 - `MONGODB_URI`: your MongoDB connection string
 - `MONGODB_DB` (optional): database name (default: `novyn`)
 - `CHAT_RETENTION_DAYS` (optional): number of days to keep chat history (default: `30`)
+- `MONGODB_USERS_COLLECTION` (optional): users collection (default: `users`)
+- `MONGODB_CONVERSATIONS_COLLECTION` (optional): conversation metadata collection (default: `conversations`)
+- `MONGODB_MESSAGES_COLLECTION` (optional): messages collection (default: `messages`)
+- `RTC_ICE_SERVERS_JSON` (optional): JSON array/object of WebRTC ICE servers
+- `RTC_STUN_URLS` (optional): comma-separated STUN URLs (used when `RTC_ICE_SERVERS_JSON` is not set)
+- `RTC_TURN_URL` (optional): TURN URL (for example `turn:turn.example.com:3478`)
+- `RTC_TURN_USERNAME` (optional): TURN username
+- `RTC_TURN_CREDENTIAL` (optional): TURN password/credential
+- `RTC_TURN_CREDENTIAL_TYPE` (optional): TURN credential type (default: `password`)
 
 If `MONGODB_URI` is not set, the app falls back to local file storage at `data/chat-state.json`.
+
+If you have an older single-document Mongo state (`chat_state`), the server auto-migrates it into split collections on startup.
 
 ## Deploy so it works from any location
 
@@ -45,6 +56,7 @@ You can deploy this Node app to services like Render, Railway, Fly.io, or a VPS.
    - `MONGODB_URI`
    - `MONGODB_DB` (optional)
    - `CHAT_RETENTION_DAYS` (optional, e.g. `30`)
+   - `RTC_ICE_SERVERS_JSON` or `RTC_STUN_URLS`/`RTC_TURN_*` (optional, for production-grade calling)
 
 After deployment, anyone can access your public URL and chat in real time.
 

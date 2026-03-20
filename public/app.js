@@ -1,6 +1,7 @@
 const socketAvailable = typeof io === "function";
 const SOCKET_URL = window.location.origin.replace(/\/$/, "");
 const socket = socketAvailable ? io(SOCKET_URL) : { on() {}, emit() {}, connected: false };
+const authApi = window._novynAuth || null;
 
 const loginCard         = document.getElementById("loginCard");
 const chatLayout        = document.getElementById("chatLayout");
@@ -40,11 +41,16 @@ const infoPanelHandle   = document.getElementById("infoPanelHandle");
 const infoPanelStatus   = document.getElementById("infoPanelStatus");
 const messageForm       = document.getElementById("messageForm");
 const messageInput      = document.getElementById("messageInput");
+const attachFileBtn     = document.getElementById("attachFileBtn");
+const attachFileInput   = document.getElementById("attachFileInput");
+const cameraBtn         = document.getElementById("cameraBtn");
+const cameraCaptureInput = document.getElementById("cameraCaptureInput");
 const toast             = document.getElementById("toast");
 const typingIndicator   = document.getElementById("typingIndicator");
 const typingText        = document.getElementById("typingText");
 const connectionLabel   = document.getElementById("connectionLabel");
 const networkPill       = document.getElementById("networkPill");
+const retryFailedBtn    = document.getElementById("retryFailedBtn");
 const requestCount      = document.getElementById("requestCount");
 const friendCount       = document.getElementById("friendCount");
 const onlineCount       = document.getElementById("onlineCount");
@@ -115,7 +121,8 @@ const mobileChat        = document.getElementById("mobileChat");
 const mobBackBtn        = document.getElementById("mobBackBtn");
 const SESSION_KEY       = "novyn-session";
 const REMEMBER_KEY      = "novyn-remember";
-const LOGIN_PATH        = "/";
+const MESSAGE_DRAFTS_KEY = "novyn-message-drafts";
+const LOGIN_PATH        = "/login.html";
 const isDashboardPage   = Boolean(chatLayout) && !document.body.classList.contains("auth-page");
 const MOBILE_BP         = 768;
 const INCOMING_CALLS_ENABLED = true;
@@ -132,6 +139,7 @@ let friendSearchQuery = "";
 let sidebarView = "messages";
 let settingsOpen = false;
 let callFilter = "all";
+let logoutInProgress = false;
 if (sidebarSearch) {
   sidebarSearch.value = "";
   sidebarSearch.setAttribute("value", "");
@@ -177,8 +185,21 @@ let messageWindowEnd = 0;
 let loadOlderBtn = null;
 const MAX_VISIBLE_MESSAGES = 200;
 const MESSAGE_WINDOW_PAGE = 80;
+const PENDING_RETRY_BASE_MS = 2500;
+const PENDING_RETRY_MAX_MS = 20000;
+const PENDING_RETRY_TICK_MS = 1500;
+const PENDING_RETRY_MAX_ATTEMPTS = 8;
+const COMPOSER_MAX_MESSAGE_LENGTH = Number.isFinite(Number(messageInput?.maxLength))
+  && Number(messageInput?.maxLength) > 0
+  ? Math.floor(Number(messageInput.maxLength))
+  : 1000;
+const MESSAGE_DRAFT_MAX_LENGTH = COMPOSER_MAX_MESSAGE_LENGTH;
+const ATTACHMENT_MAX_SIZE_BYTES = 15 * 1024 * 1024;
 const pendingQueue = [];
+const pendingQueueByTempId = new Map();
 const pendingByTempId = new Map();
+let messageDrafts = new Map();
+let loadedDraftOwnerKey = "";
 let networkStateLabel = "";
 let networkStateMode = "";
 window._novynProfile = myProfile;
@@ -190,6 +211,16 @@ const localTyping = {
 };
 const scrollState = {
   pinnedToBottom: true,
+};
+const attachmentUploadState = {
+  active: false,
+  pendingTempId: "",
+  target: "",
+};
+const cameraCaptureState = {
+  stream: null,
+  facingMode: "environment",
+  opening: false,
 };
 const EMPTY_CONVERSATION_HINT = "Choose a conversation to start messaging.";
 const DELETED_MESSAGE_TEXT = "This message was deleted.";
@@ -205,6 +236,194 @@ function normalizeName(value) {
 
 function normalizeSearchText(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function validateOutgoingMessageText(value, options = {}) {
+  const text = String(value || "");
+  if (!text.trim()) return "";
+  if (text.length <= COMPOSER_MAX_MESSAGE_LENGTH) return text;
+  if (options.toast !== false) {
+    showToast(`Message too long. Limit is ${COMPOSER_MAX_MESSAGE_LENGTH} characters.`, "error");
+  }
+  return null;
+}
+
+function formatFileSize(bytes) {
+  const size = Number(bytes);
+  if (!Number.isFinite(size) || size <= 0) return "";
+  if (size < 1024) return `${Math.round(size)} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function normalizeAttachmentPayload(rawAttachment, fallbackUrl = "") {
+  if (!rawAttachment || typeof rawAttachment !== "object") return null;
+  const url = String(rawAttachment.url || fallbackUrl || "").trim();
+  if (!url) return null;
+  const mime = String(rawAttachment.mime || "").trim().toLowerCase();
+  const name = String(rawAttachment.name || "").trim().slice(0, 120);
+  const kind = String(rawAttachment.kind || "").trim().toLowerCase() === "image"
+    || mime.startsWith("image/")
+    ? "image"
+    : "file";
+  const size = Number.isFinite(Number(rawAttachment.size))
+    ? Math.max(0, Math.floor(Number(rawAttachment.size)))
+    : 0;
+  return {
+    url,
+    name,
+    mime,
+    size,
+    kind,
+  };
+}
+
+function getMessageDraftOwnerKey() {
+  return normalizeName(me || "");
+}
+
+function getMessageDraftStorageKey(ownerKey = getMessageDraftOwnerKey()) {
+  const safeOwner = normalizeName(ownerKey || "");
+  if (!safeOwner) return "";
+  return `${MESSAGE_DRAFTS_KEY}:${safeOwner}`;
+}
+
+function ensureMessageDraftsLoaded(force = false) {
+  const ownerKey = getMessageDraftOwnerKey();
+  if (!ownerKey) {
+    loadedDraftOwnerKey = "";
+    messageDrafts = new Map();
+    return;
+  }
+  if (!force && loadedDraftOwnerKey === ownerKey) return;
+
+  loadedDraftOwnerKey = ownerKey;
+  messageDrafts = new Map();
+
+  const storageKey = getMessageDraftStorageKey(ownerKey);
+  if (!storageKey) return;
+
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return;
+    Object.entries(parsed).forEach(([friendKey, draft]) => {
+      const key = normalizeName(friendKey);
+      if (!key) return;
+      const value = String(draft || "").slice(0, MESSAGE_DRAFT_MAX_LENGTH);
+      if (!value.trim()) return;
+      messageDrafts.set(key, value);
+    });
+  } catch (_) {
+    // Ignore local storage parse errors for drafts.
+  }
+}
+
+function persistMessageDrafts() {
+  if (!loadedDraftOwnerKey) return;
+  const storageKey = getMessageDraftStorageKey(loadedDraftOwnerKey);
+  if (!storageKey) return;
+
+  try {
+    if (!messageDrafts.size) {
+      localStorage.removeItem(storageKey);
+      return;
+    }
+    const payload = {};
+    messageDrafts.forEach((draft, friendKey) => {
+      payload[friendKey] = draft;
+    });
+    localStorage.setItem(storageKey, JSON.stringify(payload));
+  } catch (_) {
+    // Ignore local storage write errors for drafts.
+  }
+}
+
+function getMessageDraft(friendUsername) {
+  const friendKey = normalizeName(friendUsername);
+  if (!friendKey) return "";
+  ensureMessageDraftsLoaded();
+  return messageDrafts.get(friendKey) || "";
+}
+
+function setMessageDraft(friendUsername, value) {
+  const friendKey = normalizeName(friendUsername);
+  if (!friendKey) return;
+  ensureMessageDraftsLoaded();
+
+  const nextValue = String(value || "").slice(0, MESSAGE_DRAFT_MAX_LENGTH);
+  const nextTrimmed = nextValue.trim();
+  const prev = messageDrafts.get(friendKey) || "";
+
+  if (!nextTrimmed) {
+    if (messageDrafts.delete(friendKey)) {
+      persistMessageDrafts();
+    }
+    return;
+  }
+
+  if (prev === nextValue) return;
+  messageDrafts.set(friendKey, nextValue);
+  persistMessageDrafts();
+}
+
+function removeMessageDraft(friendUsername) {
+  const friendKey = normalizeName(friendUsername);
+  if (!friendKey) return;
+  ensureMessageDraftsLoaded();
+  if (!messageDrafts.delete(friendKey)) return;
+  persistMessageDrafts();
+}
+
+function renameMessageDraft(oldUsername, newUsername) {
+  const oldKey = normalizeName(oldUsername);
+  const newKey = normalizeName(newUsername);
+  if (!oldKey || !newKey || oldKey === newKey) return;
+  ensureMessageDraftsLoaded();
+  const oldDraft = messageDrafts.get(oldKey);
+  if (!oldDraft) return;
+  if (!messageDrafts.get(newKey)) {
+    messageDrafts.set(newKey, oldDraft);
+  }
+  messageDrafts.delete(oldKey);
+  persistMessageDrafts();
+}
+
+function migrateMessageDraftStoreOwner(oldOwnerKey, newOwnerKey) {
+  const prevOwner = normalizeName(oldOwnerKey);
+  const nextOwner = normalizeName(newOwnerKey);
+  if (!prevOwner || !nextOwner || prevOwner === nextOwner) return;
+
+  const prevStorageKey = getMessageDraftStorageKey(prevOwner);
+  const nextStorageKey = getMessageDraftStorageKey(nextOwner);
+  if (!prevStorageKey || !nextStorageKey) return;
+
+  try {
+    const previousRaw = localStorage.getItem(prevStorageKey);
+    if (!previousRaw) return;
+    const nextRaw = localStorage.getItem(nextStorageKey);
+    if (!nextRaw) {
+      localStorage.setItem(nextStorageKey, previousRaw);
+    }
+    localStorage.removeItem(prevStorageKey);
+  } catch (_) {
+    // Ignore local storage migration errors for drafts.
+  }
+}
+
+function persistActiveMessageDraft() {
+  if (!activeFriend || !messageInput) return;
+  setMessageDraft(activeFriend, messageInput.value);
+}
+
+function applyActiveMessageDraft() {
+  if (!messageInput) return;
+  const draft = activeFriend ? getMessageDraft(activeFriend) : "";
+  messageInput.value = draft;
+  if (sendButton) {
+    sendButton.classList.toggle("ready", draft.trim().length > 0);
+  }
 }
 
 function isNativePlatform() {
@@ -243,6 +462,580 @@ function openExternalLink(href) {
     } catch (_) {
       // Ignore URL parsing errors.
     }
+  }
+}
+
+function buildAttachmentDownloadUrl(fileUrl, fileName = "file") {
+  const baseUrl = String(fileUrl || "").trim();
+  if (!baseUrl) return "";
+  const joiner = baseUrl.includes("?") ? "&" : "?";
+  return `${baseUrl}${joiner}download=1&name=${encodeURIComponent(fileName || "file")}`;
+}
+
+function triggerAttachmentDownload(downloadUrl, fileName = "file") {
+  const href = String(downloadUrl || "").trim();
+  if (!href || href === "#") return;
+  const name = String(fileName || "file").trim() || "file";
+  const link = document.createElement("a");
+  link.href = href;
+  link.setAttribute("download", name);
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function buildCapturedPhotoFilename() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+  return `photo-${year}${month}${day}-${hours}${minutes}${seconds}.jpg`;
+}
+
+function createCapturedPhotoFile(blob) {
+  const name = buildCapturedPhotoFilename();
+  try {
+    return new File([blob], name, {
+      type: "image/jpeg",
+      lastModified: Date.now(),
+    });
+  } catch (_) {
+    blob.name = name;
+    return blob;
+  }
+}
+
+function stopCameraCaptureStream() {
+  const stream = cameraCaptureState.stream;
+  cameraCaptureState.stream = null;
+  if (!stream || typeof stream.getTracks !== "function") return;
+  stream.getTracks().forEach((track) => {
+    try {
+      track.stop();
+    } catch (_) {
+      // Ignore camera track stop errors.
+    }
+  });
+}
+
+const cameraCaptureModal = (() => {
+  const modal = document.createElement("div");
+  modal.id = "cameraCaptureModal";
+  modal.className = "camera-capture-modal hidden";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "Capture photo");
+  modal.innerHTML = `
+    <div class="camera-capture-backdrop" data-camera-capture-close="1"></div>
+    <div class="camera-capture-card">
+      <div class="camera-capture-toolbar">
+        <span class="camera-capture-title">Capture photo</span>
+        <button id="cameraCaptureClose" type="button" class="camera-capture-btn camera-capture-close" aria-label="Close camera">Close</button>
+      </div>
+      <div class="camera-capture-stage">
+        <video id="cameraCaptureVideo" class="camera-capture-video" autoplay playsinline muted></video>
+      </div>
+      <div class="camera-capture-actions">
+        <button id="cameraCaptureSwitch" type="button" class="camera-capture-btn">Switch</button>
+        <button id="cameraCaptureTake" type="button" class="camera-capture-btn camera-capture-take">Take photo</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const videoEl = modal.querySelector("#cameraCaptureVideo");
+  const closeBtn = modal.querySelector("#cameraCaptureClose");
+  const switchBtn = modal.querySelector("#cameraCaptureSwitch");
+  const takeBtn = modal.querySelector("#cameraCaptureTake");
+  const backdrop = modal.querySelector(".camera-capture-backdrop");
+  let lastFocused = null;
+
+  function setButtonsDisabled(isDisabled) {
+    const disabled = Boolean(isDisabled);
+    if (takeBtn) takeBtn.disabled = disabled;
+    if (switchBtn) switchBtn.disabled = disabled;
+  }
+
+  async function requestCameraStream(preferredFacing = "environment") {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Camera is not supported in this browser.");
+    }
+    const attempts = [];
+    if (preferredFacing) {
+      attempts.push({
+        audio: false,
+        video: {
+          facingMode: { ideal: preferredFacing },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+      });
+      attempts.push({
+        audio: false,
+        video: {
+          facingMode: preferredFacing,
+        },
+      });
+    }
+    attempts.push({ audio: false, video: true });
+
+    let lastError = null;
+    for (const constraints of attempts) {
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError || new Error("Unable to access camera.");
+  }
+
+  async function bindStream(preferredFacing = cameraCaptureState.facingMode) {
+    stopCameraCaptureStream();
+    const stream = await requestCameraStream(preferredFacing || "environment");
+    cameraCaptureState.stream = stream;
+    cameraCaptureState.facingMode = preferredFacing || cameraCaptureState.facingMode || "environment";
+    if (videoEl) {
+      videoEl.srcObject = stream;
+      try {
+        await videoEl.play();
+      } catch (_) {
+        // Some browsers may block autoplay until video is visible.
+      }
+    }
+  }
+
+  function close() {
+    modal.classList.add("hidden");
+    document.body.classList.remove("camera-capture-open");
+    stopCameraCaptureStream();
+    if (videoEl) {
+      try {
+        videoEl.pause();
+      } catch (_) {}
+      videoEl.srcObject = null;
+    }
+    if (lastFocused && typeof lastFocused.focus === "function") {
+      lastFocused.focus();
+    }
+    lastFocused = null;
+    setButtonsDisabled(false);
+    cameraCaptureState.opening = false;
+  }
+
+  async function open() {
+    if (cameraCaptureState.opening) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Camera is not supported in this browser.");
+    }
+    lastFocused = document.activeElement;
+    modal.classList.remove("hidden");
+    document.body.classList.add("camera-capture-open");
+    setButtonsDisabled(true);
+    cameraCaptureState.opening = true;
+    try {
+      await bindStream(cameraCaptureState.facingMode || "environment");
+      setButtonsDisabled(false);
+      if (takeBtn) takeBtn.focus();
+    } catch (error) {
+      close();
+      throw error;
+    } finally {
+      cameraCaptureState.opening = false;
+    }
+  }
+
+  async function switchFacingMode() {
+    if (cameraCaptureState.opening) return;
+    const nextFacing = cameraCaptureState.facingMode === "environment" ? "user" : "environment";
+    setButtonsDisabled(true);
+    cameraCaptureState.opening = true;
+    try {
+      await bindStream(nextFacing);
+      cameraCaptureState.facingMode = nextFacing;
+    } finally {
+      cameraCaptureState.opening = false;
+      if (!modal.classList.contains("hidden")) {
+        setButtonsDisabled(false);
+      }
+    }
+  }
+
+  async function capturePhotoAsFile() {
+    if (!videoEl || !(videoEl.srcObject instanceof MediaStream)) {
+      throw new Error("Camera stream is not ready.");
+    }
+    const width = Number(videoEl.videoWidth || 0);
+    const height = Number(videoEl.videoHeight || 0);
+    if (!width || !height) {
+      throw new Error("Camera is still loading. Try again.");
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Unable to capture photo.");
+    }
+    context.drawImage(videoEl, 0, 0, width, height);
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", 0.92);
+    });
+    if (!blob) {
+      throw new Error("Unable to capture photo.");
+    }
+    return createCapturedPhotoFile(blob);
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", close);
+  }
+  if (switchBtn) {
+    switchBtn.addEventListener("click", async () => {
+      try {
+        await switchFacingMode();
+      } catch (error) {
+        console.error(error);
+        showToast("Could not switch camera.", "error");
+        if (!modal.classList.contains("hidden")) {
+          setButtonsDisabled(false);
+        }
+      }
+    });
+  }
+  if (takeBtn) {
+    takeBtn.addEventListener("click", async () => {
+      if (!activeFriend) {
+        showToast("Choose a friend before sending a photo.", "error");
+        return;
+      }
+      if (attachmentUploadState.active) {
+        showToast("Please wait for the current upload to finish.", "info");
+        return;
+      }
+      setButtonsDisabled(true);
+      try {
+        const capturedPhoto = await capturePhotoAsFile();
+        close();
+        await uploadAttachmentFromPicker(capturedPhoto);
+      } catch (error) {
+        console.error(error);
+        showToast(String(error?.message || "Unable to capture photo."), "error");
+        if (!modal.classList.contains("hidden")) {
+          setButtonsDisabled(false);
+        }
+      }
+    });
+  }
+  if (backdrop) {
+    backdrop.addEventListener("click", close);
+  }
+  modal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest("[data-camera-capture-close='1']")) {
+      close();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.classList.contains("hidden")) {
+      close();
+    }
+  });
+
+  return {
+    open,
+    close,
+    isOpen() {
+      return !modal.classList.contains("hidden");
+    },
+  };
+})();
+
+const imageViewer = (() => {
+  const modal = document.createElement("div");
+  modal.id = "imageViewerModal";
+  modal.className = "image-viewer-modal hidden";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "Image preview");
+  modal.innerHTML = `
+    <div class="image-viewer-backdrop" data-image-viewer-close="1"></div>
+    <div class="image-viewer-card">
+      <div class="image-viewer-toolbar">
+        <span class="image-viewer-name" id="imageViewerName">Image</span>
+        <div class="image-viewer-actions">
+          <a id="imageViewerDownload" class="image-viewer-btn" href="#">Download</a>
+          <button id="imageViewerClose" type="button" class="image-viewer-btn image-viewer-close" aria-label="Close image preview">Close</button>
+        </div>
+      </div>
+      <div class="image-viewer-stage">
+        <img id="imageViewerImg" class="image-viewer-img" alt="Image preview" />
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const imgEl = modal.querySelector("#imageViewerImg");
+  const nameEl = modal.querySelector("#imageViewerName");
+  const closeBtn = modal.querySelector("#imageViewerClose");
+  const downloadEl = modal.querySelector("#imageViewerDownload");
+  const backdrop = modal.querySelector(".image-viewer-backdrop");
+  let lastFocused = null;
+
+  function close() {
+    modal.classList.add("hidden");
+    document.body.classList.remove("image-viewer-open");
+    if (imgEl) {
+      imgEl.removeAttribute("src");
+    }
+    if (nameEl) {
+      nameEl.textContent = "Image";
+    }
+    if (downloadEl) {
+      downloadEl.setAttribute("href", "#");
+      downloadEl.removeAttribute("download");
+    }
+    if (lastFocused && typeof lastFocused.focus === "function") {
+      lastFocused.focus();
+    }
+    lastFocused = null;
+  }
+
+  function open(payload = {}) {
+    const src = String(payload.src || "").trim();
+    if (!src || !imgEl) return;
+    const fileName = String(payload.fileName || "").trim() || "image";
+    lastFocused = document.activeElement;
+    imgEl.src = src;
+    imgEl.alt = fileName;
+    if (nameEl) {
+      nameEl.textContent = fileName;
+    }
+    if (downloadEl) {
+      downloadEl.setAttribute("href", buildAttachmentDownloadUrl(src, fileName));
+      downloadEl.setAttribute("download", fileName);
+    }
+    modal.classList.remove("hidden");
+    document.body.classList.add("image-viewer-open");
+    if (closeBtn) {
+      closeBtn.focus();
+    }
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", close);
+  }
+  if (downloadEl) {
+    downloadEl.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      triggerAttachmentDownload(
+        downloadEl.getAttribute("href") || "",
+        downloadEl.getAttribute("download") || "image"
+      );
+    });
+  }
+  if (backdrop) {
+    backdrop.addEventListener("click", close);
+  }
+  modal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest("[data-image-viewer-close='1']")) {
+      close();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.classList.contains("hidden")) {
+      close();
+    }
+  });
+
+  return { open, close };
+})();
+
+function canPreviewFileInViewer(fileUrl, mimeType, fileName) {
+  const url = String(fileUrl || "").toLowerCase();
+  const mime = String(mimeType || "").toLowerCase();
+  const name = String(fileName || "").toLowerCase();
+  if (mime === "application/pdf") return true;
+  if (/\.pdf($|[?#])/.test(url) || /\.pdf$/.test(name)) return true;
+  return false;
+}
+
+const fileViewer = (() => {
+  const modal = document.createElement("div");
+  modal.id = "fileViewerModal";
+  modal.className = "image-viewer-modal hidden";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "File preview");
+  modal.innerHTML = `
+    <div class="image-viewer-backdrop" data-file-viewer-close="1"></div>
+    <div class="image-viewer-card">
+      <div class="image-viewer-toolbar">
+        <span class="image-viewer-name" id="fileViewerName">Attachment</span>
+        <div class="image-viewer-actions">
+          <a id="fileViewerDownload" class="image-viewer-btn" href="#">Download</a>
+          <button id="fileViewerClose" type="button" class="image-viewer-btn image-viewer-close" aria-label="Close file preview">Close</button>
+        </div>
+      </div>
+      <div class="image-viewer-stage">
+        <iframe id="fileViewerFrame" class="file-viewer-frame hidden" title="File preview"></iframe>
+        <div id="fileViewerFallback" class="file-viewer-fallback hidden">
+          <div class="file-viewer-fallback-title">Preview unavailable</div>
+          <div class="file-viewer-fallback-sub">Use the download button to open this file.</div>
+          <div id="fileViewerMeta" class="file-viewer-meta"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const nameEl = modal.querySelector("#fileViewerName");
+  const frameEl = modal.querySelector("#fileViewerFrame");
+  const fallbackEl = modal.querySelector("#fileViewerFallback");
+  const metaEl = modal.querySelector("#fileViewerMeta");
+  const closeBtn = modal.querySelector("#fileViewerClose");
+  const downloadEl = modal.querySelector("#fileViewerDownload");
+  const backdrop = modal.querySelector(".image-viewer-backdrop");
+  let lastFocused = null;
+
+  function close() {
+    modal.classList.add("hidden");
+    document.body.classList.remove("image-viewer-open");
+    if (nameEl) {
+      nameEl.textContent = "Attachment";
+    }
+    if (frameEl) {
+      frameEl.classList.add("hidden");
+      frameEl.removeAttribute("src");
+    }
+    if (fallbackEl) {
+      fallbackEl.classList.add("hidden");
+    }
+    if (metaEl) {
+      metaEl.textContent = "";
+    }
+    if (downloadEl) {
+      downloadEl.setAttribute("href", "#");
+      downloadEl.removeAttribute("download");
+    }
+    if (lastFocused && typeof lastFocused.focus === "function") {
+      lastFocused.focus();
+    }
+    lastFocused = null;
+  }
+
+  function open(payload = {}) {
+    const src = String(payload.src || "").trim();
+    if (!src) return;
+    const fileName = String(payload.fileName || "").trim() || "Attachment";
+    const mime = String(payload.mime || "").trim();
+    const size = Number(payload.size);
+    const canPreview = canPreviewFileInViewer(src, mime, fileName);
+
+    lastFocused = document.activeElement;
+    if (nameEl) {
+      nameEl.textContent = fileName;
+    }
+    if (downloadEl) {
+      downloadEl.setAttribute("href", buildAttachmentDownloadUrl(src, fileName));
+      downloadEl.setAttribute("download", fileName);
+    }
+
+    if (canPreview && frameEl) {
+      frameEl.setAttribute("src", src);
+      frameEl.classList.remove("hidden");
+      if (fallbackEl) fallbackEl.classList.add("hidden");
+      if (metaEl) metaEl.textContent = "";
+    } else {
+      if (frameEl) {
+        frameEl.classList.add("hidden");
+        frameEl.removeAttribute("src");
+      }
+      if (fallbackEl) fallbackEl.classList.remove("hidden");
+      if (metaEl) {
+        const sizeText = formatFileSize(size);
+        const typeText = mime || "Unknown file type";
+        metaEl.textContent = sizeText ? `${typeText} • ${sizeText}` : typeText;
+      }
+    }
+
+    modal.classList.remove("hidden");
+    document.body.classList.add("image-viewer-open");
+    if (closeBtn) closeBtn.focus();
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", close);
+  }
+  if (downloadEl) {
+    downloadEl.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      triggerAttachmentDownload(
+        downloadEl.getAttribute("href") || "",
+        downloadEl.getAttribute("download") || "file"
+      );
+    });
+  }
+  if (backdrop) {
+    backdrop.addEventListener("click", close);
+  }
+  modal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest("[data-file-viewer-close='1']")) {
+      close();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.classList.contains("hidden")) {
+      close();
+    }
+  });
+
+  return { open, close };
+})();
+
+async function openComposerCameraCapture() {
+  if (!activeFriend) {
+    showToast("Choose a friend before sending a photo.", "error");
+    return;
+  }
+  if (attachmentUploadState.active) {
+    showToast("Please wait for the current upload to finish.", "info");
+    return;
+  }
+  if (messageInput?.disabled) return;
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    if (cameraCaptureInput) {
+      cameraCaptureInput.value = "";
+      cameraCaptureInput.click();
+      return;
+    }
+    showToast("Camera is not supported in this browser.", "error");
+    return;
+  }
+
+  try {
+    await cameraCaptureModal.open();
+  } catch (error) {
+    console.error(error);
+    if (cameraCaptureInput) {
+      cameraCaptureInput.value = "";
+      cameraCaptureInput.click();
+      showToast("Live camera unavailable. Opened image picker instead.", "info");
+      return;
+    }
+    showToast("Unable to open camera.", "error");
   }
 }
 
@@ -589,40 +1382,6 @@ function getFriendSearchBlob(friend) {
   );
 }
 
-function getStoredSessionFrom(storage) {
-  try {
-    const raw = storage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const email = String(parsed?.email || "").trim();
-    const username = String(parsed?.username || "").trim();
-    const password = String(parsed?.password || "");
-    if ((!email && !username) || !password) return null;
-    return { email, username, password };
-  } catch (_) {
-    return null;
-  }
-}
-
-function readStoredSession() {
-  return getStoredSessionFrom(sessionStorage) || getStoredSessionFrom(localStorage);
-}
-
-function writeStoredSession(session) {
-  const email = String(session?.email || "").trim();
-  const username = String(session?.username || "").trim();
-  const password = String(session?.password || "");
-  if ((!email && !username) || !password) return;
-  try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ email, username, password }));
-  } catch (_) {}
-  try {
-    if (localStorage.getItem(REMEMBER_KEY) === "1") {
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ email, username, password }));
-    }
-  } catch (_) {}
-}
-
 function clearStoredSession() {
   try {
     sessionStorage.removeItem(SESSION_KEY);
@@ -640,26 +1399,113 @@ function redirectToLogin() {
   window.location.replace(LOGIN_PATH);
 }
 
-function authenticateStoredSession(force = false) {
-  if (!socketAvailable || !isDashboardPage) return;
-  const session = readStoredSession();
-  if (!session) {
-    redirectToLogin();
-    return;
+function prepareLogoutTransition() {
+  logoutInProgress = true;
+  cameraCaptureModal.close();
+  clearStoredSession();
+  ensureDashboardSession._pending = null;
+  resumeSocketSession._pending = false;
+  if (socketAvailable && socket.connected && typeof socket.disconnect === "function") {
+    try {
+      socket.disconnect();
+    } catch (_) {
+      // Ignore disconnect failures while navigating away.
+    }
   }
-  if (!socket.connected) return;
-  if (authenticateStoredSession._pending && !force) return;
-  authenticateStoredSession._pending = true;
-  const payload = session.email
-    ? { email: session.email, password: session.password, mode: "signin" }
-    : { username: session.username, password: session.password };
-  socket.emit("register", payload);
 }
 
-authenticateStoredSession._pending = false;
+window._novynPrepareLogout = prepareLogoutTransition;
 
-if (isDashboardPage && !readStoredSession()) {
-  redirectToLogin();
+function refreshAuthSessionSilently() {
+  const request = authApi?.refreshSession
+    ? authApi.refreshSession()
+    : fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+  Promise.resolve(request).catch(() => {});
+}
+
+function resumeSocketSession(force = false) {
+  if (!socketAvailable || !isDashboardPage) return;
+  if (!socket.connected) return;
+  if (resumeSocketSession._pending && !force) return;
+  resumeSocketSession._pending = true;
+  socket.emit("resume_session");
+}
+
+resumeSocketSession._pending = false;
+
+async function hasValidHttpSession() {
+  if (authApi?.hasValidSession) {
+    try {
+      const result = await authApi.hasValidSession();
+      return Boolean(result?.ok);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  try {
+    const response = await fetch("/api/auth/session", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (response.ok) return true;
+    if (response.status !== 401) return false;
+  } catch (_) {
+    return false;
+  }
+
+  try {
+    const refreshResponse = await fetch("/api/auth/refresh", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    if (!refreshResponse.ok) return false;
+    const retry = await fetch("/api/auth/session", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    return retry.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function ensureDashboardSession(force = false) {
+  if (!isDashboardPage) return false;
+  if (ensureDashboardSession._pending && !force) {
+    return ensureDashboardSession._pending;
+  }
+
+  const checkPromise = (async () => {
+    const ok = await hasValidHttpSession();
+    if (!ok) {
+      clearStoredSession();
+      redirectToLogin();
+      return false;
+    }
+    if (socket.connected) {
+      resumeSocketSession(true);
+    }
+    return true;
+  })();
+
+  ensureDashboardSession._pending = checkPromise;
+  try {
+    return await checkPromise;
+  } finally {
+    ensureDashboardSession._pending = null;
+  }
+}
+
+ensureDashboardSession._pending = null;
+
+if (isDashboardPage) {
+  void ensureDashboardSession();
 }
 
 function getLocalDateKey(iso) {
@@ -698,6 +1544,7 @@ function formatFullTimestamp(iso) {
 }
 
 function getMessageStatusKey(message) {
+  if (message?.failed) return "failed";
   if (message?.pending) return "pending";
   if (message?.seenAt) return "seen";
   if (message?.deliveredAt) return "delivered";
@@ -948,13 +1795,43 @@ function isNearBottom() {
 
 // ─── Network state ────────────────────────────────────────────────────────────
 
+function getFailedPendingTempIds() {
+  const failedTempIds = [];
+  pendingByTempId.forEach((message, tempId) => {
+    if (!message || !message.failed || !tempId) return;
+    failedTempIds.push(tempId);
+  });
+  return failedTempIds;
+}
+
+function retryAllFailedMessages() {
+  const failedTempIds = getFailedPendingTempIds();
+  if (!failedTempIds.length) {
+    showToast("No failed messages to retry.", "info");
+    return;
+  }
+  failedTempIds.forEach((tempId) => retryFailedMessage(tempId, { toast: false }));
+  const label = failedTempIds.length === 1 ? "message" : "messages";
+  showToast(`Retrying ${failedTempIds.length} failed ${label}...`, "info");
+}
+
 function renderNetworkState() {
-  if (!connectionLabel || !networkPill) return;
-  const queuedSuffix = pendingQueue.length ? ` · ${pendingQueue.length} queued` : "";
-  connectionLabel.textContent = `${networkStateLabel || ""}${queuedSuffix}`;
-  networkPill.classList.remove("connected", "offline");
-  if (networkStateMode === "connected") networkPill.classList.add("connected");
-  if (networkStateMode === "offline")   networkPill.classList.add("offline");
+  if (!connectionLabel) return;
+  const queuedCount = pendingQueue.length;
+  const failedCount = getFailedPendingTempIds().length;
+  const queuedSuffix = queuedCount ? ` | ${queuedCount} queued` : "";
+  const failedSuffix = failedCount ? ` | ${failedCount} failed` : "";
+  connectionLabel.textContent = `${networkStateLabel || ""}${queuedSuffix}${failedSuffix}`;
+  if (networkPill) {
+    networkPill.classList.remove("connected", "offline");
+    if (networkStateMode === "connected") networkPill.classList.add("connected");
+    if (networkStateMode === "offline")   networkPill.classList.add("offline");
+  }
+  if (retryFailedBtn) {
+    retryFailedBtn.classList.toggle("hidden", failedCount === 0);
+    retryFailedBtn.disabled = failedCount === 0;
+    retryFailedBtn.textContent = failedCount > 1 ? `Retry failed (${failedCount})` : "Retry failed";
+  }
 }
 
 function setNetworkState(label, state) {
@@ -1671,6 +2548,21 @@ function highlightText(text, query) {
 function updateMessageHighlight(row, query) {
   if (!row) return;
   if (row.classList.contains("call-log") || row.classList.contains("message-deleted")) return;
+  if (row.dataset.hasAttachment === "1") {
+    const body = row.querySelector(".message-body");
+    if (body && !body.querySelector(".msg-img, .file-bubble")) {
+      const messageId = row.dataset.messageId || "";
+      const tempId = row.dataset.clientTempId || "";
+      const source = messageId
+        ? getConversationMessageById(messageId)
+        : (tempId ? pendingByTempId.get(tempId) : null);
+      if (source) {
+        const replacement = buildMessageElement(source, true);
+        row.replaceWith(replacement);
+      }
+    }
+    return;
+  }
   const body = row.querySelector(".message-body");
   if (!body || body.querySelector(".audio-card")) return;
   const raw = body.dataset.rawText || row.dataset.messageText || "";
@@ -1827,6 +2719,454 @@ function clearReply() {
   replyBanner.banner.dataset.replyId = "";
 }
 
+function getConversationMessageById(messageId) {
+  if (!messageId) return null;
+  return conversationMessages.find((message) => message?.id === messageId) || null;
+}
+
+function getMessagePeerUsername(message) {
+  if (!message) return "";
+  const from = String(message.from || "").trim();
+  const to = String(message.to || "").trim();
+  if (!from && !to) return activeFriend || "";
+  if (normalizeName(from) === normalizeName(me)) {
+    return to || activeFriend || "";
+  }
+  return from || activeFriend || "";
+}
+
+function summarizeMessageForPinnedBar(message) {
+  if (!message) return "Pinned message";
+  const attachment = normalizeAttachmentPayload(message.attachment, message.text || "");
+  if (attachment) {
+    const prefix = attachment.kind === "image" ? "Image" : "File";
+    const suffix = attachment.name ? `: ${attachment.name}` : "";
+    return `${prefix}${suffix}`;
+  }
+  const raw = String(message.text || "").replace(/\s+/g, " ").trim();
+  if (!raw) return "Pinned message";
+  return raw.length > 96 ? `${raw.slice(0, 96)}...` : raw;
+}
+
+function getDisplayNameForReactionUser(rawName) {
+  const value = String(rawName || "").trim();
+  if (!value) return "";
+  const key = normalizeName(value);
+  if (key && key === normalizeName(me)) return "You";
+  const friend = findFriend(value) || friends.find((entry) => normalizeName(entry?.username) === key);
+  if (friend) {
+    return cleanDisplayName(friend.displayName) || friend.username || value;
+  }
+  return value;
+}
+
+const messageEditDialog = (() => {
+  const modal = document.createElement("div");
+  modal.id = "messageEditModal";
+  modal.className = "confirm-modal";
+  modal.style.display = "none";
+  modal.innerHTML = `
+    <div class="confirm-modal-backdrop"></div>
+    <div class="confirm-modal-card settings-modal-card message-edit-card">
+      <h3>Edit message</h3>
+      <p class="confirm-modal-desc">Update your message for everyone in this chat.</p>
+      <textarea id="messageEditInput" class="message-edit-input" maxlength="${COMPOSER_MAX_MESSAGE_LENGTH}" rows="4"></textarea>
+      <div class="confirm-modal-btns">
+        <button type="button" class="confirm-modal-cancel" data-edit-action="cancel">Cancel</button>
+        <button type="button" class="settings-confirm" data-edit-action="save">Save</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const input = modal.querySelector("#messageEditInput");
+  const backdrop = modal.querySelector(".confirm-modal-backdrop");
+  const cancelBtn = modal.querySelector('[data-edit-action="cancel"]');
+  const saveBtn = modal.querySelector('[data-edit-action="save"]');
+  let onSave = null;
+  let originalText = "";
+
+  function close() {
+    modal.style.display = "none";
+    onSave = null;
+    originalText = "";
+    if (input) input.value = "";
+  }
+
+  function save() {
+    if (!onSave || !input) return;
+    if (!String(input.value || "").trim()) {
+      showToast("Message cannot be empty.", "error");
+      return;
+    }
+    const validated = validateOutgoingMessageText(input.value);
+    if (validated === null || !validated) return;
+    if (validated === originalText) {
+      close();
+      return;
+    }
+    onSave(validated);
+    close();
+  }
+
+  if (backdrop) backdrop.addEventListener("click", close);
+  if (cancelBtn) cancelBtn.addEventListener("click", close);
+  if (saveBtn) saveBtn.addEventListener("click", save);
+  if (input) {
+    input.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        save();
+      }
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && modal.style.display !== "none") {
+      close();
+    }
+  });
+
+  function open(initialText, handler) {
+    if (!input) return;
+    originalText = String(initialText || "").trim();
+    onSave = typeof handler === "function" ? handler : null;
+    input.value = originalText;
+    modal.style.display = "flex";
+    setTimeout(() => {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }, 0);
+  }
+
+  return { open, close };
+})();
+
+const reactionDetailsDialog = (() => {
+  const modal = document.createElement("div");
+  modal.id = "reactionDetailsModal";
+  modal.className = "confirm-modal";
+  modal.style.display = "none";
+  modal.innerHTML = `
+    <div class="confirm-modal-backdrop"></div>
+    <div class="confirm-modal-card settings-modal-card reaction-details-card">
+      <h3>Reactions</h3>
+      <div id="reactionDetailsList" class="reaction-details-list"></div>
+      <div class="confirm-modal-btns">
+        <button type="button" class="settings-confirm" data-reaction-action="close">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const list = modal.querySelector("#reactionDetailsList");
+  const closeBtn = modal.querySelector('[data-reaction-action="close"]');
+  const backdrop = modal.querySelector(".confirm-modal-backdrop");
+
+  function close() {
+    modal.style.display = "none";
+    if (list) list.innerHTML = "";
+  }
+
+  function open(reactionGroups) {
+    if (!list) return;
+    list.innerHTML = "";
+    reactionGroups.forEach((entry) => {
+      const section = document.createElement("section");
+      section.className = "reaction-details-group";
+      const title = document.createElement("div");
+      title.className = "reaction-details-title";
+      title.textContent = `${entry.emoji} ${entry.count}`;
+
+      const users = document.createElement("ul");
+      users.className = "reaction-details-users";
+
+      entry.users.forEach((name) => {
+        const item = document.createElement("li");
+        item.textContent = name;
+        users.appendChild(item);
+      });
+
+      if (entry.extraCount > 0) {
+        const item = document.createElement("li");
+        item.className = "reaction-details-more";
+        item.textContent = `and ${entry.extraCount} more`;
+        users.appendChild(item);
+      }
+
+      section.append(title, users);
+      list.appendChild(section);
+    });
+    modal.style.display = "flex";
+  }
+
+  if (closeBtn) closeBtn.addEventListener("click", close);
+  if (backdrop) backdrop.addEventListener("click", close);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && modal.style.display !== "none") {
+      close();
+    }
+  });
+
+  return { open, close };
+})();
+
+const messageForwardDialog = (() => {
+  const modal = document.createElement("div");
+  modal.id = "messageForwardModal";
+  modal.className = "confirm-modal";
+  modal.style.display = "none";
+  modal.innerHTML = `
+    <div class="confirm-modal-backdrop"></div>
+    <div class="confirm-modal-card settings-modal-card message-forward-card">
+      <h3>Forward message</h3>
+      <p class="confirm-modal-desc">Choose a friend to forward this message to.</p>
+      <div id="messageForwardPreview" class="message-forward-preview"></div>
+      <div id="messageForwardList" class="message-forward-list"></div>
+      <div class="confirm-modal-btns">
+        <button type="button" class="confirm-modal-cancel" data-forward-action="cancel">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const list = modal.querySelector("#messageForwardList");
+  const preview = modal.querySelector("#messageForwardPreview");
+  const cancelBtn = modal.querySelector('[data-forward-action="cancel"]');
+  const backdrop = modal.querySelector(".confirm-modal-backdrop");
+  let sourceMessage = null;
+  let sending = false;
+
+  function close() {
+    sending = false;
+    modal.style.display = "none";
+    if (list) list.innerHTML = "";
+    if (preview) preview.textContent = "";
+    sourceMessage = null;
+  }
+
+  function forwardTo(friendUsername) {
+    if (!sourceMessage || !friendUsername || sending) return;
+    const attachment = normalizeAttachmentPayload(sourceMessage.attachment, sourceMessage.text || "");
+    const payload = {
+      to: friendUsername,
+      text: String(sourceMessage.text || "").trim(),
+    };
+    if (attachment) payload.attachment = attachment;
+    if (!payload.text) {
+      showToast("Nothing to forward.", "error");
+      return;
+    }
+    sending = true;
+    if (cancelBtn) cancelBtn.disabled = true;
+    const sentTempId = sendMessagePayload(payload, { optimistic: false });
+    if (!sentTempId) {
+      sending = false;
+      if (cancelBtn) cancelBtn.disabled = false;
+      return;
+    }
+    if (socketAvailable && socket.connected) {
+      showToast(`Forwarded to @${friendUsername}`, "success");
+    }
+    close();
+  }
+
+  function open(message) {
+    if (!list) return;
+    sourceMessage = message && typeof message === "object" ? message : null;
+    if (!sourceMessage) return;
+    list.innerHTML = "";
+    sending = false;
+    if (cancelBtn) cancelBtn.disabled = false;
+    if (preview) {
+      preview.textContent = summarizeMessageForPinnedBar(sourceMessage);
+    }
+
+    const availableFriends = friends
+      .filter((friend) => friend && friend.username)
+      .sort((a, b) => getFriendDisplayName(a).localeCompare(getFriendDisplayName(b)));
+
+    if (!availableFriends.length) {
+      const empty = document.createElement("div");
+      empty.className = "message-forward-empty";
+      empty.textContent = "No friends available.";
+      list.appendChild(empty);
+      modal.style.display = "flex";
+      return;
+    }
+
+    availableFriends.forEach((friend) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "message-forward-btn";
+      const displayName = getFriendDisplayName(friend);
+      const nameEl = document.createElement("span");
+      nameEl.className = "message-forward-name";
+      nameEl.textContent = displayName;
+      const handleEl = document.createElement("span");
+      handleEl.className = "message-forward-handle";
+      handleEl.textContent = `@${friend.username}`;
+      btn.append(nameEl, handleEl);
+      btn.addEventListener("click", () => forwardTo(friend.username));
+      list.appendChild(btn);
+    });
+
+    modal.style.display = "flex";
+  }
+
+  if (cancelBtn) cancelBtn.addEventListener("click", close);
+  if (backdrop) backdrop.addEventListener("click", close);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && modal.style.display !== "none") {
+      close();
+    }
+  });
+
+  return { open, close };
+})();
+
+const pinnedMessageBar = (() => {
+  const bar = document.createElement("div");
+  bar.id = "pinnedMessageBar";
+  bar.className = "pinned-message-bar hidden";
+  bar.innerHTML = `
+    <button type="button" class="pinned-message-main">
+      <span class="pinned-message-label">Pinned</span>
+      <span class="pinned-message-text"></span>
+    </button>
+    <button type="button" class="pinned-message-clear" title="Unpin message" aria-label="Unpin message">&times;</button>
+  `;
+
+  if (messageSearchPanel && messageSearchPanel.parentNode) {
+    if (messageSearchPanel.nextSibling) {
+      messageSearchPanel.parentNode.insertBefore(bar, messageSearchPanel.nextSibling);
+    } else {
+      messageSearchPanel.parentNode.appendChild(bar);
+    }
+  } else if (messagesEl?.parentNode) {
+    messagesEl.parentNode.insertBefore(bar, messagesEl.parentNode.firstChild);
+  }
+
+  const mainBtn = bar.querySelector(".pinned-message-main");
+  const textEl = bar.querySelector(".pinned-message-text");
+  const clearBtn = bar.querySelector(".pinned-message-clear");
+  let currentMessageId = "";
+  let currentPeer = "";
+
+  function clear() {
+    currentMessageId = "";
+    currentPeer = "";
+    bar.classList.add("hidden");
+    if (textEl) textEl.textContent = "";
+  }
+
+  function set(message) {
+    if (!message?.id) {
+      clear();
+      return;
+    }
+    currentMessageId = message.id;
+    currentPeer = getMessagePeerUsername(message) || activeFriend || "";
+    if (textEl) {
+      textEl.textContent = summarizeMessageForPinnedBar(message);
+    }
+    bar.classList.remove("hidden");
+  }
+
+  if (mainBtn) {
+    mainBtn.addEventListener("click", () => {
+      if (!currentMessageId) return;
+      focusMessageById(currentMessageId);
+    });
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!currentMessageId || !currentPeer) return;
+      socket.emit("set_message_pin", {
+        messageId: currentMessageId,
+        to: currentPeer,
+        pinned: false,
+      });
+    });
+  }
+
+  return { set, clear };
+})();
+
+function getReactionGroupsForMessage(messageId) {
+  const message = getConversationMessageById(messageId);
+  if (!message || !message.reactions || typeof message.reactions !== "object") return [];
+
+  const groups = [];
+  for (const [emoji, rawEntry] of Object.entries(message.reactions)) {
+    if (!rawEntry || typeof rawEntry !== "object") continue;
+    const rawCount = Number(rawEntry.count);
+    const fromUserKeys = Array.isArray(rawEntry.userKeys) ? rawEntry.userKeys : [];
+    const fromUsers = Array.isArray(rawEntry.users) ? rawEntry.users : [];
+    const count = Number.isFinite(rawCount) && rawCount > 0
+      ? Math.floor(rawCount)
+      : Math.max(fromUserKeys.length, fromUsers.length);
+    if (!count) continue;
+
+    const uniqueNames = [];
+    const seen = new Set();
+    const combinedNames = fromUsers.length
+      ? fromUsers
+      : fromUserKeys.map((name) => getDisplayNameForReactionUser(name));
+    combinedNames.forEach((rawName) => {
+      const pretty = getDisplayNameForReactionUser(rawName);
+      const key = normalizeName(pretty);
+      if (!pretty || !key || seen.has(key)) return;
+      seen.add(key);
+      uniqueNames.push(pretty);
+    });
+
+    if (rawEntry.mine && !uniqueNames.some((name) => normalizeName(name) === normalizeName("You"))) {
+      uniqueNames.unshift("You");
+    }
+
+    groups.push({
+      emoji,
+      count,
+      users: uniqueNames,
+      extraCount: Math.max(0, count - uniqueNames.length),
+    });
+  }
+
+  groups.sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
+  return groups;
+}
+
+function openReactionDetailsForMessage(messageId) {
+  const groups = getReactionGroupsForMessage(messageId);
+  if (!groups.length) {
+    showToast("No reactions yet.", "info");
+    return;
+  }
+  reactionDetailsDialog.open(groups);
+}
+
+function syncPinnedMessageBar() {
+  if (!activeFriend || !Array.isArray(conversationMessages) || !conversationMessages.length) {
+    pinnedMessageBar.clear();
+    return;
+  }
+
+  const pinned = conversationMessages
+    .filter((message) => message && !message.deletedAt && message.pinnedAt)
+    .sort((a, b) => {
+      const aKey = String(a?.pinnedAt || a?.timestamp || "");
+      const bKey = String(b?.pinnedAt || b?.timestamp || "");
+      return bKey.localeCompare(aKey);
+    });
+
+  if (!pinned.length) {
+    pinnedMessageBar.clear();
+    return;
+  }
+  pinnedMessageBar.set(pinned[0]);
+}
+
 const messageContextMenu = (() => {
   const menu = document.createElement("div");
   menu.id = "messageContextMenu";
@@ -1834,7 +3174,11 @@ const messageContextMenu = (() => {
   menu.innerHTML = `
     <button type="button" data-action="copy">Copy</button>
     <button type="button" data-action="reply">Reply</button>
+    <button type="button" data-action="forward">Forward</button>
     <button type="button" data-action="react">React</button>
+    <button type="button" data-action="reactions">Reactions</button>
+    <button type="button" data-action="edit">Edit</button>
+    <button type="button" data-action="pin">Pin</button>
     <button type="button" data-action="delete" class="danger">Delete</button>
   `;
   document.body.appendChild(menu);
@@ -1860,15 +3204,33 @@ const messageContextMenu = (() => {
 
     const mine = msgEl.classList.contains("me");
     const deleted = msgEl.classList.contains("message-deleted");
+    const pending = msgEl.classList.contains("pending");
+    const hasAttachment = msgEl.dataset.hasAttachment === "1";
+    const isCallLog = msgEl.classList.contains("call-log");
+    const hasReactions = Boolean(msgEl.dataset.messageReactions);
+    const pinned = Boolean(msgEl.dataset.pinnedAt);
+    const messageId = String(msgEl.dataset.messageId || "").trim();
     const deleteBtn = menu.querySelector('[data-action="delete"]');
     const copyBtn = menu.querySelector('[data-action="copy"]');
     const replyBtn = menu.querySelector('[data-action="reply"]');
+    const forwardBtn = menu.querySelector('[data-action="forward"]');
     const reactBtn = menu.querySelector('[data-action="react"]');
+    const reactionsBtn = menu.querySelector('[data-action="reactions"]');
+    const editBtn = menu.querySelector('[data-action="edit"]');
+    const pinBtn = menu.querySelector('[data-action="pin"]');
 
-    if (deleteBtn) deleteBtn.classList.toggle("hidden", !mine || deleted);
+    if (deleteBtn) deleteBtn.classList.toggle("hidden", !mine || deleted || pending || !messageId);
     if (copyBtn) copyBtn.classList.toggle("hidden", deleted);
-    if (replyBtn) replyBtn.classList.toggle("hidden", deleted);
-    if (reactBtn) reactBtn.classList.toggle("hidden", deleted);
+    if (replyBtn) replyBtn.classList.toggle("hidden", deleted || pending || !messageId);
+    if (forwardBtn) forwardBtn.classList.toggle("hidden", deleted || pending || !messageId);
+    if (reactBtn) reactBtn.classList.toggle("hidden", deleted || pending || !messageId);
+    if (reactionsBtn) reactionsBtn.classList.toggle("hidden", deleted || !messageId || !hasReactions);
+    if (editBtn) editBtn.classList.toggle("hidden", !mine || deleted || pending || hasAttachment || isCallLog || !messageId);
+    if (pinBtn) {
+      pinBtn.classList.toggle("hidden", deleted || pending || !messageId);
+      pinBtn.textContent = pinned ? "Unpin" : "Pin";
+      pinBtn.dataset.pinState = pinned ? "unpin" : "pin";
+    }
 
     menu.classList.remove("hidden");
     menu.style.left = "0px";
@@ -1922,9 +3284,63 @@ const messageContextMenu = (() => {
       return;
     }
 
+    if (action === "forward") {
+      if (!messageId) {
+        close();
+        return;
+      }
+      const sourceMessage = getConversationMessageById(messageId);
+      close();
+      if (!sourceMessage || sourceMessage.deletedAt) return;
+      messageForwardDialog.open(sourceMessage);
+      return;
+    }
+
     if (action === "react") {
       const reactBtn = currentMessageEl.querySelector('[data-msg-action="react"]');
       if (reactBtn) reactBtn.click();
+      close();
+      return;
+    }
+
+    if (action === "reactions") {
+      if (messageId) {
+        openReactionDetailsForMessage(messageId);
+      }
+      close();
+      return;
+    }
+
+    if (action === "edit") {
+      if (!messageId || !targetPeer) {
+        close();
+        return;
+      }
+      const sourceMessage = getConversationMessageById(messageId);
+      const initialText = String(sourceMessage?.text || "").trim();
+      close();
+      if (!initialText) return;
+      messageEditDialog.open(initialText, (nextText) => {
+        socket.emit("edit_message", {
+          messageId,
+          to: targetPeer,
+          text: nextText,
+        });
+      });
+      return;
+    }
+
+    if (action === "pin") {
+      if (!messageId || !targetPeer) {
+        close();
+        return;
+      }
+      const shouldPin = actionBtn.dataset.pinState !== "unpin";
+      socket.emit("set_message_pin", {
+        messageId,
+        to: targetPeer,
+        pinned: shouldPin,
+      });
       close();
       return;
     }
@@ -1946,6 +3362,16 @@ const messageContextMenu = (() => {
   messagesEl.addEventListener("scroll", close, { passive: true });
 
   messagesEl.addEventListener("contextmenu", (e) => {
+    const reactionBtn = e.target.closest(".reaction-btn");
+    if (reactionBtn) {
+      const reactionMessage = reactionBtn.closest("article.message");
+      const reactionMessageId = String(reactionMessage?.dataset?.messageId || "").trim();
+      if (reactionMessageId) {
+        e.preventDefault();
+        openReactionDetailsForMessage(reactionMessageId);
+      }
+      return;
+    }
     const msgEl = e.target.closest("article.message");
     if (!msgEl) return;
     e.preventDefault();
@@ -2027,6 +3453,7 @@ function renderMessagesEmptyState(text) {
   empty.append(icon, titleEl, sub);
   messagesEl.appendChild(empty);
   applyMessageSearch();
+  syncPinnedMessageBar();
 }
 
 function renderMineMessageMeta(metaEl, timeText, statusKey) {
@@ -2044,6 +3471,13 @@ function renderMineMessageMeta(metaEl, timeText, statusKey) {
 
   if (statusKey === "pending") {
     status.textContent = "…";
+    metaEl.append(time, status);
+    return;
+  }
+
+  if (statusKey === "failed") {
+    status.textContent = "!";
+    status.title = "Failed to send";
     metaEl.append(time, status);
     return;
   }
@@ -2111,8 +3545,10 @@ function buildMessageElement(message, skipAnimation = false) {
   const mine = normalizeName(message.from) === normalizeName(me);
   const isDeleted = Boolean(message.deletedAt);
   const rawText = isDeleted ? DELETED_MESSAGE_TEXT : message.text;
+  const attachment = !isDeleted ? normalizeAttachmentPayload(message.attachment, rawText) : null;
   const callLog = !isDeleted ? parseCallLogPayload(rawText) : null;
   const displayText = callLog ? formatCallLogPreview(rawText, mine) : rawText;
+  const searchableText = attachment ? `${attachment.name || ""} ${attachment.url || rawText || ""}` : displayText;
   const dateKey = getLocalDateKey(message.timestamp);
   const fullTimestamp = formatFullTimestamp(message.timestamp);
 
@@ -2125,18 +3561,37 @@ function buildMessageElement(message, skipAnimation = false) {
   row.dataset.tsFull = fullTimestamp;
   if (fullTimestamp) row.title = fullTimestamp;
   row.dataset.messageFrom = message.from;
-  row.dataset.messageText = displayText || "";
+  row.dataset.messageText = searchableText || "";
   row.dataset.searchText = [
     row.dataset.messageFrom,
-    displayText || "",
+    searchableText || "",
     message.replyTo?.text || "",
     message.replyTo?.from || "",
   ].join(" ");
+  if (attachment) {
+    row.dataset.hasAttachment = "1";
+  } else {
+    delete row.dataset.hasAttachment;
+  }
+  if (!isDeleted && message.editedAt) {
+    row.dataset.editedAt = String(message.editedAt);
+  } else {
+    delete row.dataset.editedAt;
+  }
+  if (!isDeleted && message.pinnedAt) {
+    row.dataset.pinnedAt = String(message.pinnedAt);
+    row.classList.add("message-pinned");
+  } else {
+    delete row.dataset.pinnedAt;
+  }
   if (isDeleted) {
     row.classList.add("message-deleted");
   }
   if (message.pending) {
     row.classList.add("pending");
+  }
+  if (message.failed) {
+    row.classList.add("failed");
   }
   if (callLog) {
     row.classList.add("call-log");
@@ -2148,6 +3603,8 @@ function buildMessageElement(message, skipAnimation = false) {
     } catch (_) {
       // Ignore serialization errors for malformed payloads.
     }
+  } else {
+    delete row.dataset.messageReactions;
   }
 
   if (!callLog) {
@@ -2158,6 +3615,18 @@ function buildMessageElement(message, skipAnimation = false) {
       renderMineMessageMeta(meta, row.dataset.timeLabel, getMessageStatusKey(message));
     } else {
       renderIncomingMessageMeta(meta, message);
+    }
+    if (!isDeleted && message.editedAt) {
+      const editedFlag = document.createElement("span");
+      editedFlag.className = "message-edited-flag";
+      editedFlag.textContent = "edited";
+      meta.appendChild(editedFlag);
+    }
+    if (!isDeleted && message.pinnedAt) {
+      const pinnedFlag = document.createElement("span");
+      pinnedFlag.className = "message-pinned-flag";
+      pinnedFlag.textContent = "pinned";
+      meta.appendChild(pinnedFlag);
     }
     row.append(meta);
   }
@@ -2182,9 +3651,81 @@ function buildMessageElement(message, skipAnimation = false) {
     body.classList.add("message-body-deleted");
   } else {
     const trimmedText = String(message.text || "").trim();
-    const isAudio = /^\/uploads\/.+\.(webm|wav|mp3|ogg)(\?.*)?$/i.test(trimmedText) ||
-      /^https?:\/\/.+\.(webm|wav|mp3|ogg)(\?.*)?$/i.test(trimmedText);
-    if (callLog) {
+    const attachmentUrl = attachment?.url || "";
+    const isAudio = !attachment && (
+      /^\/uploads\/.+\.(webm|wav|mp3|ogg)(\?.*)?$/i.test(trimmedText) ||
+      /^https?:\/\/.+\.(webm|wav|mp3|ogg)(\?.*)?$/i.test(trimmedText)
+    );
+    if (attachment) {
+      if (attachment.kind === "image") {
+        const img = document.createElement("img");
+        img.className = "msg-img";
+        img.src = attachmentUrl || trimmedText;
+        img.alt = attachment.name || "Image attachment";
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          imageViewer.open({
+            src: attachmentUrl || trimmedText,
+            fileName: attachment.name || "Image attachment",
+          });
+        });
+        body.appendChild(img);
+      } else {
+        const fileBubble = document.createElement("div");
+        fileBubble.className = "file-bubble";
+
+        const fileIcon = document.createElement("div");
+        fileIcon.className = "file-icon";
+        fileIcon.textContent = "📎";
+
+        const fileMeta = document.createElement("div");
+        fileMeta.className = "file-meta";
+
+        const fileName = document.createElement("div");
+        fileName.className = "file-name";
+        fileName.textContent = attachment.name || "Attachment";
+
+        const fileSize = document.createElement("div");
+        fileSize.className = "file-size";
+        const sizeLabel = formatFileSize(attachment.size);
+        const typeLabel = attachment.mime || "File";
+        fileSize.textContent = sizeLabel ? `${typeLabel} • ${sizeLabel}` : typeLabel;
+
+        const fileUrl = attachmentUrl || trimmedText;
+        const downloadUrl = buildAttachmentDownloadUrl(fileUrl, attachment.name || "file");
+
+        const fileDownload = document.createElement("a");
+        fileDownload.className = "file-download-link";
+        fileDownload.href = downloadUrl;
+        fileDownload.textContent = "Download";
+        if (attachment.name) {
+          fileDownload.setAttribute("download", attachment.name);
+        }
+        fileDownload.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          triggerAttachmentDownload(downloadUrl, attachment.name || "file");
+        });
+
+        fileMeta.append(fileName, fileSize, fileDownload);
+        fileBubble.append(fileIcon, fileMeta);
+        fileBubble.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          fileViewer.open({
+            src: fileUrl,
+            fileName: attachment.name || "Attachment",
+            mime: attachment.mime || "",
+            size: attachment.size || 0,
+          });
+        });
+        body.appendChild(fileBubble);
+      }
+      body.dataset.rawText = attachment.name || attachmentUrl || message.text || "";
+    } else if (callLog) {
       const log = getCallLogDisplay(callLog, mine);
       const card = document.createElement("div");
       card.className = `call-log-card ${log.direction === "incoming" ? "incoming" : "outgoing"}`;
@@ -2298,6 +3839,20 @@ function buildMessageElement(message, skipAnimation = false) {
   }
 
   row.append(body);
+
+  if (mine && message.failed && message.clientTempId) {
+    const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
+    retryBtn.className = "message-retry-btn";
+    retryBtn.textContent = "Retry";
+    retryBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      retryFailedMessage(message.clientTempId);
+    });
+    row.append(retryBtn);
+  }
+
   return row;
 }
 
@@ -2416,6 +3971,21 @@ function updateStats() {
   }
 }
 
+function syncAttachButtonState() {
+  const composerDisabled = Boolean(messageInput?.disabled);
+  const disabled = composerDisabled || !activeFriend || attachmentUploadState.active;
+  if (attachFileBtn) {
+    attachFileBtn.disabled = disabled;
+    attachFileBtn.classList.toggle("uploading", attachmentUploadState.active);
+    attachFileBtn.setAttribute("aria-busy", attachmentUploadState.active ? "true" : "false");
+  }
+  if (cameraBtn) {
+    cameraBtn.disabled = disabled;
+    cameraBtn.classList.toggle("uploading", attachmentUploadState.active);
+    cameraBtn.setAttribute("aria-busy", attachmentUploadState.active ? "true" : "false");
+  }
+}
+
 function setComposerEnabled(isEnabled) {
   messageInput.disabled = !isEnabled;
   if (sendButton) sendButton.disabled = !isEnabled;
@@ -2425,10 +3995,12 @@ function setComposerEnabled(isEnabled) {
   }
 
   if (!isEnabled) {
+    cameraCaptureModal.close();
     stopLocalTyping();
     hideTypingIndicator();
   }
 
+  syncAttachButtonState();
   messageInput.placeholder = "Type a message…";
 }
 
@@ -2465,6 +4037,7 @@ function renderMessages(messages) {
   if (!conversationMessages.length) {
     renderMessagesEmptyState("No messages yet. Say hello!");
     applyMessageSearch();
+    syncPinnedMessageBar();
     syncProfilePanelStats();
     syncCallLogPanel();
     return;
@@ -2481,6 +4054,7 @@ function renderMessages(messages) {
   }
   if (window._novynFAB) window._novynFAB.reset();
   applyMessageSearch();
+  syncPinnedMessageBar();
   syncProfilePanelStats();
   syncCallLogPanel();
 }
@@ -2490,6 +4064,10 @@ function markConversationMessageDeleted(messageId, deletedAt, replacementText = 
     if (message.id !== messageId) continue;
     message.deletedAt = deletedAt || message.deletedAt || new Date().toISOString();
     message.text = replacementText;
+    message.editedAt = null;
+    message.attachment = null;
+    message.pinnedAt = null;
+    message.pinnedBy = "";
     message.reactions = {};
     break;
   }
@@ -2500,8 +4078,13 @@ function applyDeletedMessageToDom(messageId, replacementText = DELETED_MESSAGE_T
   if (!row) return;
 
   row.classList.add("message-deleted");
+  row.classList.remove("message-pinned");
   row.dataset.messageText = replacementText;
   row.dataset.searchText = `${row.dataset.messageFrom || ""} ${replacementText}`;
+  delete row.dataset.pinnedAt;
+  delete row.dataset.editedAt;
+  delete row.dataset.hasAttachment;
+  delete row.dataset.messageReactions;
 
   const body = row.querySelector(".message-body");
   if (body) {
@@ -2512,12 +4095,96 @@ function applyDeletedMessageToDom(messageId, replacementText = DELETED_MESSAGE_T
 
   const replyQuote = row.querySelector(".reply-quote");
   if (replyQuote) replyQuote.remove();
+  const editedFlag = row.querySelector(".message-edited-flag");
+  if (editedFlag) editedFlag.remove();
+  const pinnedFlag = row.querySelector(".message-pinned-flag");
+  if (pinnedFlag) pinnedFlag.remove();
 
   const actions = row.querySelector(".msg-actions");
   if (actions) actions.remove();
 
   const reactions = row.querySelector(".message-reactions");
   if (reactions) reactions.innerHTML = "";
+}
+
+function rerenderConversationMessageRow(messageId) {
+  if (!messagesEl || !messageId) return;
+  const message = getConversationMessageById(messageId);
+  if (!message) return;
+  const row = messagesEl.querySelector(`[data-message-id="${messageId}"]`);
+  if (!row) return;
+  const replacement = buildMessageElement(message, true);
+  row.replaceWith(replacement);
+}
+
+function applyConversationMessageEdit(messageId, text, editedAt) {
+  if (!messageId) return false;
+  const message = getConversationMessageById(messageId);
+  if (!message || message.deletedAt) return false;
+  message.text = String(text || message.text || "").trim();
+  message.editedAt = editedAt || new Date().toISOString();
+  return true;
+}
+
+function applyConversationMessagePin(messageId, pinned, pinnedAt, pinnedBy) {
+  if (!messageId) return false;
+  const message = getConversationMessageById(messageId);
+  if (!message || message.deletedAt) return false;
+  if (pinned) {
+    message.pinnedAt = String(pinnedAt || message.pinnedAt || new Date().toISOString());
+    message.pinnedBy = String(pinnedBy || "");
+  } else {
+    message.pinnedAt = null;
+    message.pinnedBy = "";
+  }
+  return true;
+}
+
+function normalizeConversationReactionsPayload(rawReactions) {
+  const input = rawReactions && typeof rawReactions === "object" ? rawReactions : {};
+  const normalized = {};
+  Object.entries(input).forEach(([emoji, rawEntry]) => {
+    if (!rawEntry || typeof rawEntry !== "object") return;
+    const baseCount = Number(rawEntry.count);
+    const userKeys = Array.isArray(rawEntry.userKeys)
+      ? rawEntry.userKeys.map((userKey) => normalizeName(userKey)).filter(Boolean)
+      : [];
+    const users = Array.isArray(rawEntry.users)
+      ? rawEntry.users.map((name) => String(name || "").trim()).filter(Boolean)
+      : [];
+    const count = Number.isFinite(baseCount) && baseCount > 0
+      ? Math.floor(baseCount)
+      : Math.max(userKeys.length, users.length);
+    if (!count) return;
+    normalized[emoji] = {
+      count,
+      mine: Boolean(rawEntry.mine),
+      userKeys,
+      users,
+    };
+  });
+  return normalized;
+}
+
+function applyConversationReactionsUpdate(messageId, reactions) {
+  if (!messageId) return;
+  const message = getConversationMessageById(messageId);
+  if (message) {
+    message.reactions = normalizeConversationReactionsPayload(reactions);
+  }
+  const row = messagesEl ? messagesEl.querySelector(`[data-message-id="${messageId}"]`) : null;
+  if (row) {
+    const reactionPayload = message?.reactions || normalizeConversationReactionsPayload(reactions);
+    if (reactionPayload && Object.keys(reactionPayload).length) {
+      try {
+        row.dataset.messageReactions = JSON.stringify(reactionPayload);
+      } catch (_) {
+        delete row.dataset.messageReactions;
+      }
+    } else {
+      delete row.dataset.messageReactions;
+    }
+  }
 }
 
 function requestDiscoverOnline() {
@@ -2812,6 +4479,7 @@ function syncRemoveFriendButton() {
 }
 
 function clearActiveFriendSelection() {
+  persistActiveMessageDraft();
   if (activeFriend) stopLocalTyping(activeFriend);
   activeFriend = "";
   pendingUnreadJump = { friendKey: "", count: 0 };
@@ -2830,11 +4498,18 @@ function clearActiveFriendSelection() {
   renderActiveFriendPresence();
   syncRemoveFriendButton();
   setComposerEnabled(false);
+  if (messageInput) {
+    messageInput.value = "";
+  }
+  if (sendButton) {
+    sendButton.classList.remove("ready");
+  }
   renderMessagesEmptyState(EMPTY_CONVERSATION_HINT);
   renderFriends();
 }
 
 function setActiveFriend(username) {
+  persistActiveMessageDraft();
   if (activeFriend && normalizeName(activeFriend) !== normalizeName(username)) {
     stopLocalTyping(activeFriend);
   }
@@ -2863,6 +4538,7 @@ function setActiveFriend(username) {
   renderActiveFriendPresence();
   syncRemoveFriendButton();
   setComposerEnabled(true);
+  applyActiveMessageDraft();
   renderMessagesEmptyState("Loading conversation…");
   socket.emit("get_history", username);
   renderFriends();
@@ -3032,12 +4708,7 @@ function setLoginLoading(isLoading) {
 if (loginForm) {
   loginForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    clearUsernameSuggestions();
-    const username = usernameInput ? usernameInput.value.trim() : "";
-    const password = passwordInput ? passwordInput.value : "";
-    if (!username || !password) return;
-    setLoginLoading(true);
-    socket.emit("register", { username, password });
+    // Legacy hidden login form is kept only for markup compatibility.
   });
 }
 
@@ -3144,6 +4815,7 @@ if (mobBackBtn) {
 document.addEventListener("visibilitychange", () => {
   if (!isDashboardPage) return;
   if (document.hidden) {
+    cameraCaptureModal.close();
     setActiveChatTarget("");
   } else if (activeFriend) {
     setActiveChatTarget(activeFriend);
@@ -3279,10 +4951,94 @@ const voiceState = {
   pendingTempId: "",
 };
 
-const ICE_SERVERS = window.NOVYN_ICE_SERVERS || [
+const DEFAULT_ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
+const CALL_SIGNAL_RETRY_MS = 2200;
+const CALL_SIGNAL_MAX_ATTEMPTS = 8;
+const CALL_RING_TIMEOUT_MS = 30000;
+
+function sanitizeIceServerList(input) {
+  if (!Array.isArray(input)) return [];
+  const normalized = [];
+  for (const entry of input) {
+    if (!entry || typeof entry !== "object") continue;
+    const rawUrls = entry.urls;
+    let urls = "";
+    if (typeof rawUrls === "string") {
+      urls = rawUrls.trim();
+    } else if (Array.isArray(rawUrls)) {
+      urls = rawUrls.map((value) => String(value || "").trim()).filter(Boolean);
+    }
+    if (!urls || (Array.isArray(urls) && !urls.length)) continue;
+    const server = { urls };
+    if (typeof entry.username === "string" && entry.username.trim()) {
+      server.username = entry.username.trim();
+    }
+    if (typeof entry.credential === "string" && entry.credential.length) {
+      server.credential = entry.credential;
+    }
+    if (typeof entry.credentialType === "string" && entry.credentialType.trim()) {
+      server.credentialType = entry.credentialType.trim();
+    }
+    normalized.push(server);
+  }
+  return normalized;
+}
+
+let callIceServers = sanitizeIceServerList(window.NOVYN_ICE_SERVERS);
+if (!callIceServers.length) {
+  callIceServers = DEFAULT_ICE_SERVERS.slice();
+}
+let callIceServersReady = false;
+let callIceConfigPromise = null;
+
+async function ensureCallIceServers(force = false) {
+  if (callIceServersReady && !force) return callIceServers;
+  if (callIceConfigPromise && !force) return callIceConfigPromise;
+
+  callIceConfigPromise = (async () => {
+    let loadedFromApi = false;
+    try {
+      let result = null;
+      if (authApi?.request) {
+        result = await authApi.request("/api/rtc/ice", {
+          method: "GET",
+          cache: "no-store",
+        });
+      } else {
+        const response = await fetch("/api/rtc/ice", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const data = await response.json().catch(() => ({}));
+        result = { ok: response.ok, status: response.status, data };
+      }
+      if (result?.ok) {
+        const remoteServers = sanitizeIceServerList(result?.data?.iceServers);
+        if (remoteServers.length) {
+          callIceServers = remoteServers;
+        }
+        loadedFromApi = true;
+      }
+    } catch (_) {
+      // Keep default STUN servers when API lookup fails.
+    } finally {
+      callIceServersReady = loadedFromApi;
+      callIceConfigPromise = null;
+    }
+    return callIceServers;
+  })();
+
+  return callIceConfigPromise;
+}
+
+if (isDashboardPage) {
+  void ensureCallIceServers();
+}
+
 const callState = {
   status: "idle",
   peer: "",
@@ -3290,8 +5046,13 @@ const callState = {
   localStream: null,
   remoteStream: null,
   pendingOffer: null,
+  pendingLocalOffer: null,
+  pendingLocalAnswer: null,
+  lastRemoteOfferSdp: "",
+  lastRemoteAnswerSdp: "",
   pendingCandidates: [],
   isCaller: false,
+  inviteAcknowledged: false,
   muted: false,
   speakerOn: true,
   mediaType: "audio",
@@ -3302,6 +5063,11 @@ const callState = {
   minimized: false,
   logSent: false,
   reconnectTimer: null,
+  ringTimeoutTimer: null,
+  offerRetryTimer: null,
+  answerRetryTimer: null,
+  offerRetryCount: 0,
+  answerRetryCount: 0,
 };
 
 function resetVoiceState() {
@@ -3335,6 +5101,106 @@ function resetVoiceState() {
   if (voiceProgressText) voiceProgressText.textContent = "Uploading... 0%";
   if (voiceCancelBtn) voiceCancelBtn.disabled = false;
   if (voiceStopBtn) voiceStopBtn.disabled = false;
+}
+
+function setAttachmentUploadUiState(isUploading) {
+  attachmentUploadState.active = Boolean(isUploading);
+  syncAttachButtonState();
+}
+
+async function uploadAttachmentFile(file) {
+  if (!file) throw new Error("No file selected.");
+  const formData = new FormData();
+  formData.append("file", file, file.name || `attachment-${Date.now()}`);
+
+  const response = await fetch("/upload-file", {
+    method: "POST",
+    body: formData,
+    credentials: "same-origin",
+  });
+
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch (_) {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.error || "File upload failed.");
+  }
+
+  const attachment = normalizeAttachmentPayload(payload, payload?.url || "");
+  if (!attachment) {
+    throw new Error("Upload finished but no file URL was returned.");
+  }
+  return attachment;
+}
+
+async function uploadAttachmentFromPicker(file) {
+  if (!file) return;
+  if (!activeFriend) {
+    showToast("Choose a friend before attaching a file.", "error");
+    return;
+  }
+  if (attachmentUploadState.active) {
+    showToast("Please wait for the current upload to finish.", "info");
+    return;
+  }
+  if (Number(file.size || 0) > ATTACHMENT_MAX_SIZE_BYTES) {
+    showToast("File is too large. Max size is 15 MB.", "error");
+    return;
+  }
+
+  const targetFriend = activeFriend;
+  const tempId = createClientTempId();
+  attachmentUploadState.pendingTempId = tempId;
+  attachmentUploadState.target = targetFriend;
+  setAttachmentUploadUiState(true);
+
+  const pendingLabel = `Uploading ${String(file.name || "file").slice(0, 120)}...`;
+  queuePendingMessage(
+    { to: targetFriend, text: pendingLabel, clientTempId: tempId },
+    { queue: false, updateFriends: false }
+  );
+
+  try {
+    const attachment = await uploadAttachmentFile(file);
+    if (attachmentUploadState.pendingTempId) {
+      const pendingTempId = attachmentUploadState.pendingTempId;
+      attachmentUploadState.pendingTempId = "";
+      updatePendingMessageAttachment(pendingTempId, attachment, attachment.url);
+      sendMessagePayload(
+        {
+          to: targetFriend,
+          text: attachment.url,
+          attachment,
+          clientTempId: pendingTempId,
+        },
+        { optimistic: false }
+      );
+    } else {
+      sendMessagePayload({ to: targetFriend, text: attachment.url, attachment });
+    }
+    showToast(attachment.kind === "image" ? "Image sent." : "File sent.", "success");
+  } catch (error) {
+    console.error(error);
+    if (attachmentUploadState.pendingTempId) {
+      removePendingMessage(attachmentUploadState.pendingTempId);
+    }
+    const message = String(error?.message || "File upload failed.");
+    showToast(message, "error");
+  } finally {
+    attachmentUploadState.pendingTempId = "";
+    attachmentUploadState.target = "";
+    setAttachmentUploadUiState(false);
+    if (attachFileInput) {
+      attachFileInput.value = "";
+    }
+    if (cameraCaptureInput) {
+      cameraCaptureInput.value = "";
+    }
+  }
 }
 
 async function uploadVoiceBlob(blob) {
@@ -3566,6 +5432,96 @@ function clearReconnectTimer() {
   callState.reconnectTimer = null;
 }
 
+function clearCallRingTimeout() {
+  if (callState.ringTimeoutTimer) clearTimeout(callState.ringTimeoutTimer);
+  callState.ringTimeoutTimer = null;
+}
+
+function clearOfferRetry(preserveOffer = false) {
+  if (callState.offerRetryTimer) clearTimeout(callState.offerRetryTimer);
+  callState.offerRetryTimer = null;
+  callState.offerRetryCount = 0;
+  if (!preserveOffer) callState.pendingLocalOffer = null;
+}
+
+function clearAnswerRetry(preserveAnswer = false) {
+  if (callState.answerRetryTimer) clearTimeout(callState.answerRetryTimer);
+  callState.answerRetryTimer = null;
+  callState.answerRetryCount = 0;
+  if (!preserveAnswer) callState.pendingLocalAnswer = null;
+}
+
+function startOutgoingCallTimeout() {
+  clearCallRingTimeout();
+  callState.ringTimeoutTimer = setTimeout(() => {
+    if (!callState.isCaller || !["outgoing", "ringing", "connecting"].includes(callState.status)) return;
+    showToast("Call request timed out.", "info");
+    maybeSendCallLog("unavailable");
+    resetCallState();
+  }, CALL_RING_TIMEOUT_MS);
+}
+
+function scheduleOfferRetry() {
+  if (!callState.pendingLocalOffer || !callState.peer) return;
+  if (!["outgoing", "ringing", "connecting"].includes(callState.status)) return;
+
+  if (callState.offerRetryCount >= CALL_SIGNAL_MAX_ATTEMPTS) {
+    showToast("Unable to reach your friend right now.", "error");
+    maybeSendCallLog("unavailable");
+    resetCallState();
+    return;
+  }
+
+  callState.offerRetryCount += 1;
+  if (!callState.inviteAcknowledged) {
+    socket.emit("call_invite", { to: callState.peer, type: callState.mediaType });
+  }
+  socket.emit("call_signal", {
+    to: callState.peer,
+    type: "offer",
+    sdp: callState.pendingLocalOffer,
+  });
+
+  if (callState.offerRetryTimer) clearTimeout(callState.offerRetryTimer);
+  callState.offerRetryTimer = setTimeout(scheduleOfferRetry, CALL_SIGNAL_RETRY_MS);
+}
+
+function startOfferRetry(localDescription) {
+  if (!localDescription) return;
+  callState.pendingLocalOffer = localDescription;
+  clearOfferRetry(true);
+  scheduleOfferRetry();
+}
+
+function scheduleAnswerRetry() {
+  if (!callState.pendingLocalAnswer || !callState.peer) return;
+  if (callState.status === "idle" || callState.status === "active") return;
+
+  if (callState.answerRetryCount >= CALL_SIGNAL_MAX_ATTEMPTS) {
+    showToast("Couldn't complete call handshake.", "error");
+    socket.emit("call_reject", { to: callState.peer });
+    resetCallState();
+    return;
+  }
+
+  callState.answerRetryCount += 1;
+  socket.emit("call_signal", {
+    to: callState.peer,
+    type: "answer",
+    sdp: callState.pendingLocalAnswer,
+  });
+
+  if (callState.answerRetryTimer) clearTimeout(callState.answerRetryTimer);
+  callState.answerRetryTimer = setTimeout(scheduleAnswerRetry, CALL_SIGNAL_RETRY_MS);
+}
+
+function startAnswerRetry(localDescription) {
+  if (!localDescription) return;
+  callState.pendingLocalAnswer = localDescription;
+  clearAnswerRetry(true);
+  scheduleAnswerRetry();
+}
+
 function scheduleReconnectTimeout() {
   if (callState.reconnectTimer) return;
   callState.reconnectTimer = setTimeout(() => {
@@ -3683,6 +5639,9 @@ function updateCallUi() {
 }
 
 function resetCallState() {
+  clearCallRingTimeout();
+  clearOfferRetry();
+  clearAnswerRetry();
   clearReconnectTimer();
   stopCallTimer();
   if (callState.pc) {
@@ -3701,15 +5660,25 @@ function resetCallState() {
   callState.localStream = null;
   callState.remoteStream = null;
   callState.pendingOffer = null;
+  callState.pendingLocalOffer = null;
+  callState.pendingLocalAnswer = null;
+  callState.lastRemoteOfferSdp = "";
+  callState.lastRemoteAnswerSdp = "";
   callState.pendingCandidates = [];
   callState.muted = false;
   callState.speakerOn = true;
+  callState.inviteAcknowledged = false;
   callState.mediaType = "audio";
   callState.videoEnabled = true;
   callState.videoFacing = "user";
   callState.minimized = false;
   callState.logSent = false;
   callState.reconnectTimer = null;
+  callState.ringTimeoutTimer = null;
+  callState.offerRetryTimer = null;
+  callState.answerRetryTimer = null;
+  callState.offerRetryCount = 0;
+  callState.answerRetryCount = 0;
   if (callRemoteAudio) {
     callRemoteAudio.srcObject = null;
     callRemoteAudio.muted = false;
@@ -3809,7 +5778,7 @@ async function switchCamera() {
 }
 
 function createCallPeerConnection() {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const pc = new RTCPeerConnection({ iceServers: callIceServers });
 
   pc.onicecandidate = (event) => {
     if (!event.candidate || !callState.peer) return;
@@ -3842,6 +5811,9 @@ function createCallPeerConnection() {
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === "connected") {
       callState.status = "active";
+      clearCallRingTimeout();
+      clearOfferRetry();
+      clearAnswerRetry();
       clearReconnectTimer();
       startCallTimer();
       updateCallUi();
@@ -3873,14 +5845,12 @@ function flushPendingCandidates() {
 
 async function applyRemoteOffer(offer) {
   if (!callState.pc || !offer) return;
+  const offerSdpText = typeof offer?.sdp === "string" ? offer.sdp : "";
+  if (offerSdpText) callState.lastRemoteOfferSdp = offerSdpText;
   await callState.pc.setRemoteDescription(new RTCSessionDescription(offer));
   const answer = await callState.pc.createAnswer();
   await callState.pc.setLocalDescription(answer);
-  socket.emit("call_signal", {
-    to: callState.peer,
-    type: "answer",
-    sdp: callState.pc.localDescription,
-  });
+  startAnswerRetry(callState.pc.localDescription);
   flushPendingCandidates();
 }
 
@@ -3906,14 +5876,21 @@ async function startCall(mediaType = "audio") {
     return;
   }
 
+  await ensureCallIceServers();
+
   callState.peer = activeFriend;
   callState.isCaller = true;
   callState.status = "outgoing";
   callState.mediaType = mediaType === "video" ? "video" : "audio";
   callState.videoEnabled = callState.mediaType === "video";
   callState.videoFacing = "user";
+  callState.inviteAcknowledged = false;
   callState.minimized = false;
   callState.logSent = false;
+  callState.pendingLocalOffer = null;
+  callState.pendingLocalAnswer = null;
+  clearOfferRetry();
+  clearAnswerRetry();
   stopCallTimer();
   updateCallUi();
 
@@ -3940,13 +5917,8 @@ async function startCall(mediaType = "audio") {
       offerToReceiveVideo: callState.mediaType === "video",
     });
     await callState.pc.setLocalDescription(offer);
-
-    socket.emit("call_invite", { to: callState.peer, type: callState.mediaType });
-    socket.emit("call_signal", {
-      to: callState.peer,
-      type: "offer",
-      sdp: callState.pc.localDescription,
-    });
+    startOutgoingCallTimeout();
+    startOfferRetry(callState.pc.localDescription);
   } catch (err) {
     console.error(err);
     showToast("Camera or microphone permission blocked.", "error");
@@ -3974,7 +5946,13 @@ async function acceptIncomingCall() {
     return;
   }
 
+  await ensureCallIceServers();
+
   callState.status = "connecting";
+  callState.inviteAcknowledged = true;
+  clearCallRingTimeout();
+  clearOfferRetry();
+  clearAnswerRetry();
   updateCallUi();
   socket.emit("call_answer", { to: callState.peer });
 
@@ -4048,6 +6026,16 @@ async function handleCallSignal(payload) {
   if (normalizeName(from) !== normalizeName(callState.peer)) return;
 
   if (payload?.type === "offer") {
+    if (callState.status === "active") return;
+    const incomingOfferSdp = typeof payload?.sdp?.sdp === "string" ? payload.sdp.sdp : "";
+    if (
+      incomingOfferSdp &&
+      incomingOfferSdp === callState.lastRemoteOfferSdp &&
+      callState.pendingLocalAnswer
+    ) {
+      startAnswerRetry(callState.pendingLocalAnswer);
+      return;
+    }
     callState.pendingOffer = payload.sdp;
     if (callState.pc && callState.status !== "outgoing") {
       const offer = callState.pendingOffer;
@@ -4059,7 +6047,16 @@ async function handleCallSignal(payload) {
 
   if (payload?.type === "answer") {
     if (!callState.pc) return;
+    const incomingAnswerSdp = typeof payload?.sdp?.sdp === "string" ? payload.sdp.sdp : "";
+    if (incomingAnswerSdp && incomingAnswerSdp === callState.lastRemoteAnswerSdp) {
+      clearCallRingTimeout();
+      clearOfferRetry();
+      return;
+    }
     await callState.pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+    if (incomingAnswerSdp) callState.lastRemoteAnswerSdp = incomingAnswerSdp;
+    clearCallRingTimeout();
+    clearOfferRetry();
     callState.status = "connecting";
     updateCallUi();
     flushPendingCandidates();
@@ -4079,9 +6076,122 @@ function createClientTempId() {
   return `tmp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function pendingRetryDelay(attempts) {
+  const safeAttempts = Math.max(1, Number(attempts) || 1);
+  const backoff = PENDING_RETRY_BASE_MS * Math.pow(1.45, safeAttempts - 1);
+  return Math.min(PENDING_RETRY_MAX_MS, Math.round(backoff));
+}
+
+function ensurePendingQueueEntry(payload, tempId) {
+  if (!payload || !payload.to || !payload.text || !tempId) return null;
+  const nextPayload = { ...payload, clientTempId: tempId };
+  const existing = pendingQueueByTempId.get(tempId);
+  if (existing) {
+    existing.payload = nextPayload;
+    return existing;
+  }
+
+  const entry = {
+    tempId,
+    payload: nextPayload,
+    attempts: 0,
+    lastAttemptAt: 0,
+    nextAttemptAt: 0,
+  };
+  pendingQueue.push(entry);
+  pendingQueueByTempId.set(tempId, entry);
+  return entry;
+}
+
+function rerenderPendingMessageRow(tempId) {
+  if (!tempId || !messagesEl) return;
+  const message = pendingByTempId.get(tempId);
+  if (!message) return;
+  const row = messagesEl.querySelector(`[data-client-temp-id="${tempId}"]`);
+  if (!row) return;
+  const replacement = buildMessageElement(message, true);
+  row.replaceWith(replacement);
+}
+
+function markPendingMessageFailed(tempId, options = {}) {
+  if (!tempId) return false;
+  const message = pendingByTempId.get(tempId);
+  if (!message) {
+    // Orphaned queue entries can happen after reloads or reconciliation edge-cases.
+    // Drop them so they don't get stuck retrying forever.
+    removePendingFromQueue(tempId);
+    renderNetworkState();
+    return false;
+  }
+  message.pending = false;
+  message.failed = true;
+  message.failedAt = new Date().toISOString();
+  removePendingFromQueue(tempId);
+  rerenderPendingMessageRow(tempId);
+  applyMessageSearch();
+  renderNetworkState();
+  if (options.toast !== false) {
+    showToast("Message failed to send. Tap Retry.", "error");
+  }
+  return true;
+}
+
+function retryFailedMessage(tempId, options = {}) {
+  if (!tempId) return;
+  const message = pendingByTempId.get(tempId);
+  if (!message) return;
+
+  message.failed = false;
+  message.failedAt = "";
+  message.pending = true;
+
+  const payload = {
+    to: message.to,
+    text: message.text,
+    clientTempId: tempId,
+  };
+  if (message.replyTo) payload.replyTo = message.replyTo;
+  if (message.attachment) payload.attachment = message.attachment;
+
+  const entry = ensurePendingQueueEntry(payload, tempId);
+  if (!entry) return;
+  entry.attempts = 0;
+  entry.lastAttemptAt = 0;
+  entry.nextAttemptAt = 0;
+
+  rerenderPendingMessageRow(tempId);
+  applyMessageSearch();
+  if (socketAvailable && socket.connected) {
+    sendQueuedMessage(entry);
+    if (options.toast !== false) {
+      showToast("Retrying message...", "info");
+    }
+  } else if (options.toast !== false) {
+    showToast("Message re-queued. We'll send when online.", "info");
+  }
+  renderNetworkState();
+}
+
+function sendQueuedMessage(entry) {
+  if (!entry || !socketAvailable || !socket.connected) return false;
+  const pendingMessage = pendingByTempId.get(entry.tempId);
+  if (pendingMessage) {
+    pendingMessage.failed = false;
+    pendingMessage.pending = true;
+  }
+  socket.emit("private_message", entry.payload);
+  entry.attempts += 1;
+  entry.lastAttemptAt = Date.now();
+  entry.nextAttemptAt = entry.lastAttemptAt + pendingRetryDelay(entry.attempts);
+  return true;
+}
+
 function removePendingFromQueue(tempId) {
   if (!tempId) return;
-  const idx = pendingQueue.findIndex((item) => item.tempId === tempId);
+  const existing = pendingQueueByTempId.get(tempId);
+  if (!existing) return;
+  pendingQueueByTempId.delete(tempId);
+  const idx = pendingQueue.indexOf(existing);
   if (idx >= 0) pendingQueue.splice(idx, 1);
 }
 
@@ -4091,7 +6201,10 @@ function queuePendingMessage(payload, options = {}) {
   const shouldUpdateFriends = options.updateFriends !== false;
   const tempId = payload.clientTempId || createClientTempId();
   const timestamp = new Date().toISOString();
-  const wasAtLatest = !hasNewerMessages();
+  const targetIsActiveThread = Boolean(
+    activeFriend && normalizeName(payload.to) === normalizeName(activeFriend)
+  );
+  const wasAtLatest = targetIsActiveThread ? !hasNewerMessages() : false;
 
   const message = {
     id: tempId,
@@ -4103,11 +6216,15 @@ function queuePendingMessage(payload, options = {}) {
     deliveredAt: null,
     seenAt: null,
     pending: true,
+    failed: false,
     replyTo: payload.replyTo || null,
+    attachment: normalizeAttachmentPayload(payload.attachment, payload.text),
     reactions: {},
   };
 
-  conversationMessages.push(message);
+  if (targetIsActiveThread) {
+    conversationMessages.push(message);
+  }
   if (shouldUpdateFriends) {
     friends = friends.map((f) =>
       normalizeName(f.username) === normalizeName(payload.to)
@@ -4117,10 +6234,10 @@ function queuePendingMessage(payload, options = {}) {
     renderFriends();
   }
   pendingByTempId.set(tempId, message);
-  if (shouldQueue) pendingQueue.push({ tempId, payload: { ...payload, clientTempId: tempId } });
+  if (shouldQueue) ensurePendingQueueEntry(payload, tempId);
   renderNetworkState();
 
-  if (wasAtLatest && activeFriend && normalizeName(payload.to) === normalizeName(activeFriend)) {
+  if (targetIsActiveThread && wasAtLatest) {
     messageWindowEnd = conversationMessages.length;
     appendMessage(message);
     if (messagesEl && messagesEl.querySelectorAll("article.message").length > MAX_VISIBLE_MESSAGES) {
@@ -4144,6 +6261,22 @@ function updatePendingMessageText(tempId, text) {
   applyMessageSearch();
 }
 
+function updatePendingMessageAttachment(tempId, attachment, fallbackText = "") {
+  if (!tempId) return;
+  const msg = pendingByTempId.get(tempId);
+  if (!msg) return;
+  const normalizedAttachment = normalizeAttachmentPayload(attachment, fallbackText || msg.text || "");
+  if (!normalizedAttachment) return;
+  msg.attachment = normalizedAttachment;
+  msg.text = normalizedAttachment.url || fallbackText || msg.text || "";
+  const row = messagesEl ? messagesEl.querySelector(`[data-client-temp-id="${tempId}"]`) : null;
+  if (row) {
+    const newRow = buildMessageElement(msg, true);
+    row.replaceWith(newRow);
+  }
+  applyMessageSearch();
+}
+
 function removePendingMessage(tempId) {
   if (!tempId) return;
   pendingByTempId.delete(tempId);
@@ -4156,7 +6289,7 @@ function removePendingMessage(tempId) {
   applyMessageSearch();
 }
 
-function flushPendingQueue() {
+function flushPendingQueue(force = false) {
   if (!socketAvailable || !socket.connected) {
     renderNetworkState();
     return;
@@ -4165,25 +6298,75 @@ function flushPendingQueue() {
     renderNetworkState();
     return;
   }
-  const queue = pendingQueue.splice(0);
-  queue.forEach((item) => {
-    socket.emit("private_message", item.payload);
+  const now = Date.now();
+  const queueSnapshot = pendingQueue.slice();
+  let failedAny = false;
+  queueSnapshot.forEach((item) => {
+    if (item.attempts >= PENDING_RETRY_MAX_ATTEMPTS) {
+      if (markPendingMessageFailed(item.tempId, { toast: false })) {
+        failedAny = true;
+      }
+      return;
+    }
+    if (!force && item.nextAttemptAt > now) return;
+    sendQueuedMessage(item);
   });
+  if (failedAny) {
+    showToast("Some messages failed to send. Tap Retry.", "error");
+  }
   renderNetworkState();
 }
 
 function sendMessagePayload(payload, options = {}) {
-  if (!payload || !payload.to || !payload.text) return;
-  const tempId = payload.clientTempId || createClientTempId();
+  if (!payload || !payload.to) return;
+  const validatedText = validateOutgoingMessageText(payload.text);
+  if (validatedText === null || !validatedText) return;
+  const outgoingPayload = { ...payload, text: validatedText };
+  const normalizedAttachment = normalizeAttachmentPayload(payload.attachment, validatedText);
+  if (normalizedAttachment) {
+    outgoingPayload.attachment = normalizedAttachment;
+  } else if ("attachment" in outgoingPayload) {
+    delete outgoingPayload.attachment;
+  }
+  const tempId = outgoingPayload.clientTempId || createClientTempId();
+  let queuedEntry = pendingQueueByTempId.get(tempId);
+
   if (!socketAvailable || !socket.connected) {
-    queuePendingMessage({ ...payload, clientTempId: tempId }, { queue: true });
+    if (options.optimistic === false) {
+      if (pendingByTempId.has(tempId)) {
+        queuedEntry = ensurePendingQueueEntry(outgoingPayload, tempId);
+        const pendingMessage = pendingByTempId.get(tempId);
+        if (pendingMessage) {
+          pendingMessage.pending = true;
+          pendingMessage.failed = false;
+          pendingMessage.text = validatedText;
+          pendingMessage.attachment = normalizedAttachment;
+        }
+        rerenderPendingMessageRow(tempId);
+        applyMessageSearch();
+      } else {
+        queuePendingMessage({ ...outgoingPayload, clientTempId: tempId }, { queue: true });
+      }
+      renderNetworkState();
+      showToast("Message queued. We'll send when you're back online.", "info");
+      return tempId;
+    }
+    queuePendingMessage({ ...outgoingPayload, clientTempId: tempId }, { queue: true });
     showToast("Message queued. We'll send when you're back online.", "info");
     return tempId;
   }
+
   if (options.optimistic !== false) {
-    queuePendingMessage({ ...payload, clientTempId: tempId }, { queue: false });
+    queuePendingMessage({ ...outgoingPayload, clientTempId: tempId }, { queue: true });
+    queuedEntry = pendingQueueByTempId.get(tempId);
+  } else {
+    queuedEntry = ensurePendingQueueEntry(outgoingPayload, tempId);
+    renderNetworkState();
   }
-  socket.emit("private_message", { ...payload, clientTempId: tempId });
+  if (queuedEntry) {
+    sendQueuedMessage(queuedEntry);
+    renderNetworkState();
+  }
   return tempId;
 }
 
@@ -4198,8 +6381,10 @@ function sendActiveMessage() {
   stopLocalTyping();
   const payload = { to: activeFriend, text };
   if (replyTo) payload.replyTo = replyTo;
-  sendMessagePayload(payload);
+  const sentTempId = sendMessagePayload(payload);
+  if (!sentTempId) return;
   messageInput.value = "";
+  removeMessageDraft(activeFriend);
   if (sendButton) sendButton.classList.remove("ready");
   clearReply();
 
@@ -4213,6 +6398,47 @@ messageForm.addEventListener("submit", (e) => {
   e.preventDefault();
   sendActiveMessage();
 });
+if (retryFailedBtn) {
+  retryFailedBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    retryAllFailedMessages();
+  });
+}
+
+if (attachFileBtn && attachFileInput) {
+  attachFileBtn.addEventListener("click", () => {
+    if (!activeFriend) {
+      showToast("Choose a friend before attaching a file.", "error");
+      return;
+    }
+    if (attachmentUploadState.active) {
+      showToast("Please wait for the current upload to finish.", "info");
+      return;
+    }
+    attachFileInput.value = "";
+    attachFileInput.click();
+  });
+
+  attachFileInput.addEventListener("change", async () => {
+    const selectedFile = attachFileInput.files && attachFileInput.files[0];
+    if (!selectedFile) return;
+    await uploadAttachmentFromPicker(selectedFile);
+  });
+}
+
+if (cameraBtn) {
+  cameraBtn.addEventListener("click", () => {
+    void openComposerCameraCapture();
+  });
+}
+
+if (cameraCaptureInput) {
+  cameraCaptureInput.addEventListener("change", async () => {
+    const selectedPhoto = cameraCaptureInput.files && cameraCaptureInput.files[0];
+    if (!selectedPhoto) return;
+    await uploadAttachmentFromPicker(selectedPhoto);
+  });
+}
 
 if (voiceBtn) {
   voiceBtn.addEventListener("click", () => {
@@ -4272,10 +6498,14 @@ if (callMini) {
 }
 
 messageInput.addEventListener("input", () => {
+  if (messageInput.value.length > COMPOSER_MAX_MESSAGE_LENGTH) {
+    messageInput.value = messageInput.value.slice(0, COMPOSER_MAX_MESSAGE_LENGTH);
+  }
   if (sendButton) {
     sendButton.classList.toggle("ready", messageInput.value.trim().length > 0);
   }
   if (!activeFriend) return;
+  setMessageDraft(activeFriend, messageInput.value);
   messageInput.value.trim() ? markLocalTyping() : stopLocalTyping();
 });
 
@@ -4365,12 +6595,18 @@ if (messageInput) {
   });
 }
 
+setInterval(() => {
+  if (!pendingQueue.length) return;
+  flushPendingQueue();
+}, PENDING_RETRY_TICK_MS);
+
 // ─── Socket events ────────────────────────────────────────────────────────────
 
 socket.on("register_success", (data) => {
   const previousActiveFriend = activeFriend;
-  const storedSession = readStoredSession();
+  persistActiveMessageDraft();
   me           = data.username;
+  ensureMessageDraftsLoaded(true);
   friends      = data.friends  || [];
   requests     = data.requests || [];
   activeFriend = "";
@@ -4394,13 +6630,6 @@ socket.on("register_success", (data) => {
   applyMyAvatar();
   syncSettingsPanel();
   clearSidebarSearch();
-  if (storedSession?.password) {
-    writeStoredSession({
-      email: data.email || storedSession.email || "",
-      username: data.username,
-      password: storedSession.password,
-    });
-  }
   if (passwordInput) passwordInput.value = "";
   if (activeFriendLabel) activeFriendLabel.textContent = "Select a friend";
   renderActiveFriendPresence();
@@ -4411,7 +6640,7 @@ socket.on("register_success", (data) => {
 
   clearUsernameSuggestions();
   setLoginLoading(false);
-  authenticateStoredSession._pending = false;
+  resumeSocketSession._pending = false;
   setComposerEnabled(false);
   renderMessagesEmptyState(EMPTY_CONVERSATION_HINT);
   setNetworkState("Connected", "connected");
@@ -4439,7 +6668,7 @@ socket.on("username_unavailable", (data) => {
   const requested   = data?.requested   || "This username";
   const suggestions = data?.suggestions || [];
   showUsernameSuggestions(requested, suggestions);
-  authenticateStoredSession._pending = false;
+  resumeSocketSession._pending = false;
   setLoginLoading(false);
   showToast("Username already taken.", "error");
 });
@@ -4447,11 +6676,13 @@ socket.on("username_unavailable", (data) => {
 socket.on("auth_failed", (data) => {
   const message     = data?.message     || "Authentication failed.";
   const suggestions = data?.suggestions || [];
-  authenticateStoredSession._pending = false;
+  resumeSocketSession._pending = false;
   if (isDashboardPage) {
     clearStoredSession();
-    showToast(message, "error");
-    setTimeout(redirectToLogin, 450);
+    if (!logoutInProgress) {
+      showToast(message, "error");
+    }
+    redirectToLogin();
     return;
   }
   if (Array.isArray(suggestions) && suggestions.length) {
@@ -4523,10 +6754,13 @@ socket.on("friend_list_updated", (data) => {
       (f) => normalizeName(f.username) === normalizeName(activeFriend)
     );
     if (!stillThere) {
+      removeMessageDraft(activeFriend);
       activeFriend                  = "";
       conversationMessages          = [];
       activeFriendLabel.textContent = "Select a friend";
       setComposerEnabled(false);
+      if (messageInput) messageInput.value = "";
+      if (sendButton) sendButton.classList.remove("ready");
       renderMessagesEmptyState(EMPTY_CONVERSATION_HINT);
       resetMessageSearch();
       renderActiveFriendPresence();
@@ -4546,6 +6780,7 @@ socket.on("friend_removed", (data) => {
   const removedUsername = String(data?.username || "").trim();
   const removedKey = normalizeName(removedUsername);
   const activeKey = normalizeName(activeFriend);
+  if (removedUsername) removeMessageDraft(removedUsername);
 
   if (activeFriend && removedKey && activeKey === removedKey) {
     stopLocalTyping(activeFriend);
@@ -4555,6 +6790,8 @@ socket.on("friend_removed", (data) => {
     clearReply();
     activeFriendLabel.textContent = "Select a friend";
     setComposerEnabled(false);
+    if (messageInput) messageInput.value = "";
+    if (sendButton) sendButton.classList.remove("ready");
     hideTypingIndicator();
     renderMessagesEmptyState(EMPTY_CONVERSATION_HINT);
     resetMessageSearch();
@@ -4576,6 +6813,7 @@ socket.on("friend_username_changed", (data) => {
   if (!oldUsername || !newUsername) return;
   const oldKey = normalizeName(oldUsername);
   const newKey = normalizeName(newUsername);
+  renameMessageDraft(oldUsername, newUsername);
 
   if (activeFriend && normalizeName(activeFriend) === oldKey) {
     activeFriend = newUsername;
@@ -4616,15 +6854,16 @@ socket.on("username_changed", (data) => {
   if (!newUsername) return;
   const oldKey = normalizeName(oldUsername || me);
   const newKey = normalizeName(newUsername);
+  persistActiveMessageDraft();
+  migrateMessageDraftStoreOwner(oldKey, newKey);
   if (normalizeName(me) === oldKey) {
     me = newUsername;
+    ensureMessageDraftsLoaded(true);
     renderMyName();
     applyMyAvatar();
     syncSettingsPanel();
-    const stored = readStoredSession();
-    if (stored?.password) {
-      writeStoredSession({ username: newUsername, password: stored.password });
-    }
+    refreshAuthSessionSilently();
+    applyActiveMessageDraft();
   }
   if (conversationMessages.length) {
     let touched = false;
@@ -4655,39 +6894,49 @@ socket.on("history", (data) => {
 
 socket.on("private_message", (message) => {
   const tempId = message?.clientTempId || "";
-  if (tempId && pendingByTempId.has(tempId) && normalizeName(message.from) === normalizeName(me)) {
-    const pendingMessage = pendingByTempId.get(tempId);
-    Object.assign(pendingMessage, message, { pending: false, clientTempId: tempId });
-    pendingByTempId.delete(tempId);
+  const isOwnOutgoingMessage = normalizeName(message.from) === normalizeName(me);
+
+  if (tempId && isOwnOutgoingMessage) {
     removePendingFromQueue(tempId);
+  }
+
+  if (tempId && pendingByTempId.has(tempId) && isOwnOutgoingMessage) {
+    const pendingMessage = pendingByTempId.get(tempId);
+    Object.assign(pendingMessage, message, { pending: false, failed: false, clientTempId: tempId });
+    pendingByTempId.delete(tempId);
     renderNetworkState();
 
     const row = messagesEl.querySelector(`[data-client-temp-id="${tempId}"]`);
     if (row) {
-      row.dataset.messageId = message.id;
-      row.dataset.timestamp = message.timestamp || "";
-      row.dataset.tsFull = formatFullTimestamp(message.timestamp);
-      if (row.dataset.tsFull) row.title = row.dataset.tsFull;
-      row.classList.remove("pending");
-      row.dataset.messageText = message.text || row.dataset.messageText;
-      row.dataset.searchText = [
-        row.dataset.messageFrom || "",
-        row.dataset.messageText || "",
-        message.replyTo?.text || "",
-        message.replyTo?.from || "",
-      ].join(" ");
-      const body = row.querySelector(".message-body");
-      if (body) {
-        body.dataset.rawText = message.text || body.dataset.rawText || "";
-      }
-      const metaEl = row.querySelector(".message-meta");
-      if (metaEl) {
-        row.dataset.timeLabel = prettyTime(message.timestamp);
-        renderMineMessageMeta(metaEl, row.dataset.timeLabel, getMessageStatusKey(pendingMessage));
-      }
+      const replacement = buildMessageElement(pendingMessage, true);
+      row.replaceWith(replacement);
+      applyMessageSearch();
+      return;
     }
-    applyMessageSearch();
-    return;
+  }
+
+  if (tempId && isOwnOutgoingMessage) {
+    const pendingIndex = conversationMessages.findIndex((entry) => entry?.clientTempId === tempId);
+    if (pendingIndex >= 0) {
+      const mergedMessage = {
+        ...conversationMessages[pendingIndex],
+        ...message,
+        pending: false,
+        failed: false,
+        clientTempId: tempId,
+      };
+      conversationMessages[pendingIndex] = mergedMessage;
+
+      const row = messagesEl ? messagesEl.querySelector(`[data-client-temp-id="${tempId}"]`) : null;
+      if (row) {
+        const replacement = buildMessageElement(mergedMessage, true);
+        row.replaceWith(replacement);
+        applyMessageSearch();
+      }
+      renderNetworkState();
+      return;
+    }
+    renderNetworkState();
   }
 
   const cachedLog = cacheCallLogMessage(message);
@@ -4796,6 +7045,7 @@ socket.on("call_invite", (data) => {
 
 socket.on("call_ringing", () => {
   if (callState.status === "outgoing") {
+    callState.inviteAcknowledged = true;
     callState.status = "ringing";
     updateCallUi();
   }
@@ -4803,7 +7053,9 @@ socket.on("call_ringing", () => {
 
 socket.on("call_answer", (data) => {
   if (normalizeName(data?.from) !== normalizeName(callState.peer)) return;
-  if (callState.status === "outgoing") {
+  if (["outgoing", "ringing"].includes(callState.status)) {
+    callState.inviteAcknowledged = true;
+    clearCallRingTimeout();
     callState.status = "connecting";
     updateCallUi();
   }
@@ -4862,21 +7114,25 @@ socket.on("error_message", (data) => {
 
 socket.on("connect", () => {
   setNetworkState("Connected", "connected");
-  authenticateStoredSession(true);
-  flushPendingQueue();
+  void ensureDashboardSession(true);
+  flushPendingQueue(true);
 });
 
 socket.on("disconnect", () => {
   stopLocalTyping();
   hideTypingIndicator();
-  authenticateStoredSession._pending = false;
+  ensureDashboardSession._pending = null;
+  resumeSocketSession._pending = false;
   setNetworkState("Disconnected", "offline");
-  showToast("Disconnected from server", "error");
+  if (!logoutInProgress) {
+    showToast("Disconnected from server", "error");
+  }
   if (callState.status !== "idle") resetCallState();
 });
 
 socket.on("connect_error", () => {
-  authenticateStoredSession._pending = false;
+  ensureDashboardSession._pending = null;
+  resumeSocketSession._pending = false;
   setNetworkState("Connection issue", "offline");
 });
 
@@ -4919,9 +7175,28 @@ socket.on("friend_profile_updated", (data) => {
 
 socket.on("reaction_updated", (payload) => {
   if (!payload?.messageId) return;
+  applyConversationReactionsUpdate(payload.messageId, payload.reactions);
   if (window._novynReactions) {
     window._novynReactions.applyServerReactions(payload.messageId, payload.reactions);
   }
+});
+
+socket.on("message_edited", (payload) => {
+  if (!payload?.messageId || !payload?.with) return;
+  if (!activeFriend || normalizeName(payload.with) !== normalizeName(activeFriend)) return;
+  if (!applyConversationMessageEdit(payload.messageId, payload.text, payload.editedAt)) return;
+  rerenderConversationMessageRow(payload.messageId);
+  applyMessageSearch();
+  syncPinnedMessageBar();
+});
+
+socket.on("message_pin_updated", (payload) => {
+  if (!payload?.messageId || !payload?.with) return;
+  if (!activeFriend || normalizeName(payload.with) !== normalizeName(activeFriend)) return;
+  if (!applyConversationMessagePin(payload.messageId, payload.pinned, payload.pinnedAt, payload.pinnedBy)) return;
+  rerenderConversationMessageRow(payload.messageId);
+  applyMessageSearch();
+  syncPinnedMessageBar();
 });
 
 socket.on("message_deleted", (payload) => {
@@ -4931,6 +7206,7 @@ socket.on("message_deleted", (payload) => {
   markConversationMessageDeleted(payload.messageId, payload.deletedAt, payload.text || DELETED_MESSAGE_TEXT);
   applyDeletedMessageToDom(payload.messageId, payload.text || DELETED_MESSAGE_TEXT);
   applyMessageSearch();
+  syncPinnedMessageBar();
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -4967,19 +7243,8 @@ window._novynMessageWindow = {
 };
 window._novynOpenSettingsPanel = () => setSettingsOpen(true);
 window._novynCloseSettingsPanel = () => setSettingsOpen(false);
-window._novynUpdateSession = (nextIdentifier, nextPassword) => {
-  const stored = readStoredSession() || {};
-  const password = nextPassword || stored.password || "";
-  const email = stored.email || "";
-  const username = stored.username || me;
-  if (!password) return;
-  if (email) {
-    writeStoredSession({ email, username, password });
-    return;
-  }
-  if (username) {
-    writeStoredSession({ username, password });
-  }
+window._novynUpdateSession = () => {
+  refreshAuthSessionSilently();
 };
 renderMyName();
 setSidebarView("messages", { silent: true });
@@ -4990,4 +7255,5 @@ if (!socketAvailable) {
   setNetworkState("Realtime unavailable", "offline");
   showToast("Realtime client failed to load. Open Novyn from your server URL.", "error");
 }
+
 

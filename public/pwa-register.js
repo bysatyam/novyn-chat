@@ -1,5 +1,18 @@
 (() => {
   if (!("serviceWorker" in navigator)) return;
+  const host = window.location.hostname || "";
+  const isLocalHost =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1";
+  if (isLocalHost) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => {
+        registration.unregister();
+      });
+    }).catch(() => {});
+    return;
+  }
 
   let refreshing = false;
 

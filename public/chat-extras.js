@@ -117,14 +117,52 @@
 
 /* ── Logout ─────────────────────────────────────────────────────────────────── */
 (function () {
+  var logoutPending = false;
+
+  function clearLegacySessionStorage() {
+    try { sessionStorage.removeItem('novyn-session'); } catch (e) {}
+    try {
+      localStorage.removeItem('novyn-session');
+      localStorage.removeItem('novyn-remember');
+    } catch (e) {}
+  }
+
+  function redirectToLogin() {
+    window.location.replace('/login.html?logout=1');
+  }
+
+  function logoutAndRedirect() {
+    if (logoutPending) return;
+    logoutPending = true;
+    if (typeof window._novynPrepareLogout === 'function') {
+      try {
+        window._novynPrepareLogout();
+      } catch (e) {}
+    }
+    clearLegacySessionStorage();
+    var fallbackTimer = setTimeout(function () {
+      redirectToLogin();
+    }, 1200);
+    var logoutRequest = (window._novynAuth && typeof window._novynAuth.logout === 'function')
+      ? window._novynAuth.logout()
+      : fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          keepalive: true
+        });
+    Promise.resolve(logoutRequest)
+      .catch(function () {})
+      .finally(function () {
+        clearTimeout(fallbackTimer);
+        redirectToLogin();
+      });
+  }
+  window._novynLogoutAndRedirect = logoutAndRedirect;
   var btn = document.getElementById('logoutBtn');
-  var SESSION_KEY = 'novyn-session';
-  var REMEMBER_KEY = 'novyn-remember';
   if (!btn) return;
   btn.addEventListener('click', function () {
-    try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
-    try { localStorage.removeItem(SESSION_KEY); localStorage.removeItem(REMEMBER_KEY); } catch (e) {}
-    window.location.replace('/');
+    logoutAndRedirect();
   });
 })();
 
@@ -301,9 +339,9 @@
       return;
     }
     if (action === 'logout') {
-      try { sessionStorage.removeItem('novyn-session'); } catch (e) {}
-      try { localStorage.removeItem('novyn-session'); localStorage.removeItem('novyn-remember'); } catch (e) {}
-      window.location.replace('/');
+      if (typeof window._novynLogoutAndRedirect === 'function') {
+        window._novynLogoutAndRedirect();
+      }
     }
   }
 
@@ -698,7 +736,9 @@
 (function () {
   var input   = document.getElementById('messageInput');
   var counter = document.getElementById('charCounter');
-  var MAX = 1000, WARN = 800;
+  var maxAttr = Number(input && input.maxLength);
+  var MAX = Number.isFinite(maxAttr) && maxAttr > 0 ? Math.floor(maxAttr) : 1000;
+  var WARN = Math.floor(MAX * 0.8);
   if (!input || !counter) return;
   input.addEventListener('input', function () {
     var len = input.value.length;

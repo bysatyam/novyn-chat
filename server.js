@@ -1,4 +1,4 @@
-﻿const fs = require("fs");
+const fs = require("fs");
 const fsp = require("fs/promises");
 const crypto = require("crypto");
 const path = require("path");
@@ -12,11 +12,26 @@ const { cloudinary, hasCloudinaryConfig } = require("./cloudinary");
 
 const app = express();
 const server = http.createServer(app);
+app.use(express.json({ limit: "64kb" }));
+app.use("/api/auth", createIpRateLimiter("auth-api", 80, 15 * 60 * 1000));
+app.use("/upload-voice", createIpRateLimiter("voice-upload", 40, 15 * 60 * 1000));
+app.use("/upload-file", createIpRateLimiter("file-upload", 40, 15 * 60 * 1000));
 
 const uploadsDir = path.join(__dirname, "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
 
-const upload = multer({ dest: uploadsDir });
+const uploadVoice = multer({
+  dest: uploadsDir,
+  limits: {
+    fileSize: 6 * 1024 * 1024,
+  },
+});
+const uploadFile = multer({
+  dest: uploadsDir,
+  limits: {
+    fileSize: 15 * 1024 * 1024,
+  },
+});
 const uploadTokenSecret =
   process.env.UPLOAD_TOKEN_SECRET ||
   process.env.CLOUDINARY_API_SECRET ||
@@ -69,6 +84,75 @@ function withUploadToken(rawUrl) {
   return `${base}${joiner}token=${token}${hash ? `#${hash}` : ""}`;
 }
 
+function sanitizeAttachmentName(name) {
+  const cleaned = String(name || "")
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "file";
+  return cleaned.slice(0, 120);
+}
+
+function resolveAttachmentKind(mime) {
+  const lower = String(mime || "").toLowerCase();
+  return lower.startsWith("image/") ? "image" : "file";
+}
+
+function resolveUploadExtension(mime, originalName, fallbackExt = ".bin") {
+  const extMap = {
+    "audio/webm": ".webm",
+    "audio/wav": ".wav",
+    "audio/mpeg": ".mp3",
+    "audio/ogg": ".ogg",
+    "audio/mp4": ".m4a",
+    "audio/aac": ".aac",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/svg+xml": ".svg",
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+    "text/csv": ".csv",
+    "application/zip": ".zip",
+    "application/x-zip-compressed": ".zip",
+    "application/x-rar-compressed": ".rar",
+    "application/x-7z-compressed": ".7z",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.ms-powerpoint": ".ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  };
+  const ext = extMap[String(mime || "").toLowerCase()] || path.extname(originalName || "") || fallbackExt;
+  return ext.startsWith(".") ? ext : `.${ext}`;
+}
+
+function sanitizeMessageAttachment(rawAttachment, fallbackUrl = "") {
+  if (!rawAttachment || typeof rawAttachment !== "object") return null;
+
+  const url = withUploadToken(rawAttachment.url || fallbackUrl);
+  if (!url) return null;
+
+  const mime = toDisplayName(rawAttachment.mime).toLowerCase().slice(0, 120);
+  const fallbackName = path.basename(String(url).split("?")[0] || "file");
+  const name = sanitizeAttachmentName(rawAttachment.name || fallbackName || "file");
+  const kind = String(rawAttachment.kind || "").toLowerCase() === "image" || mime.startsWith("image/")
+    ? "image"
+    : "file";
+  const numericSize = Number(rawAttachment.size);
+  const size = Number.isFinite(numericSize) ? Math.max(0, Math.floor(numericSize)) : 0;
+
+  return {
+    url,
+    name,
+    mime,
+    size,
+    kind,
+  };
+}
+
 app.get("/uploads/:file", (req, res) => {
   const filename = path.basename(req.params.file || "");
   const token = String(req.query.token || "");
@@ -84,51 +168,187 @@ app.get("/uploads/:file", (req, res) => {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");
   res.set("Expires", "0");
+  if (String(req.query.download || "") === "1") {
+    const downloadName = sanitizeAttachmentName(req.query.name || filename);
+    res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
+  }
   res.sendFile(filePath);
 });
 
-app.post("/upload-voice", upload.single("voice"), async (req, res) => {
-  if (!req.file?.path) {
-    res.status(400).json({ error: "No voice file uploaded." });
-    return;
-  }
+app.post(
+  "/upload-voice",
+  (req, res, next) => {
+    uploadVoice.single("voice")(req, res, (err) => {
+      if (!err) {
+        next();
+        return;
+      }
+      if (err?.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({ error: "Voice file is too large." });
+        return;
+      }
+      res.status(400).json({ error: "Invalid upload payload." });
+    });
+  },
+  async (req, res) => {
+    if (!req.file?.path) {
+      res.status(400).json({ error: "No voice file uploaded." });
+      return;
+    }
 
-  try {
-    if (hasCloudinaryConfig) {
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        resource_type: "auto",
-        folder: "novyn_voice",
-      });
-
+    const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {
+      allowRefreshFallback: true,
+    });
+    if (!auth.userKey) {
       fs.unlink(req.file.path, () => {});
-      res.json({ url: result.secure_url });
+      res.status(401).json({ error: "Sign in required." });
       return;
     }
 
     const mime = String(req.file.mimetype || "").toLowerCase();
-    const extMap = {
-      "audio/webm": ".webm",
-      "audio/wav": ".wav",
-      "audio/mpeg": ".mp3",
-      "audio/ogg": ".ogg",
-    };
-    const ext = extMap[mime] || path.extname(req.file.originalname || "") || ".webm";
-    const safeExt = ext.startsWith(".") ? ext : `.${ext}`;
-    const filename = `voice-${Date.now()}-${crypto.randomBytes(3).toString("hex")}${safeExt}`;
-    const destPath = path.join(uploadsDir, filename);
-    fs.renameSync(req.file.path, destPath);
-    const token = signUploadToken(filename);
-    res.json({ url: `/uploads/${filename}?token=${token}` });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Upload failed" });
+    if (!ALLOWED_VOICE_MIME.has(mime)) {
+      fs.unlink(req.file.path, () => {});
+      res.status(415).json({ error: "Unsupported voice format." });
+      return;
+    }
+
+    try {
+      if (hasCloudinaryConfig) {
+        const result = await cloudinary.uploader.upload(req.file.path, {
+          resource_type: "auto",
+          folder: "novyn_voice",
+        });
+
+        fs.unlink(req.file.path, () => {});
+        res.json({ url: result.secure_url });
+        return;
+      }
+
+      const extMap = {
+        "audio/webm": ".webm",
+        "audio/wav": ".wav",
+        "audio/mpeg": ".mp3",
+        "audio/ogg": ".ogg",
+        "audio/mp4": ".m4a",
+        "audio/aac": ".aac",
+      };
+      const ext = extMap[mime] || path.extname(req.file.originalname || "") || ".webm";
+      const safeExt = ext.startsWith(".") ? ext : `.${ext}`;
+      const filename = `voice-${Date.now()}-${crypto.randomBytes(3).toString("hex")}${safeExt}`;
+      const destPath = path.join(uploadsDir, filename);
+      fs.renameSync(req.file.path, destPath);
+      const token = signUploadToken(filename);
+      res.json({ url: `/uploads/${filename}?token=${token}` });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Upload failed" });
+    }
   }
-});
+);
+
+app.post(
+  "/upload-file",
+  (req, res, next) => {
+    uploadFile.single("file")(req, res, (err) => {
+      if (!err) {
+        next();
+        return;
+      }
+      if (err?.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({ error: "File is too large." });
+        return;
+      }
+      res.status(400).json({ error: "Invalid upload payload." });
+    });
+  },
+  async (req, res) => {
+    if (!req.file?.path) {
+      res.status(400).json({ error: "No file uploaded." });
+      return;
+    }
+
+    const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {
+      allowRefreshFallback: true,
+    });
+    if (!auth.userKey) {
+      fs.unlink(req.file.path, () => {});
+      res.status(401).json({ error: "Sign in required." });
+      return;
+    }
+
+    const mime = String(req.file.mimetype || "").toLowerCase();
+    if (!ALLOWED_FILE_MIME.has(mime)) {
+      fs.unlink(req.file.path, () => {});
+      res.status(415).json({ error: "Unsupported file type." });
+      return;
+    }
+
+    const attachmentName = sanitizeAttachmentName(req.file.originalname || "file");
+    const kind = resolveAttachmentKind(mime);
+    const size = Math.max(0, Number(req.file.size) || 0);
+
+    try {
+      if (hasCloudinaryConfig && kind === "image") {
+        const result = await cloudinary.uploader.upload(req.file.path, {
+          resource_type: "image",
+          folder: "novyn_files",
+        });
+        fs.unlink(req.file.path, () => {});
+        res.json({
+          url: result.secure_url,
+          name: attachmentName,
+          mime,
+          size,
+          kind,
+        });
+        return;
+      }
+
+      const ext = resolveUploadExtension(mime, attachmentName, ".bin");
+      const filename = `file-${Date.now()}-${crypto.randomBytes(3).toString("hex")}${ext}`;
+      const destPath = path.join(uploadsDir, filename);
+      fs.renameSync(req.file.path, destPath);
+      const token = signUploadToken(filename);
+      res.json({
+        url: `/uploads/${filename}?token=${token}`,
+        name: attachmentName,
+        mime,
+        size,
+        kind,
+      });
+    } catch (error) {
+      fs.unlink(req.file.path, () => {});
+      console.error(error);
+      res.status(500).json({ error: "File upload failed." });
+    }
+  }
+);
 
 const io = new Server(server, {
   cors: {
     origin: process.env.ALLOWED_ORIGIN ? process.env.ALLOWED_ORIGIN.split(",") : "*",
   },
+});
+
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    next();
+    return;
+  }
+  if (req.path !== "/index.html") {
+    next();
+    return;
+  }
+
+  const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {
+    allowRefreshFallback: true,
+  });
+  const user = auth.userKey ? users.get(auth.userKey) : null;
+  if (!user || !user.isRegistered) {
+    res.redirect(302, "/login.html");
+    return;
+  }
+  next();
 });
 
 app.use(
@@ -151,6 +371,18 @@ app.get("/api/push/public-key", (req, res) => {
     return;
   }
   res.json({ publicKey: vapidKeys.publicKey });
+});
+
+app.get("/api/rtc/ice", (req, res) => {
+  const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {
+    allowRefreshFallback: true,
+  });
+  const user = auth.userKey ? users.get(auth.userKey) : null;
+  const authenticated = Boolean(user?.isRegistered);
+  res.json({
+    iceServers: getRtcIceServersForClient(authenticated),
+    authenticated,
+  });
 });
 
 app.get("/", (req, res) => {
@@ -187,7 +419,11 @@ const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "chat-state.json");
 const MONGODB_URI = toDisplayName(process.env.MONGODB_URI);
 const MONGODB_DB = toDisplayName(process.env.MONGODB_DB) || "novyn";
-const MONGODB_COLLECTION = "chat_state";
+const MONGODB_LEGACY_COLLECTION = toDisplayName(process.env.MONGODB_COLLECTION) || "chat_state";
+const MONGODB_USERS_COLLECTION = toDisplayName(process.env.MONGODB_USERS_COLLECTION) || "users";
+const MONGODB_CONVERSATIONS_COLLECTION =
+  toDisplayName(process.env.MONGODB_CONVERSATIONS_COLLECTION) || "conversations";
+const MONGODB_MESSAGES_COLLECTION = toDisplayName(process.env.MONGODB_MESSAGES_COLLECTION) || "messages";
 const CHAT_RETENTION_DAYS = Math.max(
   1,
   Number.isFinite(Number(process.env.CHAT_RETENTION_DAYS))
@@ -199,6 +435,68 @@ const PASSWORD_ITERATIONS = 120000;
 const PASSWORD_KEY_LENGTH = 64;
 const PASSWORD_DIGEST = "sha512";
 const DELETED_MESSAGE_TEXT = "This message was deleted.";
+const CALL_LOG_PREFIX = "__call_log__:";
+const PASSWORD_RESET_CODE_TTL_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+const PASSWORD_RESET_WINDOW_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_MAX_PER_WINDOW = 3;
+const PASSWORD_RESET_RESEND_COOLDOWN_MS = 30 * 1000;
+const PASSWORD_RESET_LOG_CODES = process.env.NODE_ENV !== "production";
+const MAX_MESSAGE_LENGTH = 1000;
+const ALLOWED_VOICE_MIME = new Set([
+  "audio/webm",
+  "audio/wav",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/mp4",
+  "audio/aac",
+]);
+const ALLOWED_FILE_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/x-rar-compressed",
+  "application/x-7z-compressed",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+const DEFAULT_RTC_ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+];
+const RTC_ICE_SERVERS_JSON = toDisplayName(process.env.RTC_ICE_SERVERS_JSON);
+const RTC_STUN_URLS = toDisplayName(process.env.RTC_STUN_URLS);
+const RTC_TURN_URL = toDisplayName(process.env.RTC_TURN_URL);
+const RTC_TURN_USERNAME = toDisplayName(process.env.RTC_TURN_USERNAME);
+const RTC_TURN_CREDENTIAL = toDisplayName(process.env.RTC_TURN_CREDENTIAL);
+const RTC_TURN_CREDENTIAL_TYPE = toDisplayName(process.env.RTC_TURN_CREDENTIAL_TYPE) || "password";
+const RTC_ICE_SERVERS = resolveRtcIceServers();
+const AUTH_SECRET =
+  toDisplayName(process.env.AUTH_SECRET) ||
+  toDisplayName(process.env.UPLOAD_TOKEN_SECRET) ||
+  "dev-auth-secret";
+const AUTH_ACCESS_COOKIE = "novyn_at";
+const AUTH_REFRESH_COOKIE = "novyn_rt";
+const AUTH_ACCESS_TTL_MS = 15 * 60 * 1000;
+const AUTH_REFRESH_REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AUTH_REFRESH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const AUTH_ALIAS_TTL_MS = AUTH_REFRESH_REMEMBER_TTL_MS;
+const AUTH_COOKIE_SECURE = process.env.NODE_ENV === "production";
+
+if (!process.env.AUTH_SECRET && !process.env.UPLOAD_TOKEN_SECRET) {
+  console.warn("AUTH_SECRET is not set. Using an insecure dev secret for auth tokens.");
+}
 
 const users = new Map();
 const onlineUsers = new Map();
@@ -206,9 +504,17 @@ const conversations = new Map();
 const activeCalls = new Map();
 const passwordResetTokens = new Map();
 const passwordResetByUser = new Map();
+const passwordResetRate = new Map();
+const refreshSessions = new Map();
+const refreshByUser = new Map();
+const authUserAliases = new Map();
+const httpRateLimits = new Map();
 
 let mongoClient = null;
-let mongoCollection = null;
+let mongoLegacyCollection = null;
+let mongoUsersCollection = null;
+let mongoConversationsCollection = null;
+let mongoMessagesCollection = null;
 
 let persistTimer = null;
 let persistInFlight = Promise.resolve();
@@ -228,6 +534,114 @@ function normalizeEmail(email) {
 function normalizeHandleInput(handle) {
   const cleaned = normalizeName(handle).replace(/[^a-z0-9_]/g, "");
   return cleaned.slice(0, 24);
+}
+
+function parseIceUrls(rawValue) {
+  const value = toDisplayName(rawValue);
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => toDisplayName(item))
+    .filter(Boolean);
+}
+
+function normalizeIceServerEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+
+  const rawUrls = entry.urls;
+  let urls = "";
+  if (typeof rawUrls === "string") {
+    urls = toDisplayName(rawUrls);
+  } else if (Array.isArray(rawUrls)) {
+    urls = rawUrls.map((item) => toDisplayName(item)).filter(Boolean);
+  }
+
+  if (!urls || (Array.isArray(urls) && urls.length === 0)) {
+    return null;
+  }
+
+  const normalized = { urls };
+  const username = toDisplayName(entry.username);
+  if (username) normalized.username = username;
+  if (entry.credential !== undefined && entry.credential !== null) {
+    normalized.credential = String(entry.credential);
+  }
+  const credentialType = toDisplayName(entry.credentialType);
+  if (credentialType) normalized.credentialType = credentialType;
+
+  return normalized;
+}
+
+function cloneIceServerEntry(entry, options = {}) {
+  const includeSensitive = options.includeSensitive !== false;
+  const cloned = {
+    urls: Array.isArray(entry.urls) ? entry.urls.slice() : entry.urls,
+  };
+  if (includeSensitive && entry.username) cloned.username = entry.username;
+  if (includeSensitive && entry.credential !== undefined) cloned.credential = entry.credential;
+  if (includeSensitive && entry.credentialType) cloned.credentialType = entry.credentialType;
+  return cloned;
+}
+
+function resolveRtcIceServers() {
+  if (RTC_ICE_SERVERS_JSON) {
+    try {
+      const parsed = JSON.parse(RTC_ICE_SERVERS_JSON);
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      const normalized = list.map((entry) => normalizeIceServerEntry(entry)).filter(Boolean);
+      if (normalized.length) {
+        return normalized;
+      }
+    } catch (err) {
+      console.warn("RTC_ICE_SERVERS_JSON is invalid. Falling back to RTC_STUN_URLS/RTC_TURN_*.");
+    }
+  }
+
+  const configured = [];
+  const stunUrls = parseIceUrls(RTC_STUN_URLS);
+  stunUrls.forEach((url) => {
+    configured.push({ urls: url });
+  });
+
+  const turnUrl = toDisplayName(RTC_TURN_URL);
+  if (turnUrl || RTC_TURN_USERNAME || RTC_TURN_CREDENTIAL) {
+    if (turnUrl && RTC_TURN_USERNAME && RTC_TURN_CREDENTIAL) {
+      configured.push({
+        urls: turnUrl,
+        username: RTC_TURN_USERNAME,
+        credential: RTC_TURN_CREDENTIAL,
+        credentialType: RTC_TURN_CREDENTIAL_TYPE,
+      });
+    } else {
+      console.warn(
+        "TURN config is incomplete. Set RTC_TURN_URL, RTC_TURN_USERNAME, and RTC_TURN_CREDENTIAL together."
+      );
+    }
+  }
+
+  const normalizedConfigured = configured
+    .map((entry) => normalizeIceServerEntry(entry))
+    .filter(Boolean);
+  if (normalizedConfigured.length) {
+    return normalizedConfigured;
+  }
+
+  return DEFAULT_RTC_ICE_SERVERS.map((entry) => cloneIceServerEntry(entry));
+}
+
+function getRtcIceServersForClient(authenticated) {
+  if (authenticated) {
+    return RTC_ICE_SERVERS.map((entry) => cloneIceServerEntry(entry, { includeSensitive: true }));
+  }
+  const publicEntries = RTC_ICE_SERVERS
+    .filter((entry) => !entry.username && entry.credential === undefined)
+    .map((entry) => cloneIceServerEntry(entry, { includeSensitive: false }));
+  if (publicEntries.length) {
+    return publicEntries;
+  }
+  return DEFAULT_RTC_ICE_SERVERS.map((entry) =>
+    cloneIceServerEntry(entry, { includeSensitive: false })
+  );
 }
 
 function createPasswordSecret(password) {
@@ -267,6 +681,314 @@ function nowIso() {
 
 function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function toBase64Url(input) {
+  return Buffer.from(input)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function fromBase64Url(input) {
+  const safe = String(input || "").replace(/-/g, "+").replace(/_/g, "/");
+  const pad = safe.length % 4;
+  const padded = pad ? `${safe}${"=".repeat(4 - pad)}` : safe;
+  return Buffer.from(padded, "base64");
+}
+
+function parseCookies(rawCookieHeader) {
+  const header = String(rawCookieHeader || "");
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx <= 0) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (!key) continue;
+    try {
+      out[key] = decodeURIComponent(value);
+    } catch (_) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function createAuthToken(kind, userKey, ttlMs, extra = {}) {
+  const now = Date.now();
+  const payload = {
+    sub: normalizeName(userKey),
+    kind: toDisplayName(kind),
+    iat: now,
+    exp: now + Math.max(1000, Number(ttlMs) || 0),
+    ...extra,
+  };
+  const headerPart = toBase64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payloadPart = toBase64Url(JSON.stringify(payload));
+  const body = `${headerPart}.${payloadPart}`;
+  const signature = crypto.createHmac("sha256", AUTH_SECRET).update(body).digest();
+  return `${body}.${toBase64Url(signature)}`;
+}
+
+function verifyAuthToken(rawToken, expectedKind) {
+  const token = String(rawToken || "");
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerPart, payloadPart, sigPart] = parts;
+  if (!headerPart || !payloadPart || !sigPart) return null;
+
+  const body = `${headerPart}.${payloadPart}`;
+  const expectedSig = crypto.createHmac("sha256", AUTH_SECRET).update(body).digest();
+  let actualSig = null;
+  try {
+    actualSig = fromBase64Url(sigPart);
+  } catch (_) {
+    return null;
+  }
+  if (actualSig.length !== expectedSig.length) return null;
+  if (!crypto.timingSafeEqual(actualSig, expectedSig)) return null;
+
+  let payload = null;
+  try {
+    payload = JSON.parse(fromBase64Url(payloadPart).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  if (!payload || typeof payload !== "object") return null;
+  if (expectedKind && payload.kind !== expectedKind) return null;
+  const subjectKey = normalizeName(payload.sub);
+  if (!subjectKey) return null;
+  const exp = Number(payload.exp);
+  if (!Number.isFinite(exp) || exp <= Date.now()) return null;
+  return payload;
+}
+
+function linkAuthAlias(oldKey, newKey) {
+  const prev = normalizeName(oldKey);
+  const next = normalizeName(newKey);
+  if (!prev || !next || prev === next) return;
+  authUserAliases.set(prev, {
+    newKey: next,
+    expiresAt: Date.now() + AUTH_ALIAS_TTL_MS,
+  });
+}
+
+function resolveCurrentUserKey(rawKey) {
+  let key = normalizeName(rawKey);
+  const seen = new Set();
+  while (key && !seen.has(key)) {
+    seen.add(key);
+    if (users.has(key)) return key;
+    const alias = authUserAliases.get(key);
+    if (!alias) break;
+    if (Date.now() > alias.expiresAt) {
+      authUserAliases.delete(key);
+      break;
+    }
+    key = normalizeName(alias.newKey);
+  }
+  return "";
+}
+
+function trackRefreshSession(userKey, jti, expiresAt, remember) {
+  const key = normalizeName(userKey);
+  const tokenId = toDisplayName(jti);
+  if (!key || !tokenId) return;
+  refreshSessions.set(tokenId, {
+    userKey: key,
+    expiresAt: Number(expiresAt) || 0,
+    remember: Boolean(remember),
+  });
+  if (!refreshByUser.has(key)) {
+    refreshByUser.set(key, new Set());
+  }
+  refreshByUser.get(key).add(tokenId);
+}
+
+function revokeRefreshSession(rawTokenId) {
+  const tokenId = toDisplayName(rawTokenId);
+  if (!tokenId) return false;
+  const existing = refreshSessions.get(tokenId);
+  if (!existing) return false;
+  refreshSessions.delete(tokenId);
+  const ownerSet = refreshByUser.get(existing.userKey);
+  if (ownerSet) {
+    ownerSet.delete(tokenId);
+    if (!ownerSet.size) refreshByUser.delete(existing.userKey);
+  }
+  return true;
+}
+
+function moveRefreshSessionsToUser(oldUserKey, nextUserKey) {
+  const oldKey = normalizeName(oldUserKey);
+  const newKey = normalizeName(nextUserKey);
+  if (!oldKey || !newKey || oldKey === newKey) return;
+  const tokenSet = refreshByUser.get(oldKey);
+  if (!tokenSet || !tokenSet.size) return;
+  if (!refreshByUser.has(newKey)) {
+    refreshByUser.set(newKey, new Set());
+  }
+  const nextSet = refreshByUser.get(newKey);
+  for (const tokenId of tokenSet) {
+    const entry = refreshSessions.get(tokenId);
+    if (entry) entry.userKey = newKey;
+    nextSet.add(tokenId);
+  }
+  refreshByUser.delete(oldKey);
+}
+
+function pruneExpiredAuthState() {
+  const now = Date.now();
+  for (const [oldKey, alias] of authUserAliases.entries()) {
+    if (!alias || Number(alias.expiresAt) <= now) {
+      authUserAliases.delete(oldKey);
+    }
+  }
+  for (const [tokenId, entry] of refreshSessions.entries()) {
+    if (!entry || Number(entry.expiresAt) <= now) {
+      revokeRefreshSession(tokenId);
+    }
+  }
+}
+
+function issueAuthTokensForUser(userKey, remember) {
+  const key = normalizeName(userKey);
+  if (!key) return null;
+  const persistent = Boolean(remember);
+  const refreshTtl = persistent ? AUTH_REFRESH_REMEMBER_TTL_MS : AUTH_REFRESH_SESSION_TTL_MS;
+  const refreshTokenId = crypto.randomBytes(16).toString("hex");
+  const accessToken = createAuthToken("access", key, AUTH_ACCESS_TTL_MS);
+  const refreshToken = createAuthToken("refresh", key, refreshTtl, {
+    jti: refreshTokenId,
+    remember: persistent ? 1 : 0,
+  });
+  trackRefreshSession(key, refreshTokenId, Date.now() + refreshTtl, persistent);
+  return { accessToken, refreshToken, remember: persistent };
+}
+
+function applyAuthCookies(res, issuedTokens) {
+  if (!res || !issuedTokens?.accessToken || !issuedTokens?.refreshToken) return;
+  const shared = {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: AUTH_COOKIE_SECURE,
+    path: "/",
+  };
+  res.cookie(AUTH_ACCESS_COOKIE, issuedTokens.accessToken, {
+    ...shared,
+    maxAge: AUTH_ACCESS_TTL_MS,
+  });
+  const refreshOptions = {
+    ...shared,
+  };
+  if (issuedTokens.remember) {
+    refreshOptions.maxAge = AUTH_REFRESH_REMEMBER_TTL_MS;
+  }
+  res.cookie(AUTH_REFRESH_COOKIE, issuedTokens.refreshToken, refreshOptions);
+}
+
+function clearAuthCookies(res) {
+  if (!res) return;
+  const shared = {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: AUTH_COOKIE_SECURE,
+    path: "/",
+  };
+  res.clearCookie(AUTH_ACCESS_COOKIE, shared);
+  res.clearCookie(AUTH_REFRESH_COOKIE, shared);
+}
+
+function getAuthCookiesFromHeader(rawCookieHeader) {
+  const cookies = parseCookies(rawCookieHeader);
+  return {
+    accessToken: toDisplayName(cookies[AUTH_ACCESS_COOKIE]),
+    refreshToken: toDisplayName(cookies[AUTH_REFRESH_COOKIE]),
+  };
+}
+
+function resolveUserFromAuthCookies(authCookies, options = {}) {
+  pruneExpiredAuthState();
+  const allowRefreshFallback = options.allowRefreshFallback !== false;
+
+  const accessPayload = verifyAuthToken(authCookies?.accessToken, "access");
+  if (accessPayload) {
+    const resolved = resolveCurrentUserKey(accessPayload.sub);
+    if (resolved) {
+      return { userKey: resolved, via: "access" };
+    }
+  }
+
+  if (!allowRefreshFallback) {
+    return { userKey: "" };
+  }
+
+  const refreshPayload = verifyAuthToken(authCookies?.refreshToken, "refresh");
+  if (!refreshPayload?.jti) {
+    return { userKey: "" };
+  }
+
+  const session = refreshSessions.get(refreshPayload.jti);
+  if (!session) return { userKey: "" };
+  if (Date.now() > Number(session.expiresAt)) {
+    revokeRefreshSession(refreshPayload.jti);
+    return { userKey: "" };
+  }
+
+  const resolved = resolveCurrentUserKey(session.userKey || refreshPayload.sub);
+  if (!resolved) {
+    revokeRefreshSession(refreshPayload.jti);
+    return { userKey: "" };
+  }
+
+  session.userKey = resolved;
+  return {
+    userKey: resolved,
+    via: "refresh",
+    remember: Boolean(session.remember),
+    refreshTokenId: toDisplayName(refreshPayload.jti),
+  };
+}
+
+function readRememberFlag(value) {
+  if (typeof value === "boolean") return value;
+  const text = toDisplayName(value).toLowerCase();
+  return text === "1" || text === "true" || text === "yes" || text === "on";
+}
+
+function createIpRateLimiter(bucket, maxRequests, windowMs) {
+  const safeBucket = toDisplayName(bucket) || "default";
+  const max = Math.max(1, Number(maxRequests) || 1);
+  const windowDuration = Math.max(1000, Number(windowMs) || 1000);
+  return (req, res, next) => {
+    const ip = toDisplayName(req.ip || req.socket?.remoteAddress || "unknown");
+    const now = Date.now();
+    const key = `${safeBucket}:${ip}`;
+    const current = httpRateLimits.get(key);
+    const active =
+      current && now <= Number(current.resetAt)
+        ? current
+        : { count: 0, resetAt: now + windowDuration };
+    active.count += 1;
+    httpRateLimits.set(key, active);
+    if (active.count > max) {
+      res.status(429).json({ error: "Too many requests. Please try again later." });
+      return;
+    }
+    next();
+  };
+}
+
+function pruneHttpRateLimits() {
+  const now = Date.now();
+  for (const [key, entry] of httpRateLimits.entries()) {
+    if (!entry || Number(entry.resetAt) <= now) {
+      httpRateLimits.delete(key);
+    }
+  }
 }
 
 function createUserRecord(username) {
@@ -324,27 +1046,158 @@ async function persistFileNow() {
   await fsp.writeFile(DATA_FILE, payload, "utf8");
 }
 
+function hasMongoStorage() {
+  return Boolean(mongoUsersCollection && mongoConversationsCollection && mongoMessagesCollection);
+}
+
+async function bulkWriteInChunks(collection, operations, chunkSize = 500) {
+  if (!collection || !Array.isArray(operations) || operations.length === 0) return;
+  for (let i = 0; i < operations.length; i += chunkSize) {
+    const chunk = operations.slice(i, i + chunkSize);
+    // Keep unordered writes to tolerate individual bad docs without aborting the batch.
+    await collection.bulkWrite(chunk, { ordered: false });
+  }
+}
+
+function buildConversationDoc(entry, snapshotId, updatedAt) {
+  const key = toDisplayName(entry?.key);
+  if (!key) return null;
+  const [userA = "", userB = ""] = key.split("::");
+  const messages = Array.isArray(entry?.messages) ? entry.messages : [];
+  const lastMessage = messages.length ? messages[messages.length - 1] : null;
+  return {
+    _id: key,
+    userA,
+    userB,
+    messageCount: messages.length,
+    lastTimestamp: toDisplayName(lastMessage?.timestamp),
+    snapshotId,
+    updatedAt,
+  };
+}
+
+function buildMessageDoc(conversationKey, rawMessage, orderIndex, snapshotId, updatedAt) {
+  const key = toDisplayName(conversationKey);
+  if (!key) return null;
+  const message = hydrateMessage(rawMessage);
+  const messageId = toDisplayName(message.id) || `${Date.now()}-${orderIndex}`;
+  const messageDocId = `${key}::${messageId}`;
+  return {
+    _id: messageDocId,
+    conversationKey: key,
+    messageId,
+    timestamp: toDisplayName(message.timestamp),
+    message,
+    snapshotId,
+    updatedAt,
+  };
+}
+
 async function persistMongoNow() {
-  if (!mongoCollection) {
+  if (!hasMongoStorage()) {
     return;
   }
 
-  await mongoCollection.updateOne(
-    { _id: "main" },
-    {
-      $set: {
-        _id: "main",
-        state: serializeState(),
-        updatedAt: new Date(),
-        retentionDays: CHAT_RETENTION_DAYS,
+  const state = serializeState();
+  const snapshotId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+  const updatedAt = new Date();
+
+  const userOps = state.users
+    .filter((entry) => normalizeName(entry?.key || entry?.username))
+    .map((entry) => {
+      const key = normalizeName(entry.key || entry.username);
+      return {
+        updateOne: {
+          filter: { _id: key },
+          update: {
+            $set: {
+              username: toDisplayName(entry.username),
+              email: normalizeEmail(entry.email),
+              friends: Array.isArray(entry.friends) ? entry.friends : [],
+              requests: Array.isArray(entry.requests) ? entry.requests : [],
+              unread: Array.isArray(entry.unread) ? entry.unread : [],
+              pushSubs: Array.isArray(entry.pushSubs) ? entry.pushSubs : [],
+              isRegistered: Boolean(entry.isRegistered),
+              passwordSalt: toDisplayName(entry.passwordSalt),
+              passwordHash: toDisplayName(entry.passwordHash),
+              avatarId: toDisplayName(entry.avatarId),
+              age: toDisplayName(entry.age),
+              gender: toDisplayName(entry.gender),
+              displayName: toDisplayName(entry.displayName),
+              bio: toDisplayName(entry.bio),
+              createdAt: toDisplayName(entry.createdAt),
+              lastSeenAt: toDisplayName(entry.lastSeenAt),
+              snapshotId,
+              updatedAt,
+            },
+          },
+          upsert: true,
+        },
+      };
+    });
+  await bulkWriteInChunks(mongoUsersCollection, userOps);
+  await mongoUsersCollection.deleteMany({ snapshotId: { $ne: snapshotId } });
+
+  const conversationOps = [];
+  let messageOrder = 0;
+  let pendingMessageOps = [];
+
+  for (const entry of state.conversations) {
+    const conversationDoc = buildConversationDoc(entry, snapshotId, updatedAt);
+    if (conversationDoc) {
+      conversationOps.push({
+        updateOne: {
+          filter: { _id: conversationDoc._id },
+          update: { $set: conversationDoc },
+          upsert: true,
+        },
+      });
+    }
+
+    const key = toDisplayName(entry?.key);
+    const messages = Array.isArray(entry?.messages) ? entry.messages : [];
+    for (const rawMessage of messages) {
+      const messageDoc = buildMessageDoc(key, rawMessage, messageOrder++, snapshotId, updatedAt);
+      if (!messageDoc) continue;
+      pendingMessageOps.push({
+        updateOne: {
+          filter: { _id: messageDoc._id },
+          update: { $set: messageDoc },
+          upsert: true,
+        },
+      });
+      if (pendingMessageOps.length >= 500) {
+        await bulkWriteInChunks(mongoMessagesCollection, pendingMessageOps);
+        pendingMessageOps = [];
+      }
+    }
+  }
+
+  await bulkWriteInChunks(mongoConversationsCollection, conversationOps);
+  await mongoConversationsCollection.deleteMany({ snapshotId: { $ne: snapshotId } });
+  if (pendingMessageOps.length) {
+    await bulkWriteInChunks(mongoMessagesCollection, pendingMessageOps);
+  }
+  await mongoMessagesCollection.deleteMany({ snapshotId: { $ne: snapshotId } });
+
+  if (mongoLegacyCollection) {
+    await mongoLegacyCollection.updateOne(
+      { _id: "main" },
+      {
+        $set: {
+          _id: "main",
+          migratedToCollections: true,
+          updatedAt,
+          retentionDays: CHAT_RETENTION_DAYS,
+        },
       },
-    },
-    { upsert: true }
-  );
+      { upsert: true }
+    );
+  }
 }
 
 async function persistNow() {
-  if (mongoCollection) {
+  if (hasMongoStorage()) {
     await persistMongoNow();
     return;
   }
@@ -370,6 +1223,86 @@ function schedulePersist() {
 function createResetToken() {
   const value = Math.floor(100000 + Math.random() * 900000);
   return String(value);
+}
+
+function createResetTokenId() {
+  return crypto.randomBytes(12).toString("hex");
+}
+
+function createResetTokenHash(token, salt) {
+  return crypto
+    .createHmac("sha256", AUTH_SECRET)
+    .update(`${toDisplayName(token)}:${toDisplayName(salt)}`)
+    .digest("hex");
+}
+
+function dropPasswordResetTokenById(tokenId) {
+  const id = toDisplayName(tokenId);
+  if (!id) return;
+  const entry = passwordResetTokens.get(id);
+  if (!entry) return;
+  passwordResetTokens.delete(id);
+  if (entry.userKey && passwordResetByUser.get(entry.userKey) === id) {
+    passwordResetByUser.delete(entry.userKey);
+  }
+}
+
+function pruneExpiredPasswordResetTokens() {
+  const now = Date.now();
+  for (const [tokenId, entry] of passwordResetTokens.entries()) {
+    if (!entry || Number(entry.expiresAt) <= now) {
+      dropPasswordResetTokenById(tokenId);
+    }
+  }
+  for (const [userKey, rate] of passwordResetRate.entries()) {
+    if (!rate || now - Number(rate.windowStartedAt || 0) > PASSWORD_RESET_WINDOW_MS) {
+      passwordResetRate.delete(userKey);
+    }
+  }
+}
+
+function canIssuePasswordReset(userKey) {
+  const key = normalizeName(userKey);
+  if (!key) {
+    return { allowed: false, message: "Please wait before requesting another code." };
+  }
+  const now = Date.now();
+  const state = passwordResetRate.get(key) || {
+    windowStartedAt: now,
+    sentCount: 0,
+    lastSentAt: 0,
+  };
+
+  if (now - state.windowStartedAt > PASSWORD_RESET_WINDOW_MS) {
+    state.windowStartedAt = now;
+    state.sentCount = 0;
+  }
+  if (now - state.lastSentAt < PASSWORD_RESET_RESEND_COOLDOWN_MS) {
+    return { allowed: false, message: "Please wait before requesting another code." };
+  }
+  if (state.sentCount >= PASSWORD_RESET_MAX_PER_WINDOW) {
+    return { allowed: false, message: "Too many reset requests. Try again later." };
+  }
+  return { allowed: true, state };
+}
+
+function markPasswordResetIssued(userKey, state) {
+  const key = normalizeName(userKey);
+  if (!key || !state) return;
+  const now = Date.now();
+  state.sentCount = Number(state.sentCount || 0) + 1;
+  state.lastSentAt = now;
+  if (!state.windowStartedAt) state.windowStartedAt = now;
+  passwordResetRate.set(key, state);
+}
+
+function dispatchPasswordResetCode(user, code) {
+  const email = normalizeEmail(user?.email);
+  if (!email) return false;
+  if (PASSWORD_RESET_LOG_CODES) {
+    console.log(`[Password reset code] ${email}: ${code}`);
+  }
+  return true;
 }
 
 function normalizePushSubscription(raw) {
@@ -476,8 +1409,13 @@ function hydrateMessage(rawMessage) {
     deliveredAt: toDisplayName(message.deliveredAt) || null,
     seenAt: toDisplayName(message.seenAt) || null,
     deletedAt: toDisplayName(message.deletedAt) || null,
+    editedAt: toDisplayName(message.editedAt) || null,
+    pinnedAt: toDisplayName(message.pinnedAt) || null,
+    pinnedBy: toDisplayName(message.pinnedBy) || "",
     reactions: message.reactions || {},
   };
+  const attachment = sanitizeMessageAttachment(message.attachment, hydrated.text);
+  if (attachment) hydrated.attachment = attachment;
   if (hydrated.deletedAt && !hydrated.text) {
     hydrated.text = DELETED_MESSAGE_TEXT;
   }
@@ -556,6 +1494,124 @@ async function loadStateFromFile() {
   }
 }
 
+function toSerializedUserEntry(doc) {
+  const key = normalizeName(doc?._id || doc?.key || doc?.username);
+  if (!key) return null;
+  return {
+    key,
+    username: toDisplayName(doc?.username || key),
+    email: normalizeEmail(doc?.email),
+    friends: Array.isArray(doc?.friends) ? doc.friends : [],
+    requests: Array.isArray(doc?.requests) ? doc.requests : [],
+    unread: Array.isArray(doc?.unread) ? doc.unread : [],
+    pushSubs: Array.isArray(doc?.pushSubs) ? doc.pushSubs : [],
+    isRegistered: Boolean(doc?.isRegistered),
+    passwordSalt: toDisplayName(doc?.passwordSalt),
+    passwordHash: toDisplayName(doc?.passwordHash),
+    avatarId: toDisplayName(doc?.avatarId),
+    age: toDisplayName(doc?.age),
+    gender: toDisplayName(doc?.gender),
+    displayName: toDisplayName(doc?.displayName),
+    bio: toDisplayName(doc?.bio),
+    createdAt: toDisplayName(doc?.createdAt),
+    lastSeenAt: toDisplayName(doc?.lastSeenAt),
+  };
+}
+
+function toSerializedMessageEntry(doc) {
+  if (doc?.message && typeof doc.message === "object") {
+    return doc.message;
+  }
+  return {
+    id: toDisplayName(doc?.messageId || doc?.id),
+    from: toDisplayName(doc?.from),
+    to: toDisplayName(doc?.to),
+    fromKey: normalizeName(doc?.fromKey),
+    toKey: normalizeName(doc?.toKey),
+    text: toDisplayName(doc?.text),
+    timestamp: toDisplayName(doc?.timestamp),
+    deliveredAt: toDisplayName(doc?.deliveredAt),
+    seenAt: toDisplayName(doc?.seenAt),
+    deletedAt: toDisplayName(doc?.deletedAt),
+    editedAt: toDisplayName(doc?.editedAt),
+    pinnedAt: toDisplayName(doc?.pinnedAt),
+    pinnedBy: toDisplayName(doc?.pinnedBy),
+    reactions: doc?.reactions || {},
+    replyTo: doc?.replyTo || undefined,
+    attachment: doc?.attachment || undefined,
+  };
+}
+
+async function loadStateFromMongoCollections() {
+  if (!hasMongoStorage()) return false;
+
+  const [userDocs, conversationDocs, messageDocs] = await Promise.all([
+    mongoUsersCollection.find({}, { projection: { snapshotId: 0, updatedAt: 0 } }).toArray(),
+    mongoConversationsCollection.find({}, { projection: { _id: 1 } }).toArray(),
+    mongoMessagesCollection
+      .find({}, { projection: { _id: 0, snapshotId: 0, updatedAt: 0 } })
+      .sort({ conversationKey: 1, timestamp: 1, messageId: 1 })
+      .toArray(),
+  ]);
+
+  if (!userDocs.length && !conversationDocs.length && !messageDocs.length) {
+    return false;
+  }
+
+  const messageMap = new Map();
+  for (const doc of messageDocs) {
+    const conversationKey = toDisplayName(doc?.conversationKey);
+    if (!conversationKey) continue;
+    if (!messageMap.has(conversationKey)) {
+      messageMap.set(conversationKey, []);
+    }
+    messageMap.get(conversationKey).push(toSerializedMessageEntry(doc));
+  }
+
+  const conversationKeySet = new Set();
+  for (const doc of conversationDocs) {
+    const key = toDisplayName(doc?._id);
+    if (key) conversationKeySet.add(key);
+  }
+  for (const key of messageMap.keys()) {
+    conversationKeySet.add(key);
+  }
+
+  const parsed = {
+    users: userDocs.map(toSerializedUserEntry).filter(Boolean),
+    conversations: Array.from(conversationKeySet)
+      .sort()
+      .map((key) => ({
+        key,
+        messages: messageMap.get(key) || [],
+      })),
+  };
+
+  applyLoadedState(parsed);
+  return true;
+}
+
+async function loadStateFromLegacyMongoDocument() {
+  if (!mongoLegacyCollection) return false;
+  const doc = await mongoLegacyCollection.findOne({ _id: "main" });
+  if (!doc?.state) return false;
+  applyLoadedState(doc.state);
+  return true;
+}
+
+async function ensureMongoIndexes() {
+  if (!hasMongoStorage()) return;
+  await Promise.all([
+    mongoUsersCollection.createIndex({ email: 1 }, { name: "email_idx" }),
+    mongoConversationsCollection.createIndex({ updatedAt: -1 }, { name: "updated_at_idx" }),
+    mongoMessagesCollection.createIndex(
+      { conversationKey: 1, timestamp: 1, messageId: 1 },
+      { name: "conversation_time_idx" }
+    ),
+    mongoMessagesCollection.createIndex({ messageId: 1 }, { name: "message_id_idx" }),
+  ]);
+}
+
 async function initializeMongo() {
   if (!MONGODB_URI) {
     return;
@@ -564,11 +1620,19 @@ async function initializeMongo() {
   try {
     mongoClient = new MongoClient(MONGODB_URI);
     await mongoClient.connect();
-    mongoCollection = mongoClient.db(MONGODB_DB).collection(MONGODB_COLLECTION);
+    const db = mongoClient.db(MONGODB_DB);
+    mongoLegacyCollection = db.collection(MONGODB_LEGACY_COLLECTION);
+    mongoUsersCollection = db.collection(MONGODB_USERS_COLLECTION);
+    mongoConversationsCollection = db.collection(MONGODB_CONVERSATIONS_COLLECTION);
+    mongoMessagesCollection = db.collection(MONGODB_MESSAGES_COLLECTION);
+    await ensureMongoIndexes();
     console.log(`Connected to MongoDB database: ${MONGODB_DB}`);
   } catch (err) {
     mongoClient = null;
-    mongoCollection = null;
+    mongoLegacyCollection = null;
+    mongoUsersCollection = null;
+    mongoConversationsCollection = null;
+    mongoMessagesCollection = null;
     console.error("Failed to connect MongoDB, falling back to local file storage:", err);
   }
 }
@@ -577,22 +1641,26 @@ async function loadState() {
   await initializeMongo();
   let loaded = false;
 
-  if (mongoCollection) {
+  if (hasMongoStorage()) {
     try {
-      const doc = await mongoCollection.findOne({ _id: "main" });
-      if (doc?.state) {
-        applyLoadedState(doc.state);
-        loaded = true;
-      } else {
+      loaded = await loadStateFromMongoCollections();
+      if (!loaded) {
+        loaded = await loadStateFromLegacyMongoDocument();
+        if (loaded) {
+          await persistMongoNow();
+          console.log("Migrated legacy chat_state Mongo document into split collections.");
+        }
+      }
+      if (!loaded) {
         const loadedFromFile = await loadStateFromFile();
         if (loadedFromFile) {
           loaded = true;
           await persistMongoNow();
-          console.log("Migrated local file state into MongoDB.");
+          console.log("Migrated local file state into split Mongo collections.");
         }
       }
     } catch (err) {
-      console.error("Failed to load chat state from MongoDB, trying local file:", err);
+      console.error("Failed to load chat state from MongoDB collections, trying local file:", err);
     }
   }
 
@@ -714,6 +1782,27 @@ function getConversationKey(userA, userB) {
   return [a, b].sort().join("::");
 }
 
+function findMessageByClientTempId(senderKey, recipientKey, clientTempId) {
+  const key = toDisplayName(clientTempId);
+  if (!key) return null;
+  const conversationKey = getConversationKey(senderKey, recipientKey);
+  const conversation = conversations.get(conversationKey);
+  if (!Array.isArray(conversation) || conversation.length === 0) return null;
+
+  const fromKey = normalizeName(senderKey);
+  const toKey = normalizeName(recipientKey);
+  for (let i = conversation.length - 1; i >= 0; i -= 1) {
+    const message = conversation[i];
+    if (!message || toDisplayName(message.clientTempId) !== key) continue;
+    const messageFromKey = normalizeName(message.fromKey || message.from);
+    const messageToKey = normalizeName(message.toKey || message.to);
+    if (messageFromKey === fromKey && messageToKey === toKey) {
+      return message;
+    }
+  }
+  return null;
+}
+
 function setCallPair(userKey, peerKey, status) {
   activeCalls.set(userKey, { peerKey, status });
   activeCalls.set(peerKey, { peerKey: userKey, status });
@@ -793,6 +1882,8 @@ function applyUsernameChange(userKey, newUsername) {
         other.unread.set(newKey, count);
       }
     });
+    moveRefreshSessionsToUser(oldKey, newKey);
+    linkAuthAlias(oldKey, newKey);
   }
 
   const nextConversations = new Map();
@@ -893,6 +1984,9 @@ function pruneExpiredMessages() {
 }
 
 function runRetentionMaintenance() {
+  pruneExpiredAuthState();
+  pruneHttpRateLimits();
+  pruneExpiredPasswordResetTokens();
   const pruned = pruneExpiredMessages();
   if (!pruned) {
     return;
@@ -1180,7 +2274,312 @@ function removeFriendship(userAKey, userBKey) {
   return true;
 }
 
+function revokeAllRefreshSessionsForUser(rawUserKey) {
+  const userKey = normalizeName(rawUserKey);
+  if (!userKey) return;
+  const tokenSet = refreshByUser.get(userKey);
+  if (!tokenSet || !tokenSet.size) return;
+  for (const tokenId of Array.from(tokenSet)) {
+    revokeRefreshSession(tokenId);
+  }
+}
+
+function buildRegisterSuccessPayload(userKey, user) {
+  return {
+    username: user.username,
+    email: user.email || "",
+    friends: buildFriendList(userKey),
+    requests: Array.from(user.requests).map((requesterKey) => {
+      const requester = users.get(requesterKey);
+      return requester?.username || requesterKey;
+    }),
+    profile: {
+      avatarId: user.avatarId || "",
+      age: user.age || "",
+      gender: user.gender || "",
+      displayName: user.displayName || "",
+      bio: user.bio || "",
+    },
+  };
+}
+
+function finalizeSocketAuthentication(socket, user) {
+  if (!socket || !user?.username) return false;
+  user.lastSeenAt = "";
+  const userKey = normalizeName(user.username);
+
+  socket.data.userKey = userKey;
+  socket.data.activeChatWith = null;
+
+  const previousSocketId = onlineUsers.get(userKey);
+  onlineUsers.set(userKey, socket.id);
+
+  if (previousSocketId && previousSocketId !== socket.id) {
+    const previousSocket = io.sockets.sockets.get(previousSocketId);
+    if (previousSocket) {
+      previousSocket.emit("error_message", {
+        message: "You were signed out because this account logged in elsewhere.",
+      });
+      previousSocket.disconnect(true);
+    }
+  }
+
+  markUndeliveredAsDelivered(userKey);
+  socket.emit("register_success", buildRegisterSuccessPayload(userKey, user));
+  emitStatusToFriends(userKey, true);
+  emitFriendList(userKey);
+  schedulePersist();
+  return true;
+}
+
+function allowSocketAction(socket, key, maxPerWindow, windowMs) {
+  if (!socket || !key) return false;
+  const max = Math.max(1, Number(maxPerWindow) || 1);
+  const windowDuration = Math.max(1000, Number(windowMs) || 1000);
+  if (!socket.data.rateBuckets) {
+    socket.data.rateBuckets = {};
+  }
+  const now = Date.now();
+  const bucket = socket.data.rateBuckets[key] || {
+    count: 0,
+    windowStartedAt: now,
+  };
+  if (now - bucket.windowStartedAt > windowDuration) {
+    bucket.windowStartedAt = now;
+    bucket.count = 0;
+  }
+  bucket.count += 1;
+  socket.data.rateBuckets[key] = bucket;
+  return bucket.count <= max;
+}
+
+function authenticateSigninPayload(payload) {
+  const identifier = toDisplayName(payload?.identifier || payload?.email || payload?.username || "");
+  const password = toDisplayName(payload?.password || "");
+  const isEmail = identifier.includes("@");
+
+  if (!identifier) {
+    return { ok: false, status: 400, message: "Email or username is required.", suggestions: [] };
+  }
+  if (!password) {
+    return { ok: false, status: 400, message: "Password is required.", suggestions: [] };
+  }
+
+  if (isEmail) {
+    const user = findUserByEmail(identifier);
+    if (!user || !user.isRegistered) {
+      return { ok: false, status: 401, message: "Email doesn't exist. Sign up.", suggestions: [] };
+    }
+    if (!verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+      return { ok: false, status: 401, message: "Incorrect password.", suggestions: [] };
+    }
+    return { ok: true, user };
+  }
+
+  const userKey = normalizeName(identifier);
+  const user = users.get(userKey);
+  const suggestions = buildUsernameSuggestions(identifier);
+  if (!user || !user.isRegistered) {
+    return {
+      ok: false,
+      status: 401,
+      message: "Username doesn't exist. Sign up.",
+      suggestions,
+    };
+  }
+
+  if (!user.passwordSalt || !user.passwordHash) {
+    const secret = createPasswordSecret(password);
+    user.passwordSalt = secret.passwordSalt;
+    user.passwordHash = secret.passwordHash;
+    user.isRegistered = true;
+    schedulePersist();
+  } else if (!verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+    return { ok: false, status: 401, message: "Incorrect password.", suggestions };
+  }
+
+  return { ok: true, user };
+}
+
+function authenticateSignupPayload(payload) {
+  const email = normalizeEmail(payload?.email || "");
+  const displayName = toDisplayName(payload?.name || payload?.displayName || "");
+  const usernameInput = toDisplayName(payload?.username || "");
+  const password = toDisplayName(payload?.password || "");
+
+  if (!email) {
+    return { ok: false, status: 400, message: "Email is required to sign up." };
+  }
+  if (isEmailTaken(email)) {
+    return { ok: false, status: 409, message: "Email already registered. Sign in." };
+  }
+  if (!displayName) {
+    return { ok: false, status: 400, message: "Name is required to sign up." };
+  }
+  const requestedHandle = normalizeHandleInput(usernameInput);
+  if (!requestedHandle) {
+    return { ok: false, status: 400, message: "Username is required." };
+  }
+  if (isUsernameTaken(requestedHandle)) {
+    return { ok: false, status: 409, message: "This username is taken." };
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return {
+      ok: false,
+      status: 400,
+      message: `Use at least ${MIN_PASSWORD_LENGTH} characters in password.`,
+    };
+  }
+
+  const user = getOrCreateUser(requestedHandle);
+  const secret = createPasswordSecret(password);
+  user.passwordSalt = secret.passwordSalt;
+  user.passwordHash = secret.passwordHash;
+  user.isRegistered = true;
+  user.email = email;
+  user.displayName = displayName;
+  if (!user.createdAt) {
+    user.createdAt = nowIso();
+  }
+  schedulePersist();
+
+  return { ok: true, user };
+}
+
+app.post("/api/auth/signin", (req, res) => {
+  const result = authenticateSigninPayload(req.body || {});
+  if (!result.ok) {
+    res.status(result.status || 401).json({
+      message: result.message || "Authentication failed.",
+      suggestions: result.suggestions || [],
+    });
+    return;
+  }
+  const remember = readRememberFlag(req.body?.remember);
+  const userKey = normalizeName(result.user.username);
+  const tokens = issueAuthTokensForUser(userKey, remember);
+  if (!tokens) {
+    res.status(500).json({ message: "Unable to create session." });
+    return;
+  }
+  applyAuthCookies(res, tokens);
+  res.json({
+    username: result.user.username,
+    email: result.user.email || "",
+  });
+});
+
+app.post("/api/auth/signup", (req, res) => {
+  const result = authenticateSignupPayload(req.body || {});
+  if (!result.ok) {
+    res.status(result.status || 400).json({ message: result.message || "Unable to sign up." });
+    return;
+  }
+  const remember = readRememberFlag(req.body?.remember);
+  const userKey = normalizeName(result.user.username);
+  const tokens = issueAuthTokensForUser(userKey, remember);
+  if (!tokens) {
+    res.status(500).json({ message: "Unable to create session." });
+    return;
+  }
+  applyAuthCookies(res, tokens);
+  res.json({
+    username: result.user.username,
+    email: result.user.email || "",
+  });
+});
+
+app.get("/api/auth/session", (req, res) => {
+  const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {
+    allowRefreshFallback: false,
+  });
+  if (!auth.userKey) {
+    res.status(401).json({ message: "Not signed in." });
+    return;
+  }
+  const user = users.get(auth.userKey);
+  if (!user || !user.isRegistered) {
+    clearAuthCookies(res);
+    res.status(401).json({ message: "Session expired." });
+    return;
+  }
+  res.json({
+    authenticated: true,
+    username: user.username,
+    email: user.email || "",
+  });
+});
+
+app.post("/api/auth/refresh", (req, res) => {
+  const cookies = getAuthCookiesFromHeader(req.headers.cookie);
+  const refreshPayload = verifyAuthToken(cookies.refreshToken, "refresh");
+  if (!refreshPayload?.jti) {
+    clearAuthCookies(res);
+    res.status(401).json({ message: "Session expired." });
+    return;
+  }
+  const session = refreshSessions.get(refreshPayload.jti);
+  if (!session || Date.now() > Number(session.expiresAt)) {
+    revokeRefreshSession(refreshPayload.jti);
+    clearAuthCookies(res);
+    res.status(401).json({ message: "Session expired." });
+    return;
+  }
+  const userKey = resolveCurrentUserKey(session.userKey || refreshPayload.sub);
+  const user = userKey ? users.get(userKey) : null;
+  if (!user || !user.isRegistered) {
+    revokeRefreshSession(refreshPayload.jti);
+    clearAuthCookies(res);
+    res.status(401).json({ message: "Session expired." });
+    return;
+  }
+
+  const remember = Boolean(session.remember);
+  revokeRefreshSession(refreshPayload.jti);
+  const tokens = issueAuthTokensForUser(userKey, remember);
+  if (!tokens) {
+    clearAuthCookies(res);
+    res.status(500).json({ message: "Unable to refresh session." });
+    return;
+  }
+  applyAuthCookies(res, tokens);
+  res.json({ ok: true });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  const cookies = getAuthCookiesFromHeader(req.headers.cookie);
+  const refreshPayload = verifyAuthToken(cookies.refreshToken, "refresh");
+  if (refreshPayload?.jti) {
+    revokeRefreshSession(refreshPayload.jti);
+  }
+  clearAuthCookies(res);
+  res.json({ ok: true });
+});
+
+io.use((socket, next) => {
+  const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(socket.handshake?.headers?.cookie), {
+    allowRefreshFallback: true,
+  });
+  if (auth.userKey) {
+    socket.data.userKey = auth.userKey;
+  }
+  next();
+});
+
 io.on("connection", (socket) => {
+  socket.on("resume_session", () => {
+    const userKey = resolveCurrentUserKey(socket.data.userKey);
+    if (!userKey) {
+      socket.emit("auth_failed", { message: "Session expired. Please sign in again." });
+      return;
+    }
+    const user = users.get(userKey);
+    if (!user || !user.isRegistered) {
+      socket.emit("auth_failed", { message: "Session expired. Please sign in again." });
+      return;
+    }
+    finalizeSocketAuthentication(socket, user);
+  });
   socket.on("register", (payload) => {
     const isStringPayload = typeof payload === "string";
     const raw = payload || {};
@@ -1250,7 +2649,6 @@ io.on("connection", (socket) => {
       }
     } else {
       const wantsSignup = modeNormalized === "signup";
-      const wantsSignin = !wantsSignup;
       const username = usernameInput;
       const userKey = normalizeName(username);
 
@@ -1306,82 +2704,62 @@ io.on("connection", (socket) => {
       return;
     }
 
-    user.lastSeenAt = "";
-    const userKey = normalizeName(user.username);
-
-    socket.data.userKey = userKey;
-    socket.data.activeChatWith = null;
-
-    const previousSocketId = onlineUsers.get(userKey);
-    onlineUsers.set(userKey, socket.id);
-
-    if (previousSocketId && previousSocketId !== socket.id) {
-      const previousSocket = io.sockets.sockets.get(previousSocketId);
-      if (previousSocket) {
-        previousSocket.emit("error_message", {
-          message: "You were signed out because this account logged in elsewhere.",
-        });
-        previousSocket.disconnect(true);
-      }
-    }
-
-    markUndeliveredAsDelivered(userKey);
-
-    socket.emit("register_success", {
-      username: user.username,
-      email: user.email || "",
-      friends: buildFriendList(userKey),
-      requests: Array.from(user.requests).map((requesterKey) => {
-        const requester = users.get(requesterKey);
-        return requester?.username || requesterKey;
-      }),
-      profile: {
-        avatarId: user.avatarId || "",
-        age: user.age || "",
-        gender: user.gender || "",
-        displayName: user.displayName || "",
-        bio: user.bio || "",
-      },
-    });
-
-    emitStatusToFriends(userKey, true);
-    emitFriendList(userKey);
-    schedulePersist();
+    finalizeSocketAuthentication(socket, user);
   });
-
   socket.on("request_password_reset", (payload) => {
+    pruneExpiredPasswordResetTokens();
     const identifier = toDisplayName(payload?.identifier || payload?.email || payload);
+    const genericSentMessage = "If an account exists, a reset code has been sent.";
     if (!identifier) {
-      socket.emit("password_reset_failed", { message: "Email or username is required." });
+      socket.emit("password_reset_sent", { message: genericSentMessage });
       return;
     }
+
     const isEmail = identifier.includes("@");
     const user = isEmail ? findUserByEmail(identifier) : users.get(normalizeName(identifier));
     if (!user || !user.isRegistered) {
-      socket.emit("password_reset_failed", { message: "Account not found." });
+      socket.emit("password_reset_sent", { message: genericSentMessage });
       return;
     }
 
     const userKey = normalizeName(user.username);
-    const existingToken = passwordResetByUser.get(userKey);
-    if (existingToken) passwordResetTokens.delete(existingToken);
+    const rate = canIssuePasswordReset(userKey);
+    if (!rate.allowed) {
+      socket.emit("password_reset_failed", { message: rate.message });
+      return;
+    }
+
+    const existingTokenId = passwordResetByUser.get(userKey);
+    if (existingTokenId) dropPasswordResetTokenById(existingTokenId);
 
     const token = createResetToken();
-    const expiresAt = Date.now() + 15 * 60 * 1000;
-    passwordResetTokens.set(token, { userKey, expiresAt });
-    passwordResetByUser.set(userKey, token);
+    const salt = crypto.randomBytes(8).toString("hex");
+    const tokenHash = createResetTokenHash(token, salt);
+    const tokenId = createResetTokenId();
+    const expiresAt = Date.now() + PASSWORD_RESET_CODE_TTL_MS;
+    passwordResetTokens.set(tokenId, {
+      userKey,
+      salt,
+      tokenHash,
+      expiresAt,
+      attemptsLeft: PASSWORD_RESET_MAX_ATTEMPTS,
+    });
+    passwordResetByUser.set(userKey, tokenId);
+    markPasswordResetIssued(userKey, rate.state);
+    dispatchPasswordResetCode(user, token);
 
     socket.emit("password_reset_sent", {
-      message: "Reset code sent. Check your email.",
-      token,
+      message: genericSentMessage,
     });
   });
 
   socket.on("reset_password", (payload) => {
+    pruneExpiredPasswordResetTokens();
+    const identifier = toDisplayName(payload?.identifier || payload?.email || payload?.username || "");
     const token = toDisplayName(payload?.token || "");
     const newPassword = toDisplayName(payload?.newPassword || "");
-    if (!token || !newPassword) {
-      socket.emit("password_reset_failed", { message: "Reset code and new password are required." });
+    if (!identifier || !token || !newPassword) {
+      socket.emit("password_reset_failed", { message: "Email/username, reset code, and new password are required." });
       return;
     }
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
@@ -1390,20 +2768,44 @@ io.on("connection", (socket) => {
       });
       return;
     }
-    const entry = passwordResetTokens.get(token);
-    if (!entry) {
+    const isEmail = identifier.includes("@");
+    const user = isEmail ? findUserByEmail(identifier) : users.get(normalizeName(identifier));
+    if (!user || !user.isRegistered) {
       socket.emit("password_reset_failed", { message: "Invalid or expired reset code." });
       return;
     }
-    if (Date.now() > entry.expiresAt) {
-      passwordResetTokens.delete(token);
+
+    const userKey = normalizeName(user.username);
+    const tokenId = passwordResetByUser.get(userKey);
+    const entry = tokenId ? passwordResetTokens.get(tokenId) : null;
+    if (!entry || entry.userKey !== userKey) {
+      socket.emit("password_reset_failed", { message: "Invalid or expired reset code." });
+      return;
+    }
+
+    if (Date.now() > Number(entry.expiresAt)) {
+      dropPasswordResetTokenById(tokenId);
       socket.emit("password_reset_failed", { message: "Reset code expired. Request a new one." });
       return;
     }
-    const user = users.get(entry.userKey);
-    if (!user || !user.isRegistered) {
-      passwordResetTokens.delete(token);
-      socket.emit("password_reset_failed", { message: "Account not found." });
+
+    if (!Number.isFinite(Number(entry.attemptsLeft)) || Number(entry.attemptsLeft) <= 0) {
+      dropPasswordResetTokenById(tokenId);
+      socket.emit("password_reset_failed", { message: "Too many attempts. Request a new code." });
+      return;
+    }
+
+    const expectedHash = createResetTokenHash(token, entry.salt);
+    if (expectedHash !== entry.tokenHash) {
+      entry.attemptsLeft = Math.max(0, Number(entry.attemptsLeft) - 1);
+      if (entry.attemptsLeft <= 0) {
+        dropPasswordResetTokenById(tokenId);
+        socket.emit("password_reset_failed", { message: "Too many attempts. Request a new code." });
+        return;
+      }
+      socket.emit("password_reset_failed", {
+        message: `Invalid reset code. ${entry.attemptsLeft} attempt(s) left.`,
+      });
       return;
     }
 
@@ -1411,9 +2813,9 @@ io.on("connection", (socket) => {
     user.passwordSalt = secret.passwordSalt;
     user.passwordHash = secret.passwordHash;
     user.isRegistered = true;
+    revokeAllRefreshSessionsForUser(userKey);
 
-    passwordResetTokens.delete(token);
-    passwordResetByUser.delete(entry.userKey);
+    dropPasswordResetTokenById(tokenId);
     schedulePersist();
 
     socket.emit("password_reset_success", { message: "Password updated. Please sign in." });
@@ -1630,6 +3032,7 @@ io.on("connection", (socket) => {
     const secret = createPasswordSecret(nextPassword);
     user.passwordSalt = secret.passwordSalt;
     user.passwordHash = secret.passwordHash;
+    revokeAllRefreshSessionsForUser(userKey);
     schedulePersist();
 
     socket.emit("password_changed");
@@ -1783,14 +3186,23 @@ io.on("connection", (socket) => {
   socket.on("private_message", (payload) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
+    if (!allowSocketAction(socket, "private_message", 40, 60 * 1000)) {
+      socket.emit("error_message", { message: "Message rate limit reached. Slow down a bit." });
+      return;
+    }
 
     const to = toDisplayName(payload?.to);
     const text = withUploadToken(payload?.text);
+    const attachment = sanitizeMessageAttachment(payload?.attachment, text);
     const clientTempId = String(payload?.clientTempId || "").trim();
     const safeClientTempId = clientTempId.slice(0, 64);
     const toKey = normalizeName(to);
 
     if (!text) return;
+    if (text.length > MAX_MESSAGE_LENGTH) {
+      socket.emit("error_message", { message: `Message too long. Limit is ${MAX_MESSAGE_LENGTH} characters.` });
+      return;
+    }
 
     const me = users.get(userKey);
     const friend = users.get(toKey);
@@ -1798,6 +3210,15 @@ io.on("connection", (socket) => {
     if (!me || !friend || !me.friends.has(toKey)) {
       socket.emit("error_message", { message: "You can message only your friends." });
       return;
+    }
+
+    if (safeClientTempId) {
+      const existing = findMessageByClientTempId(userKey, toKey, safeClientTempId);
+      if (existing) {
+        socket.emit("private_message", existing);
+        emitMessageStatus(existing);
+        return;
+      }
     }
 
     const recipientSocketId = onlineUsers.get(toKey);
@@ -1817,8 +3238,12 @@ io.on("connection", (socket) => {
       deliveredAt: recipientSocketId ? timestamp : null,
       seenAt: recipientViewing ? timestamp : null,
       deletedAt: null,
+      editedAt: null,
+      pinnedAt: null,
+      pinnedBy: "",
       reactions: {},
     };
+    if (attachment) message.attachment = attachment;
     if (safeClientTempId) message.clientTempId = safeClientTempId;
     if (payload?.replyTo && payload.replyTo.id) {
       message.replyTo = {
@@ -1866,6 +3291,7 @@ io.on("connection", (socket) => {
   socket.on("typing", (payload) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
+    if (!allowSocketAction(socket, "typing", 120, 60 * 1000)) return;
 
     const toKey = normalizeName(payload?.to);
     const isTyping = Boolean(payload?.isTyping);
@@ -2043,6 +3469,7 @@ io.on("connection", (socket) => {
   socket.on("react", (payload) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
+    if (!allowSocketAction(socket, "react", 120, 60 * 1000)) return;
     const messageId = toDisplayName(payload?.messageId);
     const emoji = toDisplayName(payload?.emoji);
     const toKey = normalizeName(payload?.to);
@@ -2053,6 +3480,7 @@ io.on("connection", (socket) => {
     const conv = conversations.get(convKey) || [];
     const message = conv.find((m) => m.id === messageId);
     if (!message) return;
+    if (message.deletedAt) return;
     if (!message.reactions) message.reactions = {};
     if (!message.reactions[emoji]) message.reactions[emoji] = { count: 0, userKeys: [] };
     const entry = message.reactions[emoji];
@@ -2067,7 +3495,18 @@ io.on("connection", (socket) => {
     function buildReactionPayload(forUserKey) {
       const out = {};
       for (const [em, data] of Object.entries(message.reactions)) {
-        if (data.count > 0) out[em] = { count: data.count, mine: data.userKeys.includes(forUserKey) };
+        if (!data || data.count <= 0) continue;
+        const userKeys = Array.isArray(data.userKeys) ? data.userKeys : [];
+        const usersList = userKeys
+          .map((key) => users.get(key)?.username || key)
+          .map((name) => toDisplayName(name))
+          .filter(Boolean);
+        out[em] = {
+          count: data.count,
+          mine: userKeys.includes(forUserKey),
+          userKeys,
+          users: usersList,
+        };
       }
       return out;
     }
@@ -2075,6 +3514,150 @@ io.on("connection", (socket) => {
     const recipientSocket = onlineUsers.get(toKey);
     if (senderSocket) io.to(senderSocket).emit("reaction_updated", { messageId, reactions: buildReactionPayload(userKey) });
     if (recipientSocket) io.to(recipientSocket).emit("reaction_updated", { messageId, reactions: buildReactionPayload(toKey) });
+    schedulePersist();
+  });
+
+  socket.on("edit_message", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    if (!allowSocketAction(socket, "edit_message", 50, 60 * 1000)) {
+      socket.emit("error_message", { message: "Edit rate limit reached. Slow down a bit." });
+      return;
+    }
+
+    const messageId = toDisplayName(payload?.messageId);
+    const to = toDisplayName(payload?.to);
+    const toKey = normalizeName(to);
+    const nextText = withUploadToken(payload?.text);
+    if (!messageId || !toKey || !nextText) return;
+
+    if (nextText.length > MAX_MESSAGE_LENGTH) {
+      socket.emit("error_message", { message: `Message too long. Limit is ${MAX_MESSAGE_LENGTH} characters.` });
+      return;
+    }
+
+    const me = users.get(userKey);
+    const friend = users.get(toKey);
+    if (!me || !friend || !me.friends.has(toKey)) {
+      socket.emit("error_message", { message: "You can edit messages only in active friend chats." });
+      return;
+    }
+
+    const conversationKey = getConversationKey(userKey, toKey);
+    const conversation = conversations.get(conversationKey) || [];
+    const message = conversation.find((entry) => entry.id === messageId);
+    if (!message) {
+      socket.emit("error_message", { message: "Message not found." });
+      return;
+    }
+
+    if (message.fromKey !== userKey) {
+      socket.emit("error_message", { message: "You can edit only your own messages." });
+      return;
+    }
+    if (message.deletedAt) {
+      socket.emit("error_message", { message: "Deleted messages cannot be edited." });
+      return;
+    }
+    if (message.attachment) {
+      socket.emit("error_message", { message: "Attachment messages cannot be edited." });
+      return;
+    }
+    if (String(message.text || "").startsWith(CALL_LOG_PREFIX)) {
+      socket.emit("error_message", { message: "Call log messages cannot be edited." });
+      return;
+    }
+
+    if (toDisplayName(message.text) === nextText) {
+      return;
+    }
+
+    message.text = nextText;
+    message.editedAt = nowIso();
+
+    socket.emit("message_edited", {
+      messageId: message.id,
+      with: friend.username,
+      text: message.text,
+      editedAt: message.editedAt,
+      by: me.username,
+    });
+
+    const friendSocket = onlineUsers.get(toKey);
+    if (friendSocket) {
+      io.to(friendSocket).emit("message_edited", {
+        messageId: message.id,
+        with: me.username,
+        text: message.text,
+        editedAt: message.editedAt,
+        by: me.username,
+      });
+    }
+
+    emitFriendList(userKey);
+    emitFriendList(toKey);
+    schedulePersist();
+  });
+
+  socket.on("set_message_pin", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    if (!allowSocketAction(socket, "set_message_pin", 80, 60 * 1000)) return;
+
+    const messageId = toDisplayName(payload?.messageId);
+    const to = toDisplayName(payload?.to);
+    const toKey = normalizeName(to);
+    const shouldPin = Boolean(payload?.pinned);
+    if (!messageId || !toKey) return;
+
+    const me = users.get(userKey);
+    const friend = users.get(toKey);
+    if (!me || !friend || !me.friends.has(toKey)) {
+      socket.emit("error_message", { message: "You can pin messages only in active friend chats." });
+      return;
+    }
+
+    const conversationKey = getConversationKey(userKey, toKey);
+    const conversation = conversations.get(conversationKey) || [];
+    const message = conversation.find((entry) => entry.id === messageId);
+    if (!message) {
+      socket.emit("error_message", { message: "Message not found." });
+      return;
+    }
+    if (message.deletedAt) {
+      socket.emit("error_message", { message: "Deleted messages cannot be pinned." });
+      return;
+    }
+
+    if (shouldPin) {
+      message.pinnedAt = nowIso();
+      message.pinnedBy = me.username;
+    } else {
+      message.pinnedAt = null;
+      message.pinnedBy = "";
+    }
+
+    socket.emit("message_pin_updated", {
+      messageId: message.id,
+      with: friend.username,
+      pinned: shouldPin,
+      pinnedAt: message.pinnedAt,
+      pinnedBy: message.pinnedBy,
+      by: me.username,
+    });
+
+    const friendSocket = onlineUsers.get(toKey);
+    if (friendSocket) {
+      io.to(friendSocket).emit("message_pin_updated", {
+        messageId: message.id,
+        with: me.username,
+        pinned: shouldPin,
+        pinnedAt: message.pinnedAt,
+        pinnedBy: message.pinnedBy,
+        by: me.username,
+      });
+    }
+
     schedulePersist();
   });
 
@@ -2113,6 +3696,10 @@ io.on("connection", (socket) => {
 
     message.deletedAt = nowIso();
     message.text = DELETED_MESSAGE_TEXT;
+    message.editedAt = null;
+    message.attachment = null;
+    message.pinnedAt = null;
+    message.pinnedBy = "";
     message.reactions = {};
 
     socket.emit("message_deleted", {
@@ -2185,7 +3772,10 @@ async function closeStorage() {
       console.error("Failed closing MongoDB connection:", err);
     } finally {
       mongoClient = null;
-      mongoCollection = null;
+      mongoLegacyCollection = null;
+      mongoUsersCollection = null;
+      mongoConversationsCollection = null;
+      mongoMessagesCollection = null;
     }
   }
 }
@@ -2216,8 +3806,9 @@ async function bootstrap() {
 
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
+    const usingMongo = hasMongoStorage();
     console.log(
-      `Chat app running on http://localhost:${PORT} | retention=${CHAT_RETENTION_DAYS} day(s) | storage=${mongoCollection ? "mongodb" : "file"}`
+      `Chat app running on http://localhost:${PORT} | retention=${CHAT_RETENTION_DAYS} day(s) | storage=${usingMongo ? "mongodb(collections)" : "file"}`
     );
   });
 }
@@ -2226,3 +3817,4 @@ bootstrap().catch((err) => {
   console.error("Failed to start server:", err);
   process.exit(1);
 });
+

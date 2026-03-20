@@ -295,9 +295,15 @@
               placeholder="Message…"
               autocomplete="off" inputmode="text" enterkeyhint="send"
               autocapitalize="sentences" autocorrect="on" spellcheck="true" maxlength="1000" />
-            <button type="button" class="tool-btn" aria-label="Attach file">
+            <button type="button" class="tool-btn" id="attachFileBtn" aria-label="Attach file">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <button type="button" class="tool-btn" id="cameraBtn" aria-label="Capture photo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 8a2 2 0 0 1 2-2h2.1l1.35-2h7.1l1.35 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z"/>
+                <circle cx="12" cy="13" r="3.2"/>
               </svg>
             </button>
             <button type="button" class="tool-btn voice-btn" id="voiceBtn" aria-label="Voice message">
@@ -314,6 +320,19 @@
               </svg>
             </button>
           </form>
+          <input
+            id="attachFileInput"
+            type="file"
+            class="hidden"
+            accept="image/*,.pdf,.txt,.csv,.zip,.rar,.7z,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+          />
+          <input
+            id="cameraCaptureInput"
+            type="file"
+            class="hidden"
+            accept="image/*"
+            capture="environment"
+          />
           <span id="charCounter" class="char-counter hidden" aria-live="polite"></span>
         </div>
 
@@ -348,6 +367,7 @@
               <span class="signal-dot"></span>
               <span id="connectionLabel">Connecting…</span>
             </div>
+            <button id="retryFailedBtn" class="network-retry-all hidden" type="button">Retry failed</button>
             <button class="settings-edit-btn" data-settings-action="profile">Edit</button>
           </div>
         </div>
@@ -688,6 +708,7 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
   <script src="visuals.js"></script>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="auth-session.js"></script>
   <script src="pwa-register.js"></script>
   <script src="app.js"></script>
   <script src="chat-extras.js"></script>

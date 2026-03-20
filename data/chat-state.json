@@ -183,7 +183,7 @@
       "unread": [
         [
           "test11",
-          3
+          1
         ]
       ],
       "pushSubs": [],
@@ -316,6 +316,9 @@
           "deliveredAt": "2026-03-10T13:42:40.708Z",
           "seenAt": "2026-03-10T13:42:42.637Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -329,6 +332,9 @@
           "deliveredAt": "2026-03-10T13:42:46.405Z",
           "seenAt": "2026-03-10T13:42:46.405Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {
             "😂": {
               "count": 1,
@@ -359,6 +365,9 @@
           "deliveredAt": "2026-03-10T15:16:07.265Z",
           "seenAt": "2026-03-10T15:30:39.149Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -372,6 +381,9 @@
           "deliveredAt": "2026-03-10T15:16:40.181Z",
           "seenAt": "2026-03-10T15:30:39.150Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -385,6 +397,9 @@
           "deliveredAt": "2026-03-10T15:20:02.157Z",
           "seenAt": "2026-03-10T15:30:39.150Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -398,6 +413,9 @@
           "deliveredAt": "2026-03-10T15:20:02.157Z",
           "seenAt": "2026-03-10T15:30:39.150Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {},
           "replyTo": {
             "id": "1773150166405-b1z0r2",
@@ -416,6 +434,9 @@
           "deliveredAt": "2026-03-10T15:29:58.296Z",
           "seenAt": "2026-03-10T15:30:39.150Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -429,6 +450,9 @@
           "deliveredAt": "2026-03-10T15:30:32.385Z",
           "seenAt": "2026-03-10T15:30:39.150Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -442,6 +466,9 @@
           "deliveredAt": "2026-03-10T15:30:36.465Z",
           "seenAt": "2026-03-10T15:30:39.150Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -455,6 +482,9 @@
           "deliveredAt": "2026-03-10T15:40:26.128Z",
           "seenAt": "2026-03-10T15:40:26.128Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -468,6 +498,9 @@
           "deliveredAt": "2026-03-10T15:45:01.620Z",
           "seenAt": "2026-03-10T15:48:31.366Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -481,6 +514,9 @@
           "deliveredAt": "2026-03-10T15:45:49.048Z",
           "seenAt": "2026-03-10T15:48:31.366Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -494,6 +530,9 @@
           "deliveredAt": "2026-03-10T17:32:07.892Z",
           "seenAt": "2026-03-11T03:45:36.521Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -507,6 +546,9 @@
           "deliveredAt": "2026-03-11T10:44:57.096Z",
           "seenAt": "2026-03-11T10:45:01.436Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -520,6 +562,9 @@
           "deliveredAt": "2026-03-11T13:50:33.619Z",
           "seenAt": "2026-03-11T13:50:33.619Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -533,6 +578,9 @@
           "deliveredAt": "2026-03-11T13:50:47.003Z",
           "seenAt": "2026-03-11T13:50:47.003Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -546,6 +594,9 @@
           "deliveredAt": "2026-03-11T13:50:53.781Z",
           "seenAt": "2026-03-11T13:50:53.781Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -559,6 +610,9 @@
           "deliveredAt": "2026-03-11T14:38:18.461Z",
           "seenAt": "2026-03-11T14:38:18.461Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -572,6 +626,9 @@
           "deliveredAt": "2026-03-11T14:38:49.513Z",
           "seenAt": "2026-03-11T14:38:49.513Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -585,6 +642,9 @@
           "deliveredAt": "2026-03-11T14:39:04.137Z",
           "seenAt": "2026-03-11T14:39:04.137Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -598,6 +658,9 @@
           "deliveredAt": "2026-03-11T14:40:47.567Z",
           "seenAt": "2026-03-11T15:19:46.268Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -611,6 +674,9 @@
           "deliveredAt": "2026-03-11T15:20:31.825Z",
           "seenAt": "2026-03-11T15:20:37.556Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -624,6 +690,9 @@
           "deliveredAt": "2026-03-12T14:31:20.876Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -637,6 +706,9 @@
           "deliveredAt": "2026-03-12T14:31:20.877Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -650,6 +722,9 @@
           "deliveredAt": "2026-03-12T14:31:20.877Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -663,6 +738,9 @@
           "deliveredAt": "2026-03-14T09:52:43.388Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -676,6 +754,9 @@
           "deliveredAt": "2026-03-14T09:52:43.388Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -689,6 +770,9 @@
           "deliveredAt": "2026-03-14T09:52:43.388Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -702,6 +786,9 @@
           "deliveredAt": "2026-03-14T09:52:43.389Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -715,6 +802,9 @@
           "deliveredAt": "2026-03-14T09:52:43.389Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -728,6 +818,9 @@
           "deliveredAt": "2026-03-14T09:52:43.389Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -741,6 +834,9 @@
           "deliveredAt": "2026-03-14T09:52:43.389Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -754,6 +850,9 @@
           "deliveredAt": "2026-03-14T09:52:43.389Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -767,6 +866,9 @@
           "deliveredAt": "2026-03-14T09:52:43.389Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -780,6 +882,9 @@
           "deliveredAt": "2026-03-14T09:52:43.389Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -793,6 +898,9 @@
           "deliveredAt": "2026-03-14T09:52:43.389Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -806,6 +914,9 @@
           "deliveredAt": "2026-03-14T09:52:43.389Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -819,6 +930,9 @@
           "deliveredAt": "2026-03-14T09:53:19.975Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -832,6 +946,9 @@
           "deliveredAt": "2026-03-14T10:00:06.368Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -845,6 +962,9 @@
           "deliveredAt": "2026-03-14T10:00:45.902Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -858,6 +978,9 @@
           "deliveredAt": "2026-03-14T10:00:53.533Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -871,6 +994,9 @@
           "deliveredAt": "2026-03-14T11:00:47.077Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -884,6 +1010,9 @@
           "deliveredAt": "2026-03-14T11:01:12.450Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -897,6 +1026,9 @@
           "deliveredAt": "2026-03-14T11:01:46.301Z",
           "seenAt": "2026-03-14T11:04:43.072Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -910,6 +1042,9 @@
           "deliveredAt": "2026-03-14T11:10:57.813Z",
           "seenAt": "2026-03-14T11:16:21.795Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -923,6 +1058,9 @@
           "deliveredAt": "2026-03-14T11:12:21.891Z",
           "seenAt": "2026-03-14T11:16:21.795Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -936,6 +1074,9 @@
           "deliveredAt": "2026-03-14T11:17:00.521Z",
           "seenAt": "2026-03-14T11:47:34.092Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -949,6 +1090,9 @@
           "deliveredAt": "2026-03-14T11:17:03.906Z",
           "seenAt": "2026-03-14T11:47:34.092Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -962,6 +1106,9 @@
           "deliveredAt": "2026-03-14T11:18:40.051Z",
           "seenAt": "2026-03-14T11:47:34.092Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -975,6 +1122,9 @@
           "deliveredAt": "2026-03-14T11:39:30.748Z",
           "seenAt": "2026-03-14T11:47:34.092Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -988,7 +1138,21 @@
           "deliveredAt": "2026-03-14T11:41:00.878Z",
           "seenAt": "2026-03-14T11:47:34.092Z",
           "deletedAt": null,
-          "reactions": {}
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
+          "reactions": {
+            "😍": {
+              "count": 0,
+              "userKeys": []
+            },
+            "👍": {
+              "count": 1,
+              "userKeys": [
+                "test11"
+              ]
+            }
+          }
         },
         {
           "id": "1773489433594-fps7tx",
@@ -1001,6 +1165,9 @@
           "deliveredAt": "2026-03-14T11:57:13.594Z",
           "seenAt": "2026-03-14T12:19:37.002Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -1012,8 +1179,11 @@
           "text": "/uploads/voice-1773497885840-ba67ba.webm?token=8664f3a71381f6c2a633021f9034c2b6431801fee678c6d74dc30ca8017d9f0d",
           "timestamp": "2026-03-14T14:18:05.855Z",
           "deliveredAt": "2026-03-15T10:20:58.393Z",
-          "seenAt": null,
+          "seenAt": "2026-03-20T04:33:54.011Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -1025,8 +1195,11 @@
           "text": "google.com",
           "timestamp": "2026-03-14T14:32:19.019Z",
           "deliveredAt": "2026-03-15T10:20:58.394Z",
-          "seenAt": null,
+          "seenAt": "2026-03-20T04:33:54.012Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
         },
         {
@@ -1038,9 +1211,129 @@
           "text": "hii",
           "timestamp": "2026-03-14T14:45:02.205Z",
           "deliveredAt": "2026-03-15T10:20:58.394Z",
-          "seenAt": null,
+          "seenAt": "2026-03-20T04:33:54.012Z",
           "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
           "reactions": {}
+        },
+        {
+          "id": "1773975499231-gg0z9y",
+          "from": "test11",
+          "to": "test2",
+          "fromKey": "test11",
+          "toKey": "test2",
+          "text": "/uploads/file-1773975499207-0b39f6.png?token=2de912ccb952cdc4ca87a4fde9ff6cfd400266c2859e10c4366b413c1eb8e25e",
+          "timestamp": "2026-03-20T02:58:19.231Z",
+          "deliveredAt": "2026-03-20T04:33:46.178Z",
+          "seenAt": "2026-03-20T04:33:54.012Z",
+          "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
+          "reactions": {},
+          "attachment": {
+            "url": "/uploads/file-1773975499207-0b39f6.png?token=2de912ccb952cdc4ca87a4fde9ff6cfd400266c2859e10c4366b413c1eb8e25e",
+            "name": "Screenshot 2025-10-08 115601.png",
+            "mime": "image/png",
+            "size": 2686550,
+            "kind": "image"
+          }
+        },
+        {
+          "id": "1773981288965-qdy1s6",
+          "from": "test2",
+          "to": "test11",
+          "fromKey": "test2",
+          "toKey": "test11",
+          "text": "__call_log__:ended|outgoing|3|audio",
+          "timestamp": "2026-03-20T04:34:48.964Z",
+          "deliveredAt": "2026-03-20T04:34:48.964Z",
+          "seenAt": "2026-03-20T04:34:48.964Z",
+          "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
+          "reactions": {},
+          "clientTempId": "tmp-mmyenmy9-sm0ih9"
+        },
+        {
+          "id": "1773981310328-b3x28p",
+          "from": "test11",
+          "to": "test2",
+          "fromKey": "test11",
+          "toKey": "test2",
+          "text": "__call_log__:ended|outgoing|11|video",
+          "timestamp": "2026-03-20T04:35:10.328Z",
+          "deliveredAt": "2026-03-20T04:35:10.328Z",
+          "seenAt": "2026-03-20T04:35:28.921Z",
+          "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
+          "reactions": {},
+          "clientTempId": "tmp-mmyeo3ew-rrlwc1"
+        },
+        {
+          "id": "1773981990131-7g7dzs",
+          "from": "test2",
+          "to": "test11",
+          "fromKey": "test2",
+          "toKey": "test11",
+          "text": "/uploads/file-1773981990115-dba9d0.pdf?token=73891d5fb7685f518c55ac0aa55058bf39ed1cac0b59cdcb2f57b36e3eefcf04",
+          "timestamp": "2026-03-20T04:46:30.131Z",
+          "deliveredAt": "2026-03-20T04:46:30.131Z",
+          "seenAt": "2026-03-20T04:52:56.639Z",
+          "deletedAt": null,
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
+          "reactions": {},
+          "attachment": {
+            "url": "/uploads/file-1773981990115-dba9d0.pdf?token=73891d5fb7685f518c55ac0aa55058bf39ed1cac0b59cdcb2f57b36e3eefcf04",
+            "name": "Satyam_Pandey_Resume.pdf",
+            "mime": "application/pdf",
+            "size": 606926,
+            "kind": "file"
+          },
+          "clientTempId": "tmp-mmyf2nx2-h5e9y9"
+        },
+        {
+          "id": "1773982308025-3bjema",
+          "from": "test2",
+          "to": "test11",
+          "fromKey": "test2",
+          "toKey": "test11",
+          "text": "This message was deleted.",
+          "timestamp": "2026-03-20T04:51:48.025Z",
+          "deliveredAt": "2026-03-20T04:51:48.025Z",
+          "seenAt": "2026-03-20T04:52:56.639Z",
+          "deletedAt": "2026-03-20T04:51:56.223Z",
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
+          "reactions": {},
+          "attachment": null,
+          "clientTempId": "tmp-mmyf9h8p-39tp7x"
+        },
+        {
+          "id": "1773983122525-9e2z27",
+          "from": "test11",
+          "to": "test2",
+          "fromKey": "test11",
+          "toKey": "test2",
+          "text": "This message was deleted.",
+          "timestamp": "2026-03-20T05:05:22.525Z",
+          "deliveredAt": "2026-03-20T05:05:22.525Z",
+          "seenAt": null,
+          "deletedAt": "2026-03-20T05:05:30.790Z",
+          "editedAt": null,
+          "pinnedAt": null,
+          "pinnedBy": "",
+          "reactions": {},
+          "attachment": null,
+          "clientTempId": "tmp-mmyfqxpf-t1jmx7"
         }
       ]
     }

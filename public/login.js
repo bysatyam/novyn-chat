@@ -39,12 +39,15 @@
     setTimeout(() => r.remove(), 600);
   }
 
-  const SESSION_KEY = "novyn-session";
   const REMEMBER_KEY = "novyn-remember";
   const DASHBOARD_PATH = "/index.html";
+  const LOGOUT_QUERY_KEY = "logout";
+  const pageSearchParams = new URLSearchParams(window.location.search || "");
+  const forceLoggedOut = pageSearchParams.get(LOGOUT_QUERY_KEY) === "1";
   const socketAvailable = typeof io === "function";
   const SOCKET_URL = window.location.origin.replace(/\/$/, "");
   const socket = socketAvailable ? io(SOCKET_URL) : null;
+  const authApi = window._novynAuth || null;
 
   const rememberCheckbox = document.getElementById("rememberMe");
   const forgotPasswordLink = document.getElementById("forgotPasswordLink");
@@ -74,7 +77,6 @@
   const statMessages = document.getElementById("statMessages");
   const statNewUsers = document.getElementById("statNewUsers");
 
-  let pendingCredentials = null;
   let pendingReset = false;
 
   function formatStat(value) {
@@ -194,44 +196,6 @@
     if (signUpBtn) signUpBtn.disabled = isLoading;
   }
 
-  function getStoredSessionFrom(storage) {
-    try {
-      const raw = storage.getItem(SESSION_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      const email = String(parsed?.email || "").trim();
-      const username = String(parsed?.username || "").trim();
-      const password = String(parsed?.password || "");
-      if ((!email && !username) || !password) return null;
-      return { email, username, password };
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function readStoredSession() {
-    return getStoredSessionFrom(sessionStorage) || getStoredSessionFrom(localStorage);
-  }
-
-  function writeStoredSession(session, remember) {
-    const email = String(session?.email || "").trim();
-    const username = String(session?.username || "").trim();
-    const password = String(session?.password || "");
-    if ((!email && !username) || !password) return;
-    try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ email, username, password }));
-    } catch (_) {}
-    try {
-      if (remember) {
-        localStorage.setItem(SESSION_KEY, JSON.stringify({ email, username, password }));
-        localStorage.setItem(REMEMBER_KEY, "1");
-      } else {
-        localStorage.removeItem(SESSION_KEY);
-        localStorage.removeItem(REMEMBER_KEY);
-      }
-    } catch (_) {}
-  }
-
   function redirectToDashboard() {
     window.location.replace(DASHBOARD_PATH);
   }
@@ -240,7 +204,28 @@
     return String(input?.value || "").trim();
   }
 
-  function handleAuth(mode) {
+  async function postAuth(path, payload) {
+    if (authApi?.request) {
+      return authApi.request(path, {
+        method: "POST",
+        body: payload,
+      });
+    }
+    try {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      return { ok: response.ok, status: response.status, data };
+    } catch (_) {
+      return { ok: false, status: 0, data: { message: "Connection issue. Try again." } };
+    }
+  }
+
+  async function handleAuth(mode) {
     const isSignup = mode === "signup";
     const identifier = getValue(isSignup ? signUpEmailInput : loginIdentifierInput);
     const password = getValue(isSignup ? signUpPasswordInput : loginPasswordInput);
@@ -256,23 +241,41 @@
       );
       return;
     }
+    const remember = Boolean(rememberCheckbox && rememberCheckbox.checked);
+    try {
+      if (remember) {
+        localStorage.setItem(REMEMBER_KEY, "1");
+      } else {
+        localStorage.removeItem(REMEMBER_KEY);
+      }
+    } catch (_) {}
 
-    if (!socket) {
-      setMessage("Realtime client failed to load. Open Novyn from your server URL.", "error");
-      return;
-    }
-
-    const isEmail = identifier.includes("@");
-    pendingCredentials = {
-      email: isSignup ? identifier : isEmail ? identifier : "",
-      username: isSignup ? username : isEmail ? "" : identifier,
-      password,
-      name,
-      mode,
-    };
     setLoading(true);
     setMessage("");
-    socket.emit("register", pendingCredentials);
+
+    const payload = isSignup
+      ? { email: identifier, password, name, username, remember }
+      : { identifier, password, remember };
+
+    try {
+      const result = isSignup
+        ? authApi?.signUp
+          ? await authApi.signUp(payload)
+          : await postAuth("/api/auth/signup", payload)
+        : authApi?.signIn
+          ? await authApi.signIn(payload)
+          : await postAuth("/api/auth/signin", payload);
+      if (!result?.ok) {
+        setMessage(result?.data?.message || "Authentication failed.", "error");
+        return;
+      }
+      setMessage("Signed in. Redirecting...", "success");
+      redirectToDashboard();
+    } catch (_) {
+      setMessage("Connection issue. Try again.", "error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function clearMessage() {
@@ -336,11 +339,12 @@
   if (resetConfirmBtn) {
     resetConfirmBtn.addEventListener("click", () => {
       if (pendingReset) return;
+      const identifier = getValue(resetEmailInput);
       const token = getValue(resetCodeInput);
       const nextPassword = getValue(resetNewPasswordInput);
       const confirmPassword = getValue(resetConfirmPasswordInput);
-      if (!token || !nextPassword || !confirmPassword) {
-        showResetMessage("Fill in the code and both password fields.", "error");
+      if (!identifier || !token || !nextPassword || !confirmPassword) {
+        showResetMessage("Fill in your email/username, code, and both password fields.", "error");
         return;
       }
       if (nextPassword !== confirmPassword) {
@@ -353,7 +357,7 @@
       }
       pendingReset = true;
       showResetMessage("Updating password...", "");
-      socket.emit("reset_password", { token, newPassword: nextPassword });
+      socket.emit("reset_password", { identifier, token, newPassword: nextPassword });
     });
   }
 
@@ -393,41 +397,69 @@
     });
   }
 
-  const existingSession = readStoredSession();
-  if (existingSession) {
-    redirectToDashboard();
+  async function hasValidSession() {
+    if (authApi?.hasValidSession) {
+      try {
+        const result = await authApi.hasValidSession();
+        return Boolean(result?.ok);
+      } catch (_) {
+        return false;
+      }
+    }
+
+    try {
+      const response = await fetch("/api/auth/session", {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (response.ok) return true;
+      if (response.status !== 401) return false;
+    } catch (_) {
+      return false;
+    }
+
+    try {
+      const refreshResponse = await fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!refreshResponse.ok) return false;
+      const retry = await fetch("/api/auth/session", {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      return retry.ok;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  if (forceLoggedOut) {
+    const logoutRequest = authApi?.logout
+      ? authApi.logout()
+      : fetch("/api/auth/logout", {
+          method: "POST",
+          cache: "no-store",
+          credentials: "same-origin",
+          keepalive: true,
+        });
+    Promise.resolve(logoutRequest).catch(() => {});
+    if (window.history && typeof window.history.replaceState === "function") {
+      const cleanPath = `${window.location.pathname}${window.location.hash || ""}`;
+      window.history.replaceState(null, "", cleanPath || "/login.html");
+    }
   }
 
   loadStats();
   setInterval(loadStats, 15000);
 
   if (socket) {
-    socket.on("register_success", (data) => {
-      const email = data?.email || pendingCredentials?.email;
-      const username = data?.username || pendingCredentials?.username;
-      const password = pendingCredentials?.password;
-      const remember = Boolean(rememberCheckbox && rememberCheckbox.checked);
-      pendingCredentials = null;
-      if (password && (email || username)) writeStoredSession({ email, username, password }, remember);
-      setLoading(false);
-      setMessage("Signed in. Redirecting...", "success");
-      redirectToDashboard();
-    });
-
-    socket.on("auth_failed", (data) => {
-      pendingCredentials = null;
-      setLoading(false);
-      setMessage(data?.message || "Authentication failed.", "error");
-    });
-
     socket.on("password_reset_sent", (data) => {
       pendingReset = false;
       setResetStep("confirm");
       showResetMessage(data?.message || "Reset code sent.", "success");
-      if (resetDevToken && data?.token) {
-        resetDevToken.textContent = `Reset code: ${data.token}`;
-        resetDevToken.classList.remove("hidden");
-      }
     });
 
     socket.on("password_reset_failed", (data) => {
@@ -447,11 +479,9 @@
     });
 
     socket.on("connect_error", () => {
-      if (pendingCredentials) {
-        setLoading(false);
+      if (pendingReset) {
+        pendingReset = false;
+        showResetMessage("Connection issue. Try again.", "error");
       }
-      setMessage("Connection issue. Try again.", "error");
     });
-  } else {
-    setMessage("Realtime client failed to load. Open Novyn from your server URL.", "error");
   }
