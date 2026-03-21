@@ -151,7 +151,7 @@
       "displayName": "",
       "bio": "",
       "createdAt": "",
-      "lastSeenAt": ""
+      "lastSeenAt": "2026-03-21T02:48:36.064Z"
     },
     {
       "key": "teat",
@@ -1255,8 +1255,7 @@
           "editedAt": null,
           "pinnedAt": null,
           "pinnedBy": "",
-          "reactions": {},
-          "clientTempId": "tmp-mmyenmy9-sm0ih9"
+          "reactions": {}
         },
         {
           "id": "1773981310328-b3x28p",
@@ -1272,8 +1271,7 @@
           "editedAt": null,
           "pinnedAt": null,
           "pinnedBy": "",
-          "reactions": {},
-          "clientTempId": "tmp-mmyeo3ew-rrlwc1"
+          "reactions": {}
         },
         {
           "id": "1773981990131-7g7dzs",
@@ -1296,8 +1294,7 @@
             "mime": "application/pdf",
             "size": 606926,
             "kind": "file"
-          },
-          "clientTempId": "tmp-mmyf2nx2-h5e9y9"
+          }
         },
         {
           "id": "1773982308025-3bjema",
@@ -1313,9 +1310,7 @@
           "editedAt": null,
           "pinnedAt": null,
           "pinnedBy": "",
-          "reactions": {},
-          "attachment": null,
-          "clientTempId": "tmp-mmyf9h8p-39tp7x"
+          "reactions": {}
         },
         {
           "id": "1773983122525-9e2z27",
@@ -1331,9 +1326,7 @@
           "editedAt": null,
           "pinnedAt": null,
           "pinnedBy": "",
-          "reactions": {},
-          "attachment": null,
-          "clientTempId": "tmp-mmyfqxpf-t1jmx7"
+          "reactions": {}
         }
       ]
     }

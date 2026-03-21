@@ -107,6 +107,7 @@ const callMiniEnd      = document.getElementById("callMiniEnd");
 const callLogList      = document.getElementById("callLogList");
 const callHistoryList  = document.getElementById("callHistoryList");
 const navRailButtons   = Array.from(document.querySelectorAll(".tab-btn[data-rail], .nav-btn[data-rail]"));
+const bottomTabBar     = document.querySelector(".bottom-tab-bar");
 const navSettingsBtn   = document.getElementById("navSettingsBtn");
 const settingsPanel    = document.getElementById("settingsPanel");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
@@ -1140,6 +1141,25 @@ function clearSidebarSearch() {
   if (!sidebarSearch) return;
   sidebarSearch.value = "";
   friendSearchQuery = "";
+}
+
+function syncViewportLayoutMetrics() {
+  const root = document.documentElement;
+  if (!root) return;
+
+  const vv = window.visualViewport;
+  const viewportHeight = vv && Number.isFinite(vv.height)
+    ? vv.height
+    : window.innerHeight;
+  if (Number.isFinite(viewportHeight) && viewportHeight > 0) {
+    root.style.setProperty("--app-vh", `${Math.round(viewportHeight)}px`);
+  }
+
+  if (!bottomTabBar) return;
+  const tabHeight = bottomTabBar.getBoundingClientRect().height;
+  if (Number.isFinite(tabHeight) && tabHeight > 0) {
+    root.style.setProperty("--tab-safe-h", `${Math.round(tabHeight)}px`);
+  }
 }
 
 function showSidebarListOnMobile(options = {}) {
@@ -7210,6 +7230,7 @@ socket.on("message_deleted", (payload) => {
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+syncViewportLayoutMetrics();
 setComposerEnabled(false);
 renderActiveFriendPresence();
 syncRemoveFriendButton();
@@ -7227,9 +7248,14 @@ if (messagesEl && typeof ResizeObserver !== "undefined") {
   messagesResizeObserver.observe(messagesEl);
 }
 window.addEventListener("resize", () => {
+  syncViewportLayoutMetrics();
   if (!activeFriend) return;
   if (scrollState.pinnedToBottom) scrollToBottom(true);
 }, { passive: true });
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncViewportLayoutMetrics, { passive: true });
+  window.visualViewport.addEventListener("scroll", syncViewportLayoutMetrics, { passive: true });
+}
 
 window._novynReply = { setReply };
 window._novynSocket = socket;
