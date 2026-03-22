@@ -77,10 +77,18 @@ const messageSearchClear = document.getElementById("messageSearchClear");
 const messageSearchPrev  = document.getElementById("messageSearchPrev");
 const messageSearchNext  = document.getElementById("messageSearchNext");
 const messageSearchCount = document.getElementById("messageSearchCount");
+const messageSearchScope = document.getElementById("messageSearchScope");
+const messageSearchFilter = document.getElementById("messageSearchFilter");
+const globalSearchResults = document.getElementById("globalSearchResults");
 const callButton       = document.querySelector(".chat-header-actions .call-btn");
 const videoButton      = document.querySelector(".chat-header-actions .video-btn");
 const profileCallBtn   = document.querySelector(".profile-action-btn[data-action='call']");
 const profileVideoBtn  = document.querySelector(".profile-action-btn[data-action='video']");
+const infoCallBtn      = document.getElementById("infoCallBtn");
+const infoMuteBtn      = document.getElementById("infoMuteBtn");
+const infoBlockBtn     = document.getElementById("infoBlockBtn");
+const infoReportBtn    = document.getElementById("infoReportBtn");
+const infoMediaGrid    = document.getElementById("infoMediaGrid");
 const callModal        = document.getElementById("callModal");
 const callBadge        = document.getElementById("callBadge");
 const callAvatar       = document.getElementById("callAvatar");
@@ -114,6 +122,15 @@ const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const settingsAvatar   = document.getElementById("settingsAvatar");
 const settingsProfileName = document.getElementById("settingsProfileName");
 const settingsProfileHandle = document.getElementById("settingsProfileHandle");
+const createGroupBtn   = document.getElementById("createGroupBtn");
+const chatQuickMenuBtn = document.getElementById("chatQuickMenuBtn");
+const chatQuickMenu    = document.getElementById("chatQuickMenu");
+const chatCategoryButtons = Array.from(document.querySelectorAll(".chat-category-btn"));
+const chatFilterCountAll = document.getElementById("chatFilterCountAll");
+const chatFilterCountGroups = document.getElementById("chatFilterCountGroups");
+const chatFilterCountBlocked = document.getElementById("chatFilterCountBlocked");
+const chatFilterCountUnread = document.getElementById("chatFilterCountUnread");
+const messageViewMeta  = document.getElementById("messageViewMeta");
 const sidebarBrand = document.querySelector(".app-brand");
 const sidebarTopActions = document.querySelector(".sidebar-top-actions");
 const callFilterButtons = Array.from(document.querySelectorAll("[data-call-filter]"));
@@ -127,9 +144,16 @@ const LOGIN_PATH        = "/login.html";
 const isDashboardPage   = Boolean(chatLayout) && !document.body.classList.contains("auth-page");
 const MOBILE_BP         = 768;
 const INCOMING_CALLS_ENABLED = true;
+const scheduleBtn       = document.getElementById("scheduleBtn");
+const scheduledPanel    = document.getElementById("scheduledPanel");
+const scheduledList     = document.getElementById("scheduledList");
+const scheduledEmpty    = document.getElementById("scheduledEmpty");
+const CSRF_COOKIE_NAME = "novyn_csrf";
+const CSRF_HEADER_NAME = "x-novyn-csrf";
 
 let me           = "";
 let activeFriend = "";
+let activeChatKind = "friend";
 let friends      = [];
 let hasGreeted   = false;
 let requests     = [];
@@ -138,6 +162,7 @@ let replyTo      = null;
 let searchPanelOpen = false;
 let friendSearchQuery = "";
 let sidebarView = "messages";
+let messageListFilter = "all";
 let settingsOpen = false;
 let callFilter = "all";
 let logoutInProgress = false;
@@ -173,6 +198,22 @@ const searchState = {
   index: -1,
   query: "",
 };
+const globalSearchState = {
+  requestId: 0,
+  query: "",
+  filter: "all",
+  results: [],
+  loading: false,
+  timer: null,
+};
+const safetyState = {
+  blocked: new Set(),
+  muted: new Set(),
+};
+const scheduledState = {
+  byChat: new Map(),
+};
+let pendingMessageFocus = { friendKey: "", messageId: "", kind: "friend" };
 const friendSuggestState = {
   timer: null,
   lastQuery: "",
@@ -183,6 +224,7 @@ let pendingUnreadJump = { friendKey: "", count: 0 };
 let lastInfoPanelFriendKey = "";
 let messageWindowStart = 0;
 let messageWindowEnd = 0;
+let historyRenderWarningShown = false;
 let loadOlderBtn = null;
 const MAX_VISIBLE_MESSAGES = 200;
 const MESSAGE_WINDOW_PAGE = 80;
@@ -208,6 +250,7 @@ window._novynProfile = myProfile;
 const localTyping = {
   active:    false,
   target:    "",
+  kind:      "friend",
   timeoutId: null,
 };
 const scrollState = {
@@ -229,7 +272,7 @@ const CALL_LOG_PREFIX = "__call_log__:";
 const CALL_HISTORY_KEY = "novyn-call-history";
 const MAX_CALL_HISTORY = 200;
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Utilities Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function normalizeName(value) {
   return String(value || "").trim().toLowerCase();
@@ -237,6 +280,95 @@ function normalizeName(value) {
 
 function normalizeSearchText(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeChatKind(value) {
+  return String(value || "").trim().toLowerCase() === "group" ? "group" : "friend";
+}
+
+function getScheduledChatKey(target, kind = "friend") {
+  const key = normalizeName(target);
+  if (!key) return "";
+  return `${normalizeChatKind(kind)}:${key}`;
+}
+
+function getChatEntry(target, kind = "friend") {
+  const key = normalizeName(target);
+  const chatKind = normalizeChatKind(kind);
+  if (!key) return null;
+  return friends.find((entry) => {
+    if (normalizeName(entry?.username) !== key) return false;
+    const entryKind = normalizeChatKind(entry?.kind || "friend");
+    return entryKind === chatKind;
+  }) || null;
+}
+
+function getActiveChatEntry() {
+  if (!activeFriend) return null;
+  return getChatEntry(activeFriend, activeChatKind);
+}
+
+function isSameChatTarget(targetA, kindA, targetB, kindB) {
+  return normalizeName(targetA) === normalizeName(targetB)
+    && normalizeChatKind(kindA) === normalizeChatKind(kindB);
+}
+
+function setScheduledMessagesForChat(target, kind, messages) {
+  const chatKey = getScheduledChatKey(target, kind);
+  if (!chatKey) return;
+  scheduledState.byChat.set(chatKey, Array.isArray(messages) ? messages.slice() : []);
+}
+
+function getScheduledMessagesForChat(target = activeFriend, kind = activeChatKind) {
+  const chatKey = getScheduledChatKey(target, kind);
+  if (!chatKey) return [];
+  const list = scheduledState.byChat.get(chatKey);
+  return Array.isArray(list) ? list : [];
+}
+
+function readCookie(name) {
+  const needle = `${String(name || "").trim()}=`;
+  if (!needle) return "";
+  const parts = String(document.cookie || "").split(";");
+  for (const part of parts) {
+    const item = part.trim();
+    if (!item.startsWith(needle)) continue;
+    try {
+      return decodeURIComponent(item.slice(needle.length));
+    } catch (_) {
+      return item.slice(needle.length);
+    }
+  }
+  return "";
+}
+
+function buildCsrfHeaders(base = {}) {
+  const headers = { ...(base || {}) };
+  const token = readCookie(CSRF_COOKIE_NAME);
+  if (token) headers[CSRF_HEADER_NAME] = token;
+  return headers;
+}
+
+function normalizeHistoryPayload(rawPayload) {
+  if (Array.isArray(rawPayload)) {
+    return {
+      kind: normalizeChatKind(activeChatKind || "friend"),
+      toType: normalizeChatKind(activeChatKind || "friend"),
+      to: activeFriend || "",
+      with: activeFriend || "",
+      messages: rawPayload,
+    };
+  }
+  if (!rawPayload || typeof rawPayload !== "object") {
+    return {
+      kind: normalizeChatKind(activeChatKind || "friend"),
+      toType: normalizeChatKind(activeChatKind || "friend"),
+      to: activeFriend || "",
+      with: activeFriend || "",
+      messages: [],
+    };
+  }
+  return rawPayload;
 }
 
 function validateOutgoingMessageText(value, options = {}) {
@@ -257,12 +389,88 @@ function formatFileSize(bytes) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const MOJIBAKE_DETECT_RE = /Ã.|Â.|â€|â€™|â€œ|â€¢|â€“|â€”|â„¢|â€¦|â—|âœ|ðŸ|ï¿½|�/;
+const MOJIBAKE_SCORE_RE = /Ã.|Â.|â€|â€™|â€œ|â€¢|â€“|â€”|â„¢|â€¦|â—|âœ|ðŸ|ï¿½|�/g;
+
+function getMojibakeScore(value) {
+  const text = String(value || "");
+  const matches = text.match(MOJIBAKE_SCORE_RE);
+  return matches ? matches.length : 0;
+}
+
+function decodeLatin1AsUtf8(value) {
+  const text = String(value || "");
+  if (!text || typeof TextDecoder !== "function") return text;
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i += 1) {
+    bytes[i] = text.charCodeAt(i) & 0xff;
+  }
+  try {
+    return new TextDecoder("utf-8").decode(bytes);
+  } catch (_) {
+    return text;
+  }
+}
+
+function normalizeMojibakeText(value) {
+  const original = String(value ?? "");
+  if (!original) return "";
+  let output = original;
+  for (let pass = 0; pass < 2; pass += 1) {
+    if (!MOJIBAKE_DETECT_RE.test(output)) break;
+    const before = getMojibakeScore(output);
+    const decoded = decodeLatin1AsUtf8(output);
+    if (!decoded || decoded === output) break;
+    const after = getMojibakeScore(decoded);
+    if (after > before) break;
+    output = decoded;
+    if (after === 0) break;
+  }
+  return output.replace(/\uFFFD+/g, "");
+}
+
+function sanitizeMessagePayload(rawMessage) {
+  if (!rawMessage || typeof rawMessage !== "object") return null;
+  const message = { ...rawMessage };
+  message.text = normalizeMojibakeText(message.text);
+  message.from = normalizeMojibakeText(message.from);
+  message.to = normalizeMojibakeText(message.to);
+  message.groupId = normalizeMojibakeText(message.groupId);
+  if (message.replyTo && typeof message.replyTo === "object") {
+    message.replyTo = {
+      ...message.replyTo,
+      text: normalizeMojibakeText(message.replyTo.text),
+      from: normalizeMojibakeText(message.replyTo.from),
+    };
+  }
+  if (message.attachment && typeof message.attachment === "object") {
+    message.attachment = {
+      ...message.attachment,
+      name: normalizeMojibakeText(message.attachment.name),
+      mime: normalizeMojibakeText(message.attachment.mime),
+    };
+  }
+  return message;
+}
+
+function sanitizeFriendRecord(rawFriend) {
+  if (!rawFriend || typeof rawFriend !== "object") return rawFriend;
+  return {
+    ...rawFriend,
+    username: normalizeMojibakeText(rawFriend.username),
+    displayName: normalizeMojibakeText(rawFriend.displayName),
+    bio: normalizeMojibakeText(rawFriend.bio),
+    lastMessage: normalizeMojibakeText(rawFriend.lastMessage),
+    lastFrom: normalizeMojibakeText(rawFriend.lastFrom),
+  };
+}
+
 function normalizeAttachmentPayload(rawAttachment, fallbackUrl = "") {
   if (!rawAttachment || typeof rawAttachment !== "object") return null;
   const url = String(rawAttachment.url || fallbackUrl || "").trim();
   if (!url) return null;
-  const mime = String(rawAttachment.mime || "").trim().toLowerCase();
-  const name = String(rawAttachment.name || "").trim().slice(0, 120);
+  const mime = normalizeMojibakeText(rawAttachment.mime || "").trim().toLowerCase();
+  const name = normalizeMojibakeText(rawAttachment.name || "").trim().slice(0, 120);
   const kind = String(rawAttachment.kind || "").trim().toLowerCase() === "image"
     || mime.startsWith("image/")
     ? "image"
@@ -964,7 +1172,7 @@ const fileViewer = (() => {
       if (metaEl) {
         const sizeText = formatFileSize(size);
         const typeText = mime || "Unknown file type";
-        metaEl.textContent = sizeText ? `${typeText} • ${sizeText}` : typeText;
+        metaEl.textContent = sizeText ? `${typeText} - ${sizeText}` : typeText;
       }
     }
 
@@ -1008,6 +1216,11 @@ const fileViewer = (() => {
 async function openComposerCameraCapture() {
   if (!activeFriend) {
     showToast("Choose a friend before sending a photo.", "error");
+    return;
+  }
+  const safety = getFriendSafety(activeFriend, activeChatKind);
+  if (safety.blocked) {
+    showToast(safety.blockedByMe ? "Unblock this contact to send photos." : "This user has blocked you.", "error");
     return;
   }
   if (attachmentUploadState.active) {
@@ -1065,6 +1278,9 @@ function setSidebarView(nextView, options = {}) {
   if (sidebarTopActions) {
     sidebarTopActions.style.display = view === "messages" ? "" : "none";
   }
+  if (view !== "messages") {
+    closeChatQuickMenu();
+  }
   if (networkPill) {
     networkPill.style.display = view === "messages" ? "" : "none";
   }
@@ -1076,7 +1292,7 @@ function setSidebarView(nextView, options = {}) {
     } else if (view === "discover") {
       sidebarSearch.placeholder = "Find people or groups...";
     } else {
-      sidebarSearch.placeholder = "Search friends...";
+      sidebarSearch.placeholder = "Search chats...";
     }
   }
   if (view === "discover") {
@@ -1098,6 +1314,7 @@ function setSidebarView(nextView, options = {}) {
     renderCallHistory();
     renderDiscover();
   }
+  syncMessageFilterUi();
 }
 
 function setRequestsPanelOpen(nextState) {
@@ -1122,6 +1339,7 @@ function updateRequestsBadge() {
 function setSettingsOpen(nextState) {
   if (!settingsPanel) return;
   settingsOpen = Boolean(nextState);
+  if (settingsOpen) closeChatQuickMenu();
   document.body.classList.toggle("settings-open", settingsOpen);
   settingsPanel.setAttribute("aria-hidden", settingsOpen ? "false" : "true");
   if (navSettingsBtn) navSettingsBtn.classList.toggle("active", settingsOpen);
@@ -1316,7 +1534,7 @@ function renderCallHistory() {
     const fromMe = normalizeName(message.from) === normalizeName(me);
     const display = getCallLogDisplay(log, fromMe);
     const timeText = formatFriendTime(message.timestamp || friend.lastTimestamp || "");
-    const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable"].includes(display.status);
+    const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(display.status);
     const isNeutralStatus = display.status === "ended";
     const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
 
@@ -1385,21 +1603,223 @@ function showSidebarOnMobile() {
   document.body.classList.add("mob-list-open");
 }
 
-function setActiveChatTarget(friendName) {
+function setActiveChatTarget(friendName, chatKind = activeChatKind) {
   if (!socketAvailable || !isDashboardPage) return;
-  socket.emit("set_active_chat", friendName || "");
+  const target = String(friendName || "").trim();
+  if (!target) {
+    socket.emit("set_active_chat", "");
+    return;
+  }
+  socket.emit("set_active_chat", {
+    to: target,
+    toType: normalizeChatKind(chatKind),
+  });
 }
 
 function getFriendSearchBlob(friend) {
   const displayName = getFriendDisplayName(friend);
-  const bio = friend?.bio || "";
-  const username = friend?.username || "";
-  const lastMessage = friend?.lastMessage || "";
-  const lastFrom = friend?.lastFrom || "";
+  const bio = cleanDisplayName(friend?.bio);
+  const username = normalizeMojibakeText(friend?.username || "");
+  const lastMessage = normalizeMojibakeText(friend?.lastMessage || "");
+  const lastFrom = normalizeMojibakeText(friend?.lastFrom || "");
   const preview = friendPreview(friend);
   return normalizeSearchText(
     `${displayName} ${username} ${bio} ${lastMessage} ${lastFrom} ${preview}`
   );
+}
+
+function isBlockedFriendEntry(friend) {
+  if (!friend) return false;
+  if (normalizeChatKind(friend?.kind || "friend") === "group") return false;
+  const key = normalizeName(friend?.username || "");
+  return Boolean(friend?.blockedByMe || friend?.blockedYou || (key && safetyState.blocked.has(key)));
+}
+
+function getBlockedUsersForSettings() {
+  const list = Array.isArray(friends) ? friends : [];
+  return list
+    .filter((friend) => normalizeChatKind(friend?.kind || "friend") === "friend")
+    .map((friend) => {
+      const username = String(friend?.username || "").trim();
+      if (!username) return null;
+      const safety = getFriendSafety(username, friend?.kind || "friend");
+      if (!safety.blockedByMe) return null;
+      return {
+        username,
+        displayName: getFriendDisplayName(friend),
+        avatarId: String(friend?.avatarId || ""),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a.displayName || "").localeCompare(String(b.displayName || "")));
+}
+
+function getMessageFilterCounts() {
+  const list = Array.isArray(friends) ? friends : [];
+  let groups = 0;
+  let blocked = 0;
+  let unread = 0;
+  for (const friend of list) {
+    const isGroup = normalizeChatKind(friend?.kind || "friend") === "group";
+    if (isGroup) groups += 1;
+    if (isBlockedFriendEntry(friend)) blocked += 1;
+    if ((Number(friend?.unreadCount) || 0) > 0) unread += 1;
+  }
+  return {
+    all: list.length,
+    groups,
+    blocked,
+    unread,
+  };
+}
+
+function syncMessageFilterUi() {
+  const counts = getMessageFilterCounts();
+  if (chatFilterCountAll) chatFilterCountAll.textContent = String(counts.all);
+  if (chatFilterCountGroups) chatFilterCountGroups.textContent = String(counts.groups);
+  if (chatFilterCountBlocked) chatFilterCountBlocked.textContent = String(counts.blocked);
+  if (chatFilterCountUnread) chatFilterCountUnread.textContent = String(counts.unread);
+  const labelMap = {
+    all: "All chats",
+    groups: "Group chats",
+    blocked: "Blocked chats",
+    unread: "Unread chats",
+  };
+  if (messageViewMeta) {
+    messageViewMeta.textContent = labelMap[messageListFilter] || "All chats";
+  }
+  chatCategoryButtons.forEach((btn) => {
+    const value = String(btn.dataset.chatFilter || "all").trim();
+    btn.classList.toggle("active", value === messageListFilter);
+  });
+  if (chatQuickMenu) {
+    const quickItems = Array.from(chatQuickMenu.querySelectorAll("[data-quick-action]"));
+    quickItems.forEach((item) => {
+      const action = String(item.dataset.quickAction || "").trim();
+      item.classList.toggle("active", action === messageListFilter);
+    });
+  }
+}
+
+function setMessageListFilter(nextFilter, options = {}) {
+  const allowed = ["all", "groups", "blocked", "unread"];
+  const normalized = allowed.includes(String(nextFilter || "").trim()) ? String(nextFilter || "").trim() : "all";
+  messageListFilter = normalized;
+  syncMessageFilterUi();
+  if (options.render !== false) {
+    renderFriends();
+  }
+}
+
+function closeChatQuickMenu() {
+  if (!chatQuickMenu) return;
+  chatQuickMenu.classList.add("hidden");
+  if (chatQuickMenuBtn) chatQuickMenuBtn.setAttribute("aria-expanded", "false");
+}
+
+function toggleChatQuickMenu() {
+  if (!chatQuickMenu || !chatQuickMenuBtn) return;
+  const open = chatQuickMenu.classList.toggle("hidden");
+  chatQuickMenuBtn.setAttribute("aria-expanded", open ? "false" : "true");
+  syncMessageFilterUi();
+}
+
+function applySafetyState(payload = {}) {
+  const blocked = Array.isArray(payload.blocked) ? payload.blocked : [];
+  const muted = Array.isArray(payload.muted) ? payload.muted : [];
+  safetyState.blocked = new Set(blocked.map((name) => normalizeName(name)).filter(Boolean));
+  safetyState.muted = new Set(muted.map((name) => normalizeName(name)).filter(Boolean));
+}
+
+function getFriendSafety(username, kind = "") {
+  const friend = findFriend(username, kind || "");
+  const chatKind = normalizeChatKind(friend?.kind || kind || "friend");
+  const key = normalizeName(username || friend?.username || "");
+  if (chatKind === "group") {
+    return {
+      key,
+      friend,
+      muted: false,
+      blockedByMe: false,
+      blockedYou: false,
+      blocked: false,
+    };
+  }
+  const blockedByMe = Boolean(friend?.blockedByMe || (key && safetyState.blocked.has(key)));
+  const blockedYou = Boolean(friend?.blockedYou);
+  const muted = Boolean(friend?.muted || (key && safetyState.muted.has(key)));
+  return {
+    key,
+    friend,
+    muted,
+    blockedByMe,
+    blockedYou,
+    blocked: blockedByMe || blockedYou,
+  };
+}
+
+function syncSafetyActionButtons() {
+  const hasActive = Boolean(activeFriend);
+  const activeEntry = hasActive ? getActiveChatEntry() : null;
+  const isGroup = normalizeChatKind(activeEntry?.kind || activeChatKind) === "group";
+  const safety = hasActive ? getFriendSafety(activeFriend, activeEntry?.kind || activeChatKind) : null;
+
+  if (infoCallBtn) {
+    infoCallBtn.disabled = !hasActive || isGroup || Boolean(safety?.blocked);
+    infoCallBtn.title = !hasActive
+      ? "Voice call"
+      : isGroup
+        ? "Group calls coming soon"
+      : safety?.blocked
+        ? "Calls unavailable while blocked"
+        : "Voice call";
+  }
+
+  if (infoMuteBtn) {
+    const muted = Boolean(safety?.muted);
+    infoMuteBtn.disabled = !hasActive || isGroup;
+    infoMuteBtn.classList.toggle("hidden", isGroup);
+    infoMuteBtn.textContent = muted ? "Unmute" : "Mute";
+    infoMuteBtn.title = hasActive ? (muted ? "Unmute notifications" : "Mute notifications") : "Mute";
+  }
+
+  if (infoBlockBtn) {
+    const blockedByMe = Boolean(safety?.blockedByMe);
+    infoBlockBtn.disabled = !hasActive || isGroup;
+    infoBlockBtn.classList.toggle("hidden", isGroup);
+    infoBlockBtn.classList.toggle("is-active", blockedByMe);
+    infoBlockBtn.textContent = blockedByMe ? "Unblock" : "Block";
+    infoBlockBtn.title = hasActive ? (blockedByMe ? "Unblock this contact" : "Block this contact") : "Block";
+  }
+
+  if (infoReportBtn) {
+    infoReportBtn.disabled = !hasActive || isGroup;
+    infoReportBtn.classList.toggle("hidden", isGroup);
+  }
+}
+
+function syncActiveConversationAccess() {
+  if (!activeFriend) {
+    syncSafetyActionButtons();
+    return;
+  }
+  const activeEntry = getActiveChatEntry();
+  const isGroup = normalizeChatKind(activeEntry?.kind || activeChatKind) === "group";
+  const safety = getFriendSafety(activeFriend, activeEntry?.kind || activeChatKind);
+  const blocked = Boolean(safety.blocked);
+  setComposerEnabled(isGroup ? true : !blocked);
+  if (messageInput) {
+    if (isGroup) {
+      messageInput.placeholder = "Message this group...";
+    } else if (safety.blockedByMe) {
+      messageInput.placeholder = "You blocked this user.";
+    } else if (safety.blockedYou) {
+      messageInput.placeholder = "This user blocked you.";
+    } else {
+      messageInput.placeholder = "Type a message...";
+    }
+  }
+  syncSafetyActionButtons();
 }
 
 function clearStoredSession() {
@@ -1441,6 +1861,7 @@ function refreshAuthSessionSilently() {
     ? authApi.refreshSession()
     : fetch("/api/auth/refresh", {
         method: "POST",
+        headers: buildCsrfHeaders(),
         credentials: "same-origin",
       });
   Promise.resolve(request).catch(() => {});
@@ -1481,6 +1902,7 @@ async function hasValidHttpSession() {
   try {
     const refreshResponse = await fetch("/api/auth/refresh", {
       method: "POST",
+      headers: buildCsrfHeaders(),
       credentials: "same-origin",
     });
     if (!refreshResponse.ok) return false;
@@ -1730,7 +2152,7 @@ function showSystemNotification(title, options = {}) {
 }
 
 function formatNotificationPreview(text, maxLen = 120) {
-  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+  const cleaned = normalizeMojibakeText(text).replace(/\s+/g, " ").trim();
   if (!cleaned) return "New message";
   if (cleaned.length <= maxLen) return cleaned;
   return `${cleaned.slice(0, maxLen - 3)}...`;
@@ -1739,23 +2161,40 @@ function formatNotificationPreview(text, maxLen = 120) {
 function notifyIncomingMessage(message, options = {}) {
   if (!message) return;
   if (normalizeName(message.from) === normalizeName(me)) return;
-  const isActiveThread =
-    activeFriend && normalizeName(message.from) === normalizeName(activeFriend);
+  const messageKind = normalizeChatKind(message?.toType || (message?.groupId ? "group" : "friend"));
+  const chatTarget = messageKind === "group"
+    ? normalizeName(message?.groupId || message?.toKey || message?.to || "")
+    : normalizeName(message?.from);
+  const safety = messageKind === "friend" ? getFriendSafety(message.from, "friend") : null;
+  if (!options.force && safety?.muted) return;
+  const isActiveThread = activeFriend && isSameChatTarget(chatTarget, messageKind, activeFriend, activeChatKind);
   if (!options.force && isActiveThread && isAppVisible()) return;
   const senderName = options.senderName || (() => {
-    const sender = findFriend(message.from);
+    const sender = findFriend(message.from, "friend");
     return sender ? getFriendDisplayName(sender) : message.from;
   })();
   const callPreview = formatCallLogPreview(message.text, false);
   const bodyText = callPreview || formatNotificationPreview(message.text);
-  showSystemNotification(`New message from ${senderName}`, {
-    body: formatNotificationPreview(bodyText),
-    tag: `msg-${normalizeName(message.from) || "unknown"}`,
-  });
+  if (messageKind === "group") {
+    const groupId = normalizeName(message?.groupId || message?.toKey || message?.to || "");
+    const groupEntry = getChatEntry(groupId, "group");
+    const groupName = groupEntry ? getFriendDisplayName(groupEntry) : (message?.to || "Group");
+    showSystemNotification(`New message in ${groupName}`, {
+      body: formatNotificationPreview(`${senderName}: ${bodyText}`),
+      tag: `grp-${groupId || "unknown"}`,
+    });
+  } else {
+    showSystemNotification(`New message from ${senderName}`, {
+      body: formatNotificationPreview(bodyText),
+      tag: `msg-${normalizeName(message.from) || "unknown"}`,
+    });
+  }
 }
 
 function notifyIncomingCall(from, options = {}) {
   if (!from) return;
+  const safety = getFriendSafety(from);
+  if (!options.force && safety.muted) return;
   if (!options.force && !shouldSystemNotify()) return;
   const displayName = getCallPeerDisplayName(from);
   const body = options.blocked
@@ -1802,7 +2241,7 @@ function scrollToBottom(skipAnimation = false) {
 
 /**
  * Returns true when the user is already near the bottom of the message list.
- * We only auto-scroll when they're within 120px of the bottom — if they've
+ * We only auto-scroll when they're within 120px of the bottom Ã¢â‚¬â€ if they've
  * scrolled up to read history, we don't yank them back down on new messages.
  */
 function isNearBottom() {
@@ -1813,7 +2252,7 @@ function isNearBottom() {
   );
 }
 
-// ─── Network state ────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Network state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function getFailedPendingTempIds() {
   const failedTempIds = [];
@@ -1860,11 +2299,11 @@ function setNetworkState(label, state) {
   renderNetworkState();
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Toast Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function showToast(message, type = "info") {
   if (!toast) return;
-  toast.textContent = message;
+  toast.textContent = normalizeMojibakeText(message);
   toast.classList.remove("hidden", "error", "success");
   if (type === "error")   toast.classList.add("error");
   if (type === "success") toast.classList.add("success");
@@ -1875,7 +2314,7 @@ function showToast(message, type = "info") {
   }, 2800);
 }
 
-// ─── Username suggestions ─────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Username suggestions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function clearUsernameSuggestions() {
   if (!usernameHint || !usernameSuggestions) return;
@@ -1944,7 +2383,7 @@ function showFriendSuggestions(requested, suggestions) {
   friendSuggestions.classList.toggle("hidden", list.length === 0 || !requested);
 }
 
-// ─── Time formatting ──────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Time formatting Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function prettyTime(iso) {
   if (!iso) return "";
@@ -2165,6 +2604,9 @@ function getCallLogDisplay(log, fromMe) {
   } else if (log.status === "busy") {
     subtitle = isIncoming ? `Missed ${mediaLabel.toLowerCase()}` : "User busy";
     statusLabel = "Busy";
+  } else if (log.status === "blocked") {
+    subtitle = "Blocked by safety settings";
+    statusLabel = "Blocked";
   } else if (log.status === "unavailable") {
     subtitle = isIncoming ? `Missed ${mediaLabel.toLowerCase()}` : "User unavailable";
     statusLabel = "Unavailable";
@@ -2176,7 +2618,7 @@ function formatCallLogPreview(rawText, fromMe) {
   const log = parseCallLogPayload(rawText);
   if (!log) return "";
   const display = getCallLogDisplay(log, fromMe);
-  return `📞 ${display.subtitle}`;
+  return `[Call] ${display.subtitle}`;
 }
 
 function formatLastSeen(iso) {
@@ -2201,7 +2643,7 @@ function formatLastSeen(iso) {
 }
 
 function cleanDisplayName(value) {
-  return String(value || "").trim();
+  return normalizeMojibakeText(value).trim();
 }
 
 function getMyDisplayName() {
@@ -2229,16 +2671,25 @@ function displayDiffersFromUsername(friend) {
 }
 
 function getFriendPresenceText(friend) {
+  if (normalizeChatKind(friend?.kind || "friend") === "group") {
+    const members = Number(friend?.memberCount) || 0;
+    const online = Number(friend?.onlineCount) || 0;
+    if (online > 0) return `${online} online - ${members} members`;
+    return `${members} member${members === 1 ? "" : "s"}`;
+  }
+  if (friend?.blockedByMe) return "Blocked by you";
+  if (friend?.blockedYou) return "Blocked you";
   const statusText = friend.online ? "Online now" : formatLastSeen(friend.lastSeenAt);
+  const mutedPrefix = friend?.muted ? "Muted - " : "";
   const bio = cleanDisplayName(friend?.bio);
   if (bio) {
     const compactBio = bio.length > 48 ? `${bio.slice(0, 45)}...` : bio;
-    return `${statusText} · ${compactBio}`;
+    return `${mutedPrefix}${statusText} - ${compactBio}`;
   }
   if (displayDiffersFromUsername(friend)) {
-    return `${statusText} · @${friend.username}`;
+    return `${mutedPrefix}${statusText} - @${friend.username}`;
   }
-  return statusText;
+  return `${mutedPrefix}${statusText}`;
 }
 
 function getContactBucket(friend) {
@@ -2253,27 +2704,126 @@ function getContactBucket(friend) {
 function syncProfilePanelStats() {
   if (!profileStatMessages || !profileStatMedia || !profileStatLinks || !profileStatFiles) return;
   const messages = Array.isArray(conversationMessages) ? conversationMessages : [];
-  const linkRegex = /(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:[\/?#][^\s<]*)?/i;
+  const linkRegex = /(?:https?:\/\/|www\.)[^\s<]+/i;
   const mediaRegex = /\.(png|jpe?g|gif|webp|mp4|mov|webm|mp3|wav|ogg)(\?|#|$)/i;
   const fileRegex = /\.(pdf|zip|rar|7z|docx?|pptx?|xlsx?)(\?|#|$)/i;
 
   let linkCount = 0;
   let mediaCount = 0;
   let fileCount = 0;
+  let visibleMessageCount = 0;
 
   for (const message of messages) {
     if (message?.deletedAt) continue;
+    visibleMessageCount += 1;
     const text = String(message?.text || "");
-    if (!text) continue;
-    if (linkRegex.test(text)) linkCount += 1;
-    if (mediaRegex.test(text)) mediaCount += 1;
-    if (fileRegex.test(text)) fileCount += 1;
+    const attachment = normalizeAttachmentPayload(message?.attachment, text);
+    if (text && linkRegex.test(text)) linkCount += 1;
+    if ((attachment && attachment.kind === "image") || (text && mediaRegex.test(text))) mediaCount += 1;
+    if ((attachment && attachment.kind === "file") || (text && fileRegex.test(text))) fileCount += 1;
   }
 
-  profileStatMessages.textContent = String(messages.length);
+  profileStatMessages.textContent = String(visibleMessageCount);
   profileStatLinks.textContent = String(linkCount);
   profileStatMedia.textContent = String(mediaCount);
   profileStatFiles.textContent = String(fileCount);
+}
+
+function extractFirstUrlFromText(value) {
+  const text = String(value || "");
+  const match = text.match(/(?:https?:\/\/|www\.)[^\s<]+/i);
+  if (!match || !match[0]) return "";
+  const candidate = match[0];
+  return /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
+}
+
+function syncInfoMediaGrid() {
+  if (!infoMediaGrid) return;
+  if (!activeFriend) {
+    infoMediaGrid.innerHTML = '<div class="media-grid-empty">No shared media yet</div>';
+    return;
+  }
+
+  const items = [];
+  for (const message of (conversationMessages || []).slice().reverse()) {
+    if (message?.deletedAt) continue;
+    const text = String(message?.text || "").trim();
+    const attachment = normalizeAttachmentPayload(message?.attachment, text);
+
+    if (attachment && attachment.kind === "image") {
+      items.push({
+        type: "image",
+        url: attachment.url || text,
+        name: attachment.name || "Image attachment",
+      });
+      continue;
+    }
+    if (attachment && attachment.kind === "file") {
+      items.push({
+        type: "file",
+        url: attachment.url || text,
+        name: attachment.name || "Attachment",
+        mime: attachment.mime || "",
+        size: attachment.size || 0,
+      });
+      continue;
+    }
+    const url = extractFirstUrlFromText(text);
+    if (url) {
+      items.push({
+        type: "link",
+        url,
+        name: url,
+      });
+    }
+    if (items.length >= 20) break;
+  }
+
+  if (!items.length) {
+    infoMediaGrid.innerHTML = '<div class="media-grid-empty">No shared media yet</div>';
+    return;
+  }
+
+  infoMediaGrid.innerHTML = "";
+  items.slice(0, 20).forEach((item) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `media-thumb media-thumb-${item.type}`;
+    btn.title = item.name;
+    btn.setAttribute("aria-label", item.name);
+
+    if (item.type === "image") {
+      const img = document.createElement("img");
+      img.src = item.url;
+      img.alt = item.name;
+      img.loading = "lazy";
+      img.decoding = "async";
+      btn.appendChild(img);
+      btn.addEventListener("click", () => {
+        imageViewer.open({
+          src: item.url,
+          fileName: item.name,
+        });
+      });
+      infoMediaGrid.appendChild(btn);
+      return;
+    }
+
+    btn.textContent = item.type === "link" ? "LINK" : "FILE";
+    btn.addEventListener("click", () => {
+      if (item.type === "link") {
+        openExternalLink(item.url);
+        return;
+      }
+      fileViewer.open({
+        src: item.url,
+        fileName: item.name,
+        mime: item.mime || "",
+        size: item.size || 0,
+      });
+    });
+    infoMediaGrid.appendChild(btn);
+  });
 }
 
 function syncCallLogPanel() {
@@ -2315,7 +2865,7 @@ function syncCallLogPanel() {
       subtitle.className = "call-log-item-subtitle";
       subtitle.textContent = display.subtitle;
       const status = document.createElement("div");
-      const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable"].includes(display.status);
+      const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(display.status);
       const isNeutralStatus = display.status === "ended";
       const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
       status.className = `call-status-pill ${statusClass}`;
@@ -2348,34 +2898,50 @@ function syncProfilePanel(friend) {
   if (!profilePanel || !profilePanelName || !profilePanelAvatar || !profilePanelHandle || !profilePanelStatus) return;
 
   if (!activeFriend) {
-    profilePanelName.textContent = "Select a friend";
+    profilePanelName.textContent = "Select a conversation";
     profilePanelHandle.textContent = "@handle";
     profilePanelStatus.textContent = "Offline";
     profilePanelStatus.classList.add("offline");
     profilePanelAvatar.textContent = "?";
     profilePanelAvatar.style.background = "";
     syncProfilePanelStats();
+    syncInfoMediaGrid();
+    syncSafetyActionButtons();
     return;
   }
 
-  const resolvedFriend = friend || findFriend(activeFriend);
+  const resolvedFriend = friend || getActiveChatEntry();
   if (!resolvedFriend) {
     profilePanelName.textContent = "Loading...";
-    profilePanelHandle.textContent = `@${activeFriend}`;
+    profilePanelHandle.textContent = normalizeChatKind(activeChatKind) === "group" ? `#${activeFriend}` : `@${activeFriend}`;
     profilePanelStatus.textContent = "Loading status...";
     profilePanelStatus.classList.add("offline");
     profilePanelAvatar.textContent = activeFriend.slice(0, 2).toUpperCase();
     profilePanelAvatar.style.background = "";
     syncProfilePanelStats();
+    syncInfoMediaGrid();
+    syncSafetyActionButtons();
     return;
   }
 
   profilePanelName.textContent = getFriendDisplayName(resolvedFriend);
-  profilePanelHandle.textContent = `@${resolvedFriend.username}`;
-  profilePanelStatus.textContent = resolvedFriend.online ? "Active now" : formatLastSeen(resolvedFriend.lastSeenAt);
-  profilePanelStatus.classList.toggle("offline", !resolvedFriend.online);
+  const isGroup = normalizeChatKind(resolvedFriend.kind || activeChatKind) === "group";
+  profilePanelHandle.textContent = isGroup ? `#${resolvedFriend.username}` : `@${resolvedFriend.username}`;
+  const safety = getFriendSafety(resolvedFriend.username, resolvedFriend.kind || activeChatKind);
+  if (isGroup) {
+    const members = Number(resolvedFriend.memberCount) || 0;
+    const online = Number(resolvedFriend.onlineCount) || 0;
+    profilePanelStatus.textContent = online > 0 ? `${online} online` : `${members} members`;
+  } else if (safety.blockedByMe) {
+    profilePanelStatus.textContent = "Blocked by you";
+  } else if (safety.blockedYou) {
+    profilePanelStatus.textContent = "Blocked you";
+  } else {
+    profilePanelStatus.textContent = resolvedFriend.online ? "Active now" : formatLastSeen(resolvedFriend.lastSeenAt);
+  }
+  profilePanelStatus.classList.toggle("offline", !resolvedFriend.online || (!isGroup && safety.blocked));
 
-  const fallback = resolvedFriend.username.slice(0, 2).toUpperCase();
+  const fallback = getFriendDisplayName(resolvedFriend).slice(0, 2).toUpperCase();
   if (resolvedFriend.avatarId && window._novynAvatarUtils) {
     window._novynAvatarUtils.applyAvatarToEl(
       profilePanelAvatar,
@@ -2388,16 +2954,23 @@ function syncProfilePanel(friend) {
   }
 
   syncProfilePanelStats();
+  syncInfoMediaGrid();
+  syncSafetyActionButtons();
 }
 
-// ─── Typing indicator ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Typing indicator Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function showTypingIndicator(username) {
   if (!typingIndicator || !typingText) return;
-  typingText.textContent = "typing…";
+  const displayName = username ? getFriendDisplayName(findFriend(username) || { username }) : "";
+  typingText.textContent = displayName ? `${displayName} is typing...` : "typing...";
   typingIndicator.classList.remove("hidden");
+  const avatar = typingIndicator.querySelector(".typing-av");
+  if (avatar) {
+    avatar.textContent = displayName ? displayName.slice(0, 1).toUpperCase() : "?";
+  }
   // If user is near bottom, scroll down to keep typing dots visible
-  if (isNearBottom()) scrollToBottom();
+  if (isNearBottom()) scrollToBottom(true);
 }
 
 function hideTypingIndicator() {
@@ -2405,9 +2978,9 @@ function hideTypingIndicator() {
   typingIndicator.classList.add("hidden");
 }
 
-function emitTyping(isTyping, target = activeFriend) {
+function emitTyping(isTyping, target = activeFriend, targetKind = activeChatKind) {
   if (!target) return;
-  socket.emit("typing", { to: target, isTyping });
+  socket.emit("typing", { to: target, toType: normalizeChatKind(targetKind), isTyping });
 }
 
 function clearLocalTypingTimer() {
@@ -2417,10 +2990,11 @@ function clearLocalTypingTimer() {
   }
 }
 
-function stopLocalTyping(target = localTyping.target || activeFriend) {
-  if (localTyping.active && target) emitTyping(false, target);
+function stopLocalTyping(target = localTyping.target || activeFriend, targetKind = localTyping.kind || activeChatKind) {
+  if (localTyping.active && target) emitTyping(false, target, targetKind);
   localTyping.active    = false;
   localTyping.target    = "";
+  localTyping.kind      = "friend";
   clearLocalTypingTimer();
 }
 
@@ -2436,19 +3010,23 @@ function markLocalTyping() {
   if (
     localTyping.active &&
     localTyping.target &&
-    normalizeName(localTyping.target) !== normalizeName(activeFriend)
+    (
+      normalizeName(localTyping.target) !== normalizeName(activeFriend) ||
+      normalizeChatKind(localTyping.kind) !== normalizeChatKind(activeChatKind)
+    )
   ) {
-    stopLocalTyping(localTyping.target);
+    stopLocalTyping(localTyping.target, localTyping.kind);
   }
 
-  if (!localTyping.active) emitTyping(true, activeFriend);
+  if (!localTyping.active) emitTyping(true, activeFriend, activeChatKind);
 
   localTyping.active = true;
   localTyping.target = activeFriend;
+  localTyping.kind = normalizeChatKind(activeChatKind);
   scheduleLocalTypingStop();
 }
 
-// ─── Messages ─────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Messages Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function clearMessages() {
   messagesEl.innerHTML = "";
@@ -2486,8 +3064,104 @@ function getSearchQuery() {
   return normalizeSearchText(messageSearchInput ? messageSearchInput.value : "");
 }
 
+function getSearchScope() {
+  if (!messageSearchScope) return "chat";
+  return messageSearchScope.value === "global" ? "global" : "chat";
+}
+
+function getSearchFilter() {
+  if (!messageSearchFilter) return "all";
+  const allowed = new Set(["all", "media", "links", "files", "unread"]);
+  const raw = String(messageSearchFilter.value || "").toLowerCase();
+  return allowed.has(raw) ? raw : "all";
+}
+
+function renderGlobalSearchResults() {
+  if (!globalSearchResults) return;
+  const scope = getSearchScope();
+  globalSearchResults.classList.toggle("hidden", scope !== "global");
+  if (scope !== "global") {
+    globalSearchResults.innerHTML = "";
+    return;
+  }
+
+  const query = getSearchQuery();
+  if (!query && getSearchFilter() === "all") {
+    globalSearchResults.innerHTML = '<div class="global-search-empty">Type to search across chats.</div>';
+    return;
+  }
+
+  if (globalSearchState.loading) {
+    globalSearchResults.innerHTML = '<div class="global-search-empty">Searching...</div>';
+    return;
+  }
+
+  const list = Array.isArray(globalSearchState.results) ? globalSearchState.results : [];
+  if (!list.length) {
+    globalSearchResults.innerHTML = '<div class="global-search-empty">No results found.</div>';
+    return;
+  }
+
+  globalSearchResults.innerHTML = "";
+  list.forEach((hit) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "global-search-item";
+
+    const title = document.createElement("div");
+    title.className = "global-search-item-title";
+    const label = String(hit?.withDisplayName || hit?.with || "").trim() || "Unknown";
+    const prefix = hit?.mine ? "You: " : "";
+    title.textContent = label;
+
+    const body = document.createElement("div");
+    body.className = "global-search-item-body";
+    body.textContent = `${prefix}${String(hit?.text || "").trim()}`.slice(0, 160);
+
+    const meta = document.createElement("div");
+    meta.className = "global-search-item-meta";
+    const when = prettyTime(hit?.timestamp || "");
+    meta.textContent = hit?.unread ? `${when} - unread` : when;
+
+    btn.append(title, body, meta);
+    btn.addEventListener("click", () => {
+      const target = String(hit?.with || "").trim();
+      const messageId = String(hit?.messageId || "").trim();
+      const kind = normalizeChatKind(hit?.kind || "friend");
+      if (!target) return;
+      pendingMessageFocus = { friendKey: normalizeName(target), messageId, kind };
+      setActiveFriend(target, kind);
+      showChatOnMobile();
+    });
+
+    globalSearchResults.appendChild(btn);
+  });
+}
+
+function requestGlobalSearch() {
+  if (!socketAvailable || !socket) return;
+  const query = getSearchQuery();
+  const filter = getSearchFilter();
+  globalSearchState.query = query;
+  globalSearchState.filter = filter;
+  globalSearchState.loading = true;
+  renderGlobalSearchResults();
+
+  if (globalSearchState.timer) {
+    clearTimeout(globalSearchState.timer);
+  }
+  globalSearchState.timer = setTimeout(() => {
+    socket.emit("global_search_messages", {
+      query: messageSearchInput ? messageSearchInput.value.trim() : "",
+      filter,
+      limit: 120,
+    });
+  }, 160);
+}
+
 function syncMessageSearchUi() {
   const queryActive = Boolean(getSearchQuery());
+  const scope = getSearchScope();
 
   if (messageSearchPanel) {
     messageSearchPanel.classList.toggle("hidden", !searchPanelOpen);
@@ -2498,6 +3172,12 @@ function syncMessageSearchUi() {
     messageSearchToggle.setAttribute("aria-expanded", searchPanelOpen ? "true" : "false");
     messageSearchToggle.title = queryActive ? "Search active" : "Search messages";
   }
+
+  if (messageSearchPrev) messageSearchPrev.classList.toggle("hidden", scope !== "chat");
+  if (messageSearchNext) messageSearchNext.classList.toggle("hidden", scope !== "chat");
+  if (messageSearchFilter) messageSearchFilter.classList.toggle("hidden", scope !== "global");
+
+  renderGlobalSearchResults();
 }
 
 function openMessageSearchPanel() {
@@ -2508,10 +3188,15 @@ function openMessageSearchPanel() {
     messageSearchInput.focus();
     messageSearchInput.select();
   }
+  applyMessageSearch();
 }
 
 function closeMessageSearchPanel() {
   searchPanelOpen = false;
+  if (globalSearchState.timer) {
+    clearTimeout(globalSearchState.timer);
+    globalSearchState.timer = null;
+  }
   syncMessageSearchUi();
 }
 
@@ -2531,6 +3216,14 @@ function shouldAutoScrollForMessage(message, skipAnimation = false) {
 
 function resetMessageSearch() {
   if (messageSearchInput) messageSearchInput.value = "";
+  if (messageSearchScope) messageSearchScope.value = "chat";
+  if (messageSearchFilter) messageSearchFilter.value = "all";
+  globalSearchState.results = [];
+  globalSearchState.loading = false;
+  if (globalSearchState.timer) {
+    clearTimeout(globalSearchState.timer);
+    globalSearchState.timer = null;
+  }
   closeMessageSearchPanel();
   applyMessageSearch();
 }
@@ -2616,6 +3309,7 @@ function setSearchFocus(index, scroll = true) {
 }
 
 function jumpSearchResult(delta) {
+  if (getSearchScope() !== "chat") return;
   if (!searchState.hits.length) return;
   const next = searchState.index + delta;
   if (next < 0) {
@@ -2628,16 +3322,61 @@ function jumpSearchResult(delta) {
 }
 
 function updateSearchNavButtons() {
+  const chatMode = getSearchScope() === "chat";
   const hasHits = searchState.hits.length > 0;
-  if (messageSearchPrev) messageSearchPrev.disabled = !hasHits;
-  if (messageSearchNext) messageSearchNext.disabled = !hasHits;
+  if (messageSearchPrev) messageSearchPrev.disabled = !chatMode || !hasHits;
+  if (messageSearchNext) messageSearchNext.disabled = !chatMode || !hasHits;
 }
 
 function applyMessageSearch() {
   const query = getSearchQuery();
+  const scope = getSearchScope();
   const messageNodes = Array.from(messagesEl.querySelectorAll("article.message"));
   let visibleCount = 0;
   const previousQuery = searchState.query;
+
+  if (scope === "global") {
+    searchState.hits = [];
+    searchState.index = -1;
+    searchState.query = query;
+    clearSearchFocus();
+
+    for (const row of messageNodes) {
+      row.classList.remove("search-hidden");
+      updateMessageHighlight(row, "");
+    }
+    const separatorNodes = Array.from(messagesEl.querySelectorAll(".message-date-separator"));
+    separatorNodes.forEach((node) => node.classList.remove("search-hidden"));
+
+    const filter = getSearchFilter();
+    if (!query && filter === "all") {
+      globalSearchState.results = [];
+      globalSearchState.loading = false;
+      if (messageSearchCount) {
+        messageSearchCount.classList.add("hidden");
+        messageSearchCount.textContent = "";
+      }
+      renderGlobalSearchResults();
+    } else {
+      requestGlobalSearch();
+      if (messageSearchCount) {
+        messageSearchCount.classList.remove("hidden");
+        messageSearchCount.textContent = globalSearchState.loading
+          ? "Searching..."
+          : `${globalSearchState.results.length} result${globalSearchState.results.length === 1 ? "" : "s"}`;
+      }
+    }
+
+    updateSearchNavButtons();
+    syncMessageSearchUi();
+    return;
+  }
+
+  if (globalSearchState.timer) {
+    clearTimeout(globalSearchState.timer);
+    globalSearchState.timer = null;
+  }
+  globalSearchState.loading = false;
 
   searchState.hits = [];
   searchState.query = query;
@@ -2688,7 +3427,7 @@ function applyMessageSearch() {
   syncMessageSearchUi();
 }
 
-// ─── Reply UI ─────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Reply UI Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 const replyBanner = (() => {
   const existing = document.getElementById("replyBanner");
@@ -2708,7 +3447,7 @@ const replyBanner = (() => {
     closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "reply-cancel-btn";
-    closeBtn.innerHTML = "✕";
+    closeBtn.innerHTML = "&times;";
     banner.appendChild(closeBtn);
   }
   closeBtn.addEventListener("click", clearReply);
@@ -2725,7 +3464,7 @@ const replyBanner = (() => {
 function setReply(message) {
   replyTo = { id: message.id, from: message.from, text: message.text };
   const raw = String(message.text || "").replace(/\s+/g, " ").trim();
-  const snippet = raw.length > 70 ? `${raw.slice(0, 70)}…` : raw;
+  const snippet = raw.length > 70 ? `${raw.slice(0, 70)}...` : raw;
   replyBanner.preview.textContent = `Replying: "${snippet}"`;
   replyBanner.banner.dataset.replyId = message.id || "";
   replyBanner.banner.classList.remove("hidden");
@@ -2744,8 +3483,101 @@ function getConversationMessageById(messageId) {
   return conversationMessages.find((message) => message?.id === messageId) || null;
 }
 
+function getRepliesForMessage(messageId) {
+  if (!messageId) return [];
+  return (conversationMessages || [])
+    .filter((message) => message && !message.deletedAt && message.replyTo?.id === messageId)
+    .sort((a, b) => String(a?.timestamp || "").localeCompare(String(b?.timestamp || "")));
+}
+
+function countRepliesForMessage(messageId) {
+  return getRepliesForMessage(messageId).length;
+}
+
+const threadDialog = (() => {
+  const modal = document.createElement("div");
+  modal.className = "thread-modal hidden";
+  modal.innerHTML = `
+    <div class="thread-backdrop"></div>
+    <div class="thread-card" role="dialog" aria-modal="true" aria-label="Message thread">
+      <div class="thread-head">
+        <span class="thread-title">Thread</span>
+        <button type="button" class="thread-close" aria-label="Close thread">&times;</button>
+      </div>
+      <div class="thread-root"></div>
+      <div class="thread-list"></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  const backdrop = modal.querySelector(".thread-backdrop");
+  const closeBtn = modal.querySelector(".thread-close");
+  const rootEl = modal.querySelector(".thread-root");
+  const listEl = modal.querySelector(".thread-list");
+
+  function close() {
+    modal.classList.add("hidden");
+    if (listEl) listEl.innerHTML = "";
+    if (rootEl) rootEl.innerHTML = "";
+  }
+
+  function open(rootMessage, replies) {
+    if (!rootEl || !listEl) return;
+    const rootText = String(rootMessage?.text || "").trim() || "(message)";
+    const rootFrom = String(rootMessage?.from || "").trim() || "Unknown";
+    rootEl.innerHTML = `
+      <div class="thread-root-from">${rootFrom}</div>
+      <div class="thread-root-text">${rootText}</div>
+    `;
+
+    listEl.innerHTML = "";
+    replies.forEach((reply) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "thread-item";
+      const from = String(reply?.from || "").trim() || "Unknown";
+      const text = String(reply?.text || "").trim() || "(message)";
+      row.innerHTML = `
+        <span class="thread-item-from">${from}</span>
+        <span class="thread-item-text">${text}</span>
+        <span class="thread-item-time">${prettyTime(reply?.timestamp || "")}</span>
+      `;
+      row.addEventListener("click", () => {
+        close();
+        focusMessageById(reply.id);
+      });
+      listEl.appendChild(row);
+    });
+    modal.classList.remove("hidden");
+  }
+
+  if (backdrop) backdrop.addEventListener("click", close);
+  if (closeBtn) closeBtn.addEventListener("click", close);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.classList.contains("hidden")) {
+      close();
+    }
+  });
+
+  return { open, close };
+})();
+
+function openThreadForMessage(messageId) {
+  const rootMessage = getConversationMessageById(messageId);
+  if (!rootMessage) return;
+  const replies = getRepliesForMessage(messageId);
+  if (!replies.length) {
+    showToast("No replies yet.", "info");
+    return;
+  }
+  threadDialog.open(rootMessage, replies);
+}
+
 function getMessagePeerUsername(message) {
   if (!message) return "";
+  const kind = normalizeChatKind(message.toType || (message.groupId ? "group" : "friend"));
+  if (kind === "group") {
+    return String(message.groupId || message.toKey || activeFriend || "").trim();
+  }
   const from = String(message.from || "").trim();
   const to = String(message.to || "").trim();
   if (!from && !to) return activeFriend || "";
@@ -3071,10 +3903,12 @@ const pinnedMessageBar = (() => {
   const clearBtn = bar.querySelector(".pinned-message-clear");
   let currentMessageId = "";
   let currentPeer = "";
+  let currentKind = "friend";
 
   function clear() {
     currentMessageId = "";
     currentPeer = "";
+    currentKind = "friend";
     bar.classList.add("hidden");
     if (textEl) textEl.textContent = "";
   }
@@ -3086,6 +3920,7 @@ const pinnedMessageBar = (() => {
     }
     currentMessageId = message.id;
     currentPeer = getMessagePeerUsername(message) || activeFriend || "";
+    currentKind = normalizeChatKind(message?.toType || activeChatKind || "friend");
     if (textEl) {
       textEl.textContent = summarizeMessageForPinnedBar(message);
     }
@@ -3095,7 +3930,7 @@ const pinnedMessageBar = (() => {
   if (mainBtn) {
     mainBtn.addEventListener("click", () => {
       if (!currentMessageId) return;
-      focusMessageById(currentMessageId);
+      openPinnedMessagesDialog();
     });
   }
   if (clearBtn) {
@@ -3105,6 +3940,7 @@ const pinnedMessageBar = (() => {
       socket.emit("set_message_pin", {
         messageId: currentMessageId,
         to: currentPeer,
+        toType: currentKind,
         pinned: false,
       });
     });
@@ -3187,6 +4023,103 @@ function syncPinnedMessageBar() {
   pinnedMessageBar.set(pinned[0]);
 }
 
+function getPinnedMessagesSorted() {
+  return (conversationMessages || [])
+    .filter((message) => message && !message.deletedAt && message.pinnedAt)
+    .sort((a, b) => {
+      const aKey = String(a?.pinnedAt || a?.timestamp || "");
+      const bKey = String(b?.pinnedAt || b?.timestamp || "");
+      return bKey.localeCompare(aKey);
+    });
+}
+
+const pinnedMessagesDialog = (() => {
+  const modal = document.createElement("div");
+  modal.className = "pins-modal hidden";
+  modal.innerHTML = `
+    <div class="pins-backdrop"></div>
+    <div class="pins-card" role="dialog" aria-modal="true" aria-label="Pinned messages">
+      <div class="pins-head">
+        <span class="pins-title">Pinned messages</span>
+        <button type="button" class="pins-close" aria-label="Close pinned messages">&times;</button>
+      </div>
+      <div class="pins-list"></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  const backdrop = modal.querySelector(".pins-backdrop");
+  const closeBtn = modal.querySelector(".pins-close");
+  const listEl = modal.querySelector(".pins-list");
+
+  function close() {
+    modal.classList.add("hidden");
+    if (listEl) listEl.innerHTML = "";
+  }
+
+  function open(messages) {
+    if (!listEl) return;
+    listEl.innerHTML = "";
+    messages.forEach((message) => {
+      const row = document.createElement("div");
+      row.className = "pins-item";
+
+      const jump = document.createElement("button");
+      jump.type = "button";
+      jump.className = "pins-item-jump";
+      jump.innerHTML = `
+        <span class="pins-item-text">${summarizeMessageForPinnedBar(message)}</span>
+        <span class="pins-item-meta">${prettyTime(message?.timestamp || "")}</span>
+      `;
+      jump.addEventListener("click", () => {
+        close();
+        focusMessageById(message.id);
+      });
+
+      const unpin = document.createElement("button");
+      unpin.type = "button";
+      unpin.className = "pins-item-unpin";
+      unpin.textContent = "Unpin";
+      unpin.addEventListener("click", () => {
+        const target = getMessagePeerUsername(message);
+        const targetType = normalizeChatKind(message?.toType || activeChatKind || "friend");
+        socket.emit("set_message_pin", {
+          messageId: message.id,
+          to: target,
+          toType: targetType,
+          pinned: false,
+        });
+      });
+
+      row.append(jump, unpin);
+      listEl.appendChild(row);
+    });
+    modal.classList.remove("hidden");
+  }
+
+  if (backdrop) backdrop.addEventListener("click", close);
+  if (closeBtn) closeBtn.addEventListener("click", close);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.classList.contains("hidden")) {
+      close();
+    }
+  });
+
+  return { open, close };
+})();
+
+function openPinnedMessagesDialog() {
+  const pinned = getPinnedMessagesSorted();
+  if (!pinned.length) {
+    showToast("No pinned messages in this chat.", "info");
+    return;
+  }
+  if (pinned.length === 1) {
+    focusMessageById(pinned[0].id);
+    return;
+  }
+  pinnedMessagesDialog.open(pinned);
+}
+
 const messageContextMenu = (() => {
   const menu = document.createElement("div");
   menu.id = "messageContextMenu";
@@ -3194,6 +4127,7 @@ const messageContextMenu = (() => {
   menu.innerHTML = `
     <button type="button" data-action="copy">Copy</button>
     <button type="button" data-action="reply">Reply</button>
+    <button type="button" data-action="thread">Thread</button>
     <button type="button" data-action="forward">Forward</button>
     <button type="button" data-action="react">React</button>
     <button type="button" data-action="reactions">Reactions</button>
@@ -3211,11 +4145,15 @@ const messageContextMenu = (() => {
   }
 
   function getMessagePeer(msgEl) {
+    const rowKind = normalizeChatKind(msgEl?.dataset?.messageKind || activeChatKind || "friend");
+    if (rowKind === "group") {
+      return { to: activeFriend, toType: "group" };
+    }
     let target = String(msgEl?.dataset?.messageFrom || "").trim();
     if (normalizeName(target) === normalizeName(me)) {
       target = activeFriend;
     }
-    return target;
+    return { to: target, toType: "friend" };
   }
 
   function open(msgEl, x, y) {
@@ -3233,6 +4171,7 @@ const messageContextMenu = (() => {
     const deleteBtn = menu.querySelector('[data-action="delete"]');
     const copyBtn = menu.querySelector('[data-action="copy"]');
     const replyBtn = menu.querySelector('[data-action="reply"]');
+    const threadBtn = menu.querySelector('[data-action="thread"]');
     const forwardBtn = menu.querySelector('[data-action="forward"]');
     const reactBtn = menu.querySelector('[data-action="react"]');
     const reactionsBtn = menu.querySelector('[data-action="reactions"]');
@@ -3242,6 +4181,7 @@ const messageContextMenu = (() => {
     if (deleteBtn) deleteBtn.classList.toggle("hidden", !mine || deleted || pending || !messageId);
     if (copyBtn) copyBtn.classList.toggle("hidden", deleted);
     if (replyBtn) replyBtn.classList.toggle("hidden", deleted || pending || !messageId);
+    if (threadBtn) threadBtn.classList.toggle("hidden", deleted || !messageId);
     if (forwardBtn) forwardBtn.classList.toggle("hidden", deleted || pending || !messageId);
     if (reactBtn) reactBtn.classList.toggle("hidden", deleted || pending || !messageId);
     if (reactionsBtn) reactionsBtn.classList.toggle("hidden", deleted || !messageId || !hasReactions);
@@ -3304,6 +4244,14 @@ const messageContextMenu = (() => {
       return;
     }
 
+    if (action === "thread") {
+      if (messageId) {
+        openThreadForMessage(messageId);
+      }
+      close();
+      return;
+    }
+
     if (action === "forward") {
       if (!messageId) {
         close();
@@ -3332,7 +4280,7 @@ const messageContextMenu = (() => {
     }
 
     if (action === "edit") {
-      if (!messageId || !targetPeer) {
+      if (!messageId || !targetPeer?.to) {
         close();
         return;
       }
@@ -3343,7 +4291,8 @@ const messageContextMenu = (() => {
       messageEditDialog.open(initialText, (nextText) => {
         socket.emit("edit_message", {
           messageId,
-          to: targetPeer,
+          to: targetPeer.to,
+          toType: targetPeer.toType,
           text: nextText,
         });
       });
@@ -3351,14 +4300,15 @@ const messageContextMenu = (() => {
     }
 
     if (action === "pin") {
-      if (!messageId || !targetPeer) {
+      if (!messageId || !targetPeer?.to) {
         close();
         return;
       }
       const shouldPin = actionBtn.dataset.pinState !== "unpin";
       socket.emit("set_message_pin", {
         messageId,
-        to: targetPeer,
+        to: targetPeer.to,
+        toType: targetPeer.toType,
         pinned: shouldPin,
       });
       close();
@@ -3366,11 +4316,11 @@ const messageContextMenu = (() => {
     }
 
     if (action === "delete") {
-      if (!messageId || !targetPeer) {
+      if (!messageId || !targetPeer?.to) {
         close();
         return;
       }
-      socket.emit("delete_message", { messageId, to: targetPeer });
+      socket.emit("delete_message", { messageId, to: targetPeer.to, toType: targetPeer.toType });
       close();
     }
   });
@@ -3490,7 +4440,7 @@ function renderMineMessageMeta(metaEl, timeText, statusKey) {
   status.className = `message-status message-status-${statusKey}`;
 
   if (statusKey === "pending") {
-    status.textContent = "…";
+    status.textContent = "...";
     metaEl.append(time, status);
     return;
   }
@@ -3504,12 +4454,12 @@ function renderMineMessageMeta(metaEl, timeText, statusKey) {
 
   const tickA = document.createElement("span");
   tickA.className = "tick";
-  tickA.textContent = "✓";
+  tickA.textContent = "v";
   status.appendChild(tickA);
   if (statusKey === "seen") {
     const tickB = document.createElement("span");
     tickB.className = "tick";
-    tickB.textContent = "✓";
+    tickB.textContent = "v";
     status.appendChild(tickB);
   }
   metaEl.append(time, status);
@@ -3523,7 +4473,7 @@ function renderIncomingMessageMeta(metaEl, message) {
 }
 
 function appendMessageTextWithLinks(container, text) {
-  const raw = String(text || "");
+  const raw = normalizeMojibakeText(text);
   const urlRegex = /(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:[\/?#][^\s<]*)?/gi;
   const parts = raw.split(urlRegex);
   const matches = raw.match(urlRegex) || [];
@@ -3561,6 +4511,23 @@ function focusMessageById(messageId) {
   }
 }
 
+function revealAndFocusMessage(messageId) {
+  if (!messageId) return false;
+  if (!Array.isArray(conversationMessages) || !conversationMessages.length) return false;
+  const index = conversationMessages.findIndex((message) => message?.id === messageId);
+  if (index < 0) return false;
+
+  if (index < messageWindowStart || index >= messageWindowEnd) {
+    messageWindowEnd = Math.min(conversationMessages.length, index + 1);
+    messageWindowStart = Math.max(0, messageWindowEnd - MAX_VISIBLE_MESSAGES);
+    renderMessageWindow({ skipSearch: true });
+    applyMessageSearch();
+  }
+
+  focusMessageById(messageId);
+  return true;
+}
+
 function buildMessageElement(message, skipAnimation = false) {
   const mine = normalizeName(message.from) === normalizeName(me);
   const isDeleted = Boolean(message.deletedAt);
@@ -3581,6 +4548,7 @@ function buildMessageElement(message, skipAnimation = false) {
   row.dataset.tsFull = fullTimestamp;
   if (fullTimestamp) row.title = fullTimestamp;
   row.dataset.messageFrom = message.from;
+  row.dataset.messageKind = normalizeChatKind(message.toType || (message.groupId ? "group" : activeChatKind || "friend"));
   row.dataset.messageText = searchableText || "";
   row.dataset.searchText = [
     row.dataset.messageFrom,
@@ -3656,12 +4624,21 @@ function buildMessageElement(message, skipAnimation = false) {
     rq.className  = "reply-quote";
     const rt      = document.createElement("span");
     rt.className  = "reply-quote-text";
-    rt.textContent = message.replyTo.text.slice(0, 80) + (message.replyTo.text.length > 80 ? "…" : "");
+    const replyText = String(message.replyTo?.text || "");
+    rt.textContent = replyText.slice(0, 80) + (replyText.length > 80 ? "..." : "");
     rq.addEventListener("click", () => {
       focusMessageById(message.replyTo.id);
     });
     rq.append(rt);
     row.append(rq);
+  }
+
+  const rowKind = normalizeChatKind(message.toType || (message.groupId ? "group" : activeChatKind || "friend"));
+  if (rowKind === "group" && !mine && !isDeleted) {
+    const author = document.createElement("div");
+    author.className = "message-author";
+    author.textContent = message.from || "Member";
+    row.append(author);
   }
 
   const body        = document.createElement("div");
@@ -3699,7 +4676,7 @@ function buildMessageElement(message, skipAnimation = false) {
 
         const fileIcon = document.createElement("div");
         fileIcon.className = "file-icon";
-        fileIcon.textContent = "📎";
+        fileIcon.textContent = "FILE";
 
         const fileMeta = document.createElement("div");
         fileMeta.className = "file-meta";
@@ -3712,7 +4689,7 @@ function buildMessageElement(message, skipAnimation = false) {
         fileSize.className = "file-size";
         const sizeLabel = formatFileSize(attachment.size);
         const typeLabel = attachment.mime || "File";
-        fileSize.textContent = sizeLabel ? `${typeLabel} • ${sizeLabel}` : typeLabel;
+        fileSize.textContent = sizeLabel ? `${typeLabel} - ${sizeLabel}` : typeLabel;
 
         const fileUrl = attachmentUrl || trimmedText;
         const downloadUrl = buildAttachmentDownloadUrl(fileUrl, attachment.name || "file");
@@ -3860,6 +4837,22 @@ function buildMessageElement(message, skipAnimation = false) {
 
   row.append(body);
 
+  if (!isDeleted && message.id) {
+    const replyCount = countRepliesForMessage(message.id);
+    if (replyCount > 0) {
+      const threadBtn = document.createElement("button");
+      threadBtn.type = "button";
+      threadBtn.className = "message-thread-pill";
+      threadBtn.textContent = `${replyCount} repl${replyCount === 1 ? "y" : "ies"}`;
+      threadBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openThreadForMessage(message.id);
+      });
+      row.append(threadBtn);
+    }
+  }
+
   if (mine && message.failed && message.clientTempId) {
     const retryBtn = document.createElement("button");
     retryBtn.type = "button";
@@ -3944,12 +4937,22 @@ function renderMessageWindow(options = {}) {
     messageWindowStart = Math.max(0, messageWindowEnd - MAX_VISIBLE_MESSAGES);
   }
 
+  let hadRenderError = false;
   for (let i = messageWindowStart; i < messageWindowEnd; i += 1) {
     const msg = conversationMessages[i];
-    if (!msg) continue;
-    if (options.withSeparator !== false) appendDateSeparator(msg.timestamp);
-    const row = buildMessageElement(msg, true);
-    messagesEl.appendChild(row);
+    if (!msg || typeof msg !== "object") continue;
+    try {
+      if (options.withSeparator !== false) appendDateSeparator(msg.timestamp);
+      const row = buildMessageElement(msg, true);
+      messagesEl.appendChild(row);
+    } catch (err) {
+      hadRenderError = true;
+      console.warn("Failed to render message row:", err);
+    }
+  }
+  if (hadRenderError && !historyRenderWarningShown) {
+    historyRenderWarningShown = true;
+    showToast("Some older messages could not be rendered.", "info");
   }
 
   updateLoadOlderButton();
@@ -3989,6 +4992,7 @@ function updateStats() {
     const online = friends.filter((f) => f.online).length;
     onlineCount.textContent = `${online} online`;
   }
+  syncMessageFilterUi();
 }
 
 function syncAttachButtonState() {
@@ -4009,6 +5013,7 @@ function syncAttachButtonState() {
 function setComposerEnabled(isEnabled) {
   messageInput.disabled = !isEnabled;
   if (sendButton) sendButton.disabled = !isEnabled;
+  if (scheduleBtn) scheduleBtn.disabled = !isEnabled;
   if (voiceBtn) {
     voiceBtn.disabled = !isEnabled;
     if (!isEnabled) resetVoiceState();
@@ -4021,7 +5026,7 @@ function setComposerEnabled(isEnabled) {
   }
 
   syncAttachButtonState();
-  messageInput.placeholder = "Type a message…";
+  messageInput.placeholder = "Type a message...";
 }
 
 function scrollToUnreadStart() {
@@ -4052,14 +5057,20 @@ function scrollToUnreadStart() {
 }
 
 function renderMessages(messages) {
-  conversationMessages = Array.isArray(messages) ? messages.slice() : [];
+  conversationMessages = Array.isArray(messages)
+    ? messages
+      .filter((message) => message && typeof message === "object")
+      .map((message) => sanitizeMessagePayload(message) || message)
+    : [];
 
   if (!conversationMessages.length) {
     renderMessagesEmptyState("No messages yet. Say hello!");
     applyMessageSearch();
     syncPinnedMessageBar();
     syncProfilePanelStats();
+    syncInfoMediaGrid();
     syncCallLogPanel();
+    syncActiveConversationAccess();
     return;
   }
 
@@ -4076,7 +5087,9 @@ function renderMessages(messages) {
   applyMessageSearch();
   syncPinnedMessageBar();
   syncProfilePanelStats();
+  syncInfoMediaGrid();
   syncCallLogPanel();
+  syncActiveConversationAccess();
 }
 
 function markConversationMessageDeleted(messageId, deletedAt, replacementText = DELETED_MESSAGE_TEXT) {
@@ -4141,7 +5154,7 @@ function applyConversationMessageEdit(messageId, text, editedAt) {
   if (!messageId) return false;
   const message = getConversationMessageById(messageId);
   if (!message || message.deletedAt) return false;
-  message.text = String(text || message.text || "").trim();
+  message.text = normalizeMojibakeText(text || message.text || "").trim();
   message.editedAt = editedAt || new Date().toISOString();
   return true;
 }
@@ -4264,7 +5277,7 @@ function renderDiscover() {
     const sub = document.createElement("div");
     sub.className = "discover-sub";
     const bio = cleanDisplayName(user?.bio);
-    sub.textContent = bio ? `Online now · ${bio}` : "Online now";
+    sub.textContent = bio ? `Online now - ${bio}` : "Online now";
     meta.append(name, sub);
 
     const action = document.createElement("button");
@@ -4285,7 +5298,7 @@ function renderDiscover() {
 }
 
 
-// ─── Requests ────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Requests Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function renderRequests() {
   if (!requestList) return;
@@ -4327,7 +5340,7 @@ function renderRequests() {
   }
 }
 
-// ─── Friends ──────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Friends Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function friendPreview(friend) {
   if (!friend.lastMessage) {
@@ -4335,9 +5348,10 @@ function friendPreview(friend) {
     if (bio) return bio;
     return friend.online ? "Online now" : "No messages yet";
   }
+  const safeLastMessage = normalizeMojibakeText(friend.lastMessage);
   const fromMe = normalizeName(friend.lastFrom) === normalizeName(me);
-  const callPreview = formatCallLogPreview(friend.lastMessage, fromMe);
-  const previewText = callPreview || friend.lastMessage;
+  const callPreview = formatCallLogPreview(safeLastMessage, fromMe);
+  const previewText = callPreview || safeLastMessage;
   if (fromMe) {
     return `You: ${previewText}`;
   }
@@ -4347,15 +5361,20 @@ function friendPreview(friend) {
   return previewText;
 }
 
-function findFriend(username) {
-  return friends.find(
-    (friend) => normalizeName(friend.username) === normalizeName(username)
-  );
+function findFriend(username, kind = "") {
+  const key = normalizeName(username);
+  if (!key) return null;
+  const normalizedKind = kind ? normalizeChatKind(kind) : "";
+  return friends.find((friend) => {
+    if (normalizeName(friend?.username) !== key) return false;
+    if (!normalizedKind) return true;
+    return normalizeChatKind(friend?.kind || "friend") === normalizedKind;
+  }) || null;
 }
 
 function setInfoPanelStatus(text, state) {
   if (!infoPanelStatus) return;
-  infoPanelStatus.textContent = text;
+  infoPanelStatus.textContent = normalizeMojibakeText(text);
   infoPanelStatus.classList.remove("online", "offline", "me");
   if (state) infoPanelStatus.classList.add(state);
 }
@@ -4373,7 +5392,7 @@ function applyInfoAvatar(avatarEl, avatarId, fallbackText) {
 
 function maybeResetInfoPanelScroll() {
   if (!document.body || !document.body.classList.contains("info-open")) return;
-  const nextKey = activeFriend ? normalizeName(activeFriend) : "me";
+  const nextKey = activeFriend ? `${normalizeChatKind(activeChatKind)}:${normalizeName(activeFriend)}` : "me";
   if (!nextKey || nextKey === lastInfoPanelFriendKey) return;
   const inner = document.querySelector(".info-inner");
   if (inner) inner.scrollTop = 0;
@@ -4388,7 +5407,7 @@ function syncInfoPanel() {
     if (!friend) {
       infoPanelName.textContent = "Loading...";
       infoPanelHandle.textContent = "";
-      setInfoPanelStatus("● Offline", "offline");
+      setInfoPanelStatus("Offline", "offline");
       maybeResetInfoPanelScroll();
       return;
     }
@@ -4401,8 +5420,20 @@ function syncInfoPanel() {
       friend.avatarId,
       friend.username.slice(0, 2).toUpperCase()
     );
-    setInfoPanelStatus(friend.online ? "● Online" : "● Offline", friend.online ? "online" : "offline");
-    infoPanelStatus.title = friend.online ? "Online now" : formatLastSeen(friend.lastSeenAt);
+    const safety = getFriendSafety(friend.username);
+    const statusText = safety.blockedByMe
+      ? "Blocked by you"
+      : safety.blockedYou
+        ? "Blocked you"
+        : friend.online
+          ? "Online"
+          : "Offline";
+    setInfoPanelStatus(statusText, friend.online && !safety.blocked ? "online" : "offline");
+    infoPanelStatus.title = safety.blocked
+      ? (safety.blockedByMe ? "You blocked this user." : "This user blocked you.")
+      : friend.online
+        ? "Online now"
+        : formatLastSeen(friend.lastSeenAt);
     maybeResetInfoPanelScroll();
     return;
   }
@@ -4412,7 +5443,7 @@ function syncInfoPanel() {
   infoPanelHandle.textContent = me ? `@${me}` : "@you";
   infoPanelHandle.title = me ? `@${me}` : "@you";
   applyInfoAvatar(infoPanelAvatar, myProfile.avatarId, (me || "You").slice(0, 2).toUpperCase());
-  setInfoPanelStatus("● You", "me");
+  setInfoPanelStatus("You", "me");
   infoPanelStatus.title = "Your profile";
   maybeResetInfoPanelScroll();
 }
@@ -4435,29 +5466,32 @@ function renderActiveFriendPresence() {
     activeFriendAvatar.textContent = "?";
     activeFriendAvatar.style.background = "";
     if (activeFriendPresenceLine) {
-      activeFriendPresenceLine.textContent = "Select a friend to start chatting";
+      activeFriendPresenceLine.textContent = "Select a conversation to start chatting";
       activeFriendPresenceLine.classList.remove("online", "offline");
     }
     syncProfilePanel();
     return;
   }
 
-  const friend = findFriend(activeFriend);
+  const friend = getActiveChatEntry();
   if (!friend) {
     activePresence.classList.add("hidden");
     if (activeFriendPresenceLine) {
-      activeFriendPresenceLine.textContent = "Loading contact status...";
+      activeFriendPresenceLine.textContent = "Loading conversation status...";
       activeFriendPresenceLine.classList.remove("online", "offline");
     }
     syncProfilePanel();
     return;
   }
 
-  activePresence.classList.remove("hidden");
-  activeFriendLabel.textContent = getFriendDisplayName(friend);
-  activeFriendLabel.title = `@${friend.username}`;
+  const isGroup = normalizeChatKind(friend.kind || activeChatKind) === "group";
+  const displayName = getFriendDisplayName(friend);
 
-  const fallback = friend.username.slice(0, 2).toUpperCase();
+  activePresence.classList.remove("hidden");
+  activeFriendLabel.textContent = displayName;
+  activeFriendLabel.title = isGroup ? `#${friend.username}` : `@${friend.username}`;
+
+  const fallback = displayName.slice(0, 2).toUpperCase() || "?";
   if (friend.avatarId && window._novynAvatarUtils) {
     window._novynAvatarUtils.applyAvatarToEl(
       activeFriendAvatar,
@@ -4470,15 +5504,35 @@ function renderActiveFriendPresence() {
   }
 
   activeFriendAvatar.classList.toggle("online", !!friend.online);
-  activeFriendAvatar.title = friend.online
-    ? `${friend.username} is online`
-    : `${friend.username} is offline`;
+  activeFriendAvatar.title = isGroup
+    ? `${Number(friend.memberCount) || 0} members`
+    : friend.online
+      ? `${friend.username} is online`
+      : `${friend.username} is offline`;
 
   if (activeFriendPresenceLine) {
-    const statusText = friend.online ? "Online now" : formatLastSeen(friend.lastSeenAt);
-    activeFriendPresenceLine.textContent = statusText;
-    activeFriendPresenceLine.classList.toggle("online", !!friend.online);
-    activeFriendPresenceLine.classList.toggle("offline", !friend.online);
+    if (isGroup) {
+      const members = Number(friend.memberCount) || 0;
+      const online = Number(friend.onlineCount) || 0;
+      const statusText = online > 0
+        ? `${online} online - ${members} members`
+        : `${members} members`;
+      activeFriendPresenceLine.textContent = statusText;
+      activeFriendPresenceLine.classList.toggle("online", online > 0);
+      activeFriendPresenceLine.classList.toggle("offline", online <= 0);
+    } else {
+      const safety = getFriendSafety(friend.username, "friend");
+      const statusText = safety.blockedByMe
+        ? "Blocked by you"
+        : safety.blockedYou
+          ? "Blocked you"
+          : friend.online
+            ? "Online now"
+            : formatLastSeen(friend.lastSeenAt);
+      activeFriendPresenceLine.textContent = statusText;
+      activeFriendPresenceLine.classList.toggle("online", !!friend.online && !safety.blocked);
+      activeFriendPresenceLine.classList.toggle("offline", !friend.online || safety.blocked);
+    }
   }
 
   syncProfilePanel(friend);
@@ -4487,12 +5541,23 @@ function renderActiveFriendPresence() {
 function syncRemoveFriendButton() {
   if (!removeFriendBtn) return;
   const hasActive = Boolean(activeFriend);
+  const activeEntry = hasActive ? getActiveChatEntry() : null;
+  const isGroup = normalizeChatKind(activeEntry?.kind || activeChatKind) === "group";
   removeFriendBtn.classList.toggle("hidden", !hasActive);
   removeFriendBtn.disabled = !hasActive;
   if (hasActive) {
-    removeFriendBtn.title = `Unfriend @${activeFriend}`;
-    removeFriendBtn.setAttribute("aria-label", `Unfriend ${activeFriend}`);
+    if (isGroup) {
+      const label = getFriendDisplayName(activeEntry || { username: activeFriend });
+      removeFriendBtn.textContent = "Leave";
+      removeFriendBtn.title = `Leave ${label}`;
+      removeFriendBtn.setAttribute("aria-label", `Leave ${label}`);
+    } else {
+      removeFriendBtn.textContent = "Remove";
+      removeFriendBtn.title = `Unfriend @${activeFriend}`;
+      removeFriendBtn.setAttribute("aria-label", `Unfriend ${activeFriend}`);
+    }
   } else {
+    removeFriendBtn.textContent = "Remove";
     removeFriendBtn.title = "Unfriend";
     removeFriendBtn.setAttribute("aria-label", "Unfriend");
   }
@@ -4502,6 +5567,7 @@ function clearActiveFriendSelection() {
   persistActiveMessageDraft();
   if (activeFriend) stopLocalTyping(activeFriend);
   activeFriend = "";
+  activeChatKind = "friend";
   pendingUnreadJump = { friendKey: "", count: 0 };
   setActiveChatTarget("");
   conversationMessages = [];
@@ -4512,11 +5578,12 @@ function clearActiveFriendSelection() {
     activeFriendLabel.title = "";
   }
   if (activeFriendPresenceLine) {
-    activeFriendPresenceLine.textContent = "Choose a friend to start messaging";
+    activeFriendPresenceLine.textContent = "Choose a chat to start messaging";
     activeFriendPresenceLine.classList.remove("online", "offline");
   }
   renderActiveFriendPresence();
   syncRemoveFriendButton();
+  syncSafetyActionButtons();
   setComposerEnabled(false);
   if (messageInput) {
     messageInput.value = "";
@@ -4525,12 +5592,18 @@ function clearActiveFriendSelection() {
     sendButton.classList.remove("ready");
   }
   renderMessagesEmptyState(EMPTY_CONVERSATION_HINT);
+  syncInfoMediaGrid();
+  renderScheduledPanel();
   renderFriends();
 }
 
-function setActiveFriend(username) {
+function setActiveFriend(username, kind = "friend") {
   persistActiveMessageDraft();
-  if (activeFriend && normalizeName(activeFriend) !== normalizeName(username)) {
+  const nextKind = normalizeChatKind(kind);
+  if (
+    activeFriend &&
+    (normalizeName(activeFriend) !== normalizeName(username) || normalizeChatKind(activeChatKind) !== nextKind)
+  ) {
     stopLocalTyping(activeFriend);
   }
 
@@ -4540,7 +5613,7 @@ function setActiveFriend(username) {
   }
 
   if (username) {
-    const friend = findFriend(username);
+    const friend = findFriend(username, nextKind);
     pendingUnreadJump = {
       friendKey: normalizeName(username),
       count: Number(friend?.unreadCount) || 0,
@@ -4550,7 +5623,8 @@ function setActiveFriend(username) {
   }
 
   activeFriend = username;
-  setActiveChatTarget(username);
+  activeChatKind = nextKind;
+  setActiveChatTarget(username, nextKind);
   conversationMessages = [];
   clearReply();
   resetMessageSearch();
@@ -4558,9 +5632,11 @@ function setActiveFriend(username) {
   renderActiveFriendPresence();
   syncRemoveFriendButton();
   setComposerEnabled(true);
+  syncActiveConversationAccess();
   applyActiveMessageDraft();
-  renderMessagesEmptyState("Loading conversation…");
-  socket.emit("get_history", username);
+  renderMessagesEmptyState("Loading conversation...");
+  socket.emit("get_history", { to: username, toType: nextKind });
+  requestScheduledMessagesForActiveChat();
   renderFriends();
 
   // Focus input after selecting friend (better UX, especially on desktop)
@@ -4577,9 +5653,19 @@ function renderFriends() {
   const isContactsView = sidebarView === "contacts";
   const isMessagesView = sidebarView === "messages";
   const query = friendSearchQuery;
+  const baseFriends = friends.filter((friend) => {
+    const chatKind = normalizeChatKind(friend?.kind || "friend");
+    const isGroup = chatKind === "group";
+    if (isContactsView && isGroup) return false;
+    if (!isMessagesView) return true;
+    if (messageListFilter === "groups") return isGroup;
+    if (messageListFilter === "blocked") return isBlockedFriendEntry(friend);
+    if (messageListFilter === "unread") return (Number(friend?.unreadCount) || 0) > 0;
+    return true;
+  });
   const filteredFriends = query
-    ? friends.filter((friend) => getFriendSearchBlob(friend).includes(query))
-    : friends;
+    ? baseFriends.filter((friend) => getFriendSearchBlob(friend).includes(query))
+    : baseFriends;
   const sortedFriends = filteredFriends.slice().sort((a, b) => {
     if (sidebarView === "contacts") {
       return getFriendDisplayName(a).localeCompare(getFriendDisplayName(b));
@@ -4595,12 +5681,25 @@ function renderFriends() {
   if (!sortedFriends.length) {
     const empty       = document.createElement("li");
     empty.className   = "item-card list-empty";
-    empty.textContent = friends.length
-      ? `No friends match "${friendSearchQuery}"`
-      : "No friends yet — add one above";
+    if (friends.length && query) {
+      empty.textContent = `No chats match "${friendSearchQuery}"`;
+    } else if (isMessagesView) {
+      const byFilter = {
+        all: "No chats yet - add friends or create a group",
+        groups: "No groups yet - create one with the + button",
+        blocked: "No blocked chats",
+        unread: "No unread chats",
+      };
+      empty.textContent = byFilter[messageListFilter] || byFilter.all;
+    } else {
+      empty.textContent = friends.length
+        ? `No chats match "${friendSearchQuery}"`
+        : "No chats yet - add friends or create a group";
+    }
     friendList.appendChild(empty);
     renderActiveFriendPresence();
     syncRemoveFriendButton();
+    syncActiveConversationAccess();
     return;
   }
 
@@ -4610,16 +5709,21 @@ function renderFriends() {
 
     const btn         = document.createElement("button");
     btn.type          = "button";
-    btn.className     = `friend-btn chat-item${normalizeName(activeFriend) === normalizeName(friend.username) ? " active" : ""}`;
+    const chatKind = normalizeChatKind(friend?.kind || "friend");
+    const blockedEntry = isBlockedFriendEntry(friend);
+    const isActive = normalizeName(activeFriend) === normalizeName(friend.username)
+      && normalizeChatKind(activeChatKind) === chatKind;
+    btn.className     = `friend-btn chat-item${isActive ? " active" : ""}${blockedEntry ? " is-blocked" : ""}`;
     btn.dataset.username = friend.username;
+    btn.dataset.kind = chatKind;
 
     // Avatar with initials + online dot
     const avatar        = document.createElement("div");
     avatar.className    = `friend-avatar chat-av av-default${friend.online ? " online" : ""}`;
     if (friend.avatarId && window._novynAvatarUtils) {
-      window._novynAvatarUtils.applyAvatarToEl(avatar, friend.avatarId, friend.username.slice(0, 2).toUpperCase());
+      window._novynAvatarUtils.applyAvatarToEl(avatar, friend.avatarId, getFriendDisplayName(friend).slice(0, 2).toUpperCase());
     } else {
-      avatar.textContent = friend.username.slice(0, 2).toUpperCase();
+      avatar.textContent = getFriendDisplayName(friend).slice(0, 2).toUpperCase();
     }
     btn.appendChild(avatar);
 
@@ -4629,7 +5733,9 @@ function renderFriends() {
     const name        = document.createElement("span");
     name.className    = "friend-name chat-name";
     name.textContent  = getFriendDisplayName(friend);
-    if (displayDiffersFromUsername(friend)) {
+    if (chatKind === "group") {
+      name.title = `${getFriendDisplayName(friend)} (#${friend.username})`;
+    } else if (displayDiffersFromUsername(friend)) {
       name.title = `${getFriendDisplayName(friend)} (@${friend.username})`;
     } else {
       name.title = friend.username;
@@ -4637,14 +5743,36 @@ function renderFriends() {
 
     const preview = document.createElement("span");
     preview.className = "chat-preview";
-    preview.textContent = (isContactsView || isMessagesView) ? getFriendPresenceText(friend) : friendPreview(friend);
+    if (isContactsView) {
+      preview.textContent = getFriendPresenceText(friend);
+    } else if (isMessagesView && blockedEntry) {
+      const safety = getFriendSafety(friend.username, chatKind);
+      preview.textContent = safety.blockedByMe ? "Blocked by you" : "Blocked you";
+    } else {
+      preview.textContent = friendPreview(friend);
+    }
     preview.title = preview.textContent;
-    if (isContactsView || isMessagesView) {
+    if (isContactsView) {
       preview.classList.toggle("status-online", !!friend.online);
       preview.classList.toggle("status-offline", !friend.online);
     }
 
-    main.append(name, preview);
+    const nameRow = document.createElement("div");
+    nameRow.className = "chat-name-row";
+    nameRow.appendChild(name);
+    if (isMessagesView && chatKind === "group") {
+      const chip = document.createElement("span");
+      chip.className = "chat-kind-chip group";
+      chip.textContent = "Group";
+      nameRow.appendChild(chip);
+    } else if (isMessagesView && blockedEntry) {
+      const chip = document.createElement("span");
+      chip.className = "chat-kind-chip blocked";
+      chip.textContent = "Blocked";
+      nameRow.appendChild(chip);
+    }
+
+    main.append(nameRow, preview);
 
     if (!isContactsView) {
       const side      = document.createElement("div");
@@ -4693,7 +5821,7 @@ function renderFriends() {
       if (!list || !list.length) return;
       const label = document.createElement("li");
       label.className = "contact-section-label";
-      label.textContent = `${labels[bucket]} — ${list.length}`;
+      label.textContent = `${labels[bucket]} - ${list.length}`;
       friendList.appendChild(label);
       list
         .slice()
@@ -4706,12 +5834,13 @@ function renderFriends() {
 
   renderActiveFriendPresence();
   syncRemoveFriendButton();
+  syncActiveConversationAccess();
   renderCallHistory();
 }
 
-// ─── Form handlers ────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Form handlers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
-// ─── Login button spinner helpers ────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Login button spinner helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const loginBtn = document.getElementById("loginBtn");
 const loginBtnText = loginBtn ? loginBtn.querySelector(".login-btn-text") : null;
 const loginBtnArrow = loginBtn ? loginBtn.querySelector(".login-btn-arrow") : null;
@@ -4720,7 +5849,7 @@ const loginBtnSpinner = loginBtn ? loginBtn.querySelector(".login-btn-spinner") 
 function setLoginLoading(isLoading) {
   if (!loginBtn) return;
   loginBtn.disabled = isLoading;
-  if (loginBtnText)    loginBtnText.textContent = isLoading ? "Entering…" : "Sign In";
+  if (loginBtnText)    loginBtnText.textContent = isLoading ? "Entering..." : "Sign In";
   if (loginBtnArrow)   loginBtnArrow.classList.toggle("hidden", isLoading);
   if (loginBtnSpinner) loginBtnSpinner.classList.toggle("hidden", !isLoading);
 }
@@ -4778,6 +5907,95 @@ if (friendInput) {
   });
 }
 
+function openCreateGroupPrompt() {
+  const candidateFriends = friends.filter((entry) => normalizeChatKind(entry?.kind || "friend") === "friend");
+  if (!candidateFriends.length) {
+    showToast("Add at least one friend before creating a group.", "info");
+    return;
+  }
+  const defaultName = `${getMyDisplayName()}'s group`;
+  const groupNameInput = window.prompt("Group name:", defaultName);
+  if (groupNameInput === null) return;
+  const groupName = String(groupNameInput || "").trim().slice(0, 48);
+  if (!groupName) {
+    showToast("Group name is required.", "error");
+    return;
+  }
+
+  const suggestedMembers = candidateFriends.slice(0, 5).map((entry) => entry.username).join(", ");
+  const membersInput = window.prompt(
+    "Add friends by username (comma-separated):",
+    suggestedMembers
+  );
+  if (membersInput === null) return;
+  const allowed = new Set(candidateFriends.map((entry) => normalizeName(entry.username)));
+  const members = Array.from(
+    new Set(
+      String(membersInput || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  ).filter((username) => allowed.has(normalizeName(username)));
+  if (!members.length) {
+    showToast("Select at least one valid friend for the group.", "error");
+    return;
+  }
+
+  socket.emit("create_group", {
+    name: groupName,
+    members,
+  });
+}
+
+if (createGroupBtn) {
+  createGroupBtn.addEventListener("click", () => {
+    openCreateGroupPrompt();
+  });
+}
+
+if (chatCategoryButtons.length) {
+  chatCategoryButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const filter = String(btn.dataset.chatFilter || "all").trim();
+      if (sidebarView !== "messages") {
+        switchRail("messages");
+      }
+      setMessageListFilter(filter);
+    });
+  });
+}
+
+if (chatQuickMenuBtn && chatQuickMenu) {
+  chatQuickMenuBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleChatQuickMenu();
+  });
+  chatQuickMenu.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const item = target.closest(".chat-quick-item");
+    if (!item) return;
+    const action = String(item.dataset.quickAction || "").trim();
+    closeChatQuickMenu();
+    if (action === "profile") {
+      setSettingsOpen(true);
+      return;
+    }
+    if (action === "discover") {
+      switchRail("discover");
+      return;
+    }
+    if (["all", "groups", "blocked", "unread"].includes(action)) {
+      if (sidebarView !== "messages") {
+        switchRail("messages");
+      }
+      setMessageListFilter(action);
+    }
+  });
+}
+
 if (sidebarSearch) {
   const applyFriendSearch = () => {
     friendSearchQuery = normalizeSearchText(sidebarSearch.value);
@@ -4822,7 +6040,21 @@ if (settingsCloseBtn) {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && settingsOpen) {
     setSettingsOpen(false);
+    return;
   }
+  if (e.key === "Escape") {
+    closeChatQuickMenu();
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (!chatQuickMenu || chatQuickMenu.classList.contains("hidden")) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const insideMenu = Boolean(target.closest("#chatQuickMenu"));
+  const insideButton = Boolean(target.closest("#chatQuickMenuBtn"));
+  if (insideMenu || insideButton) return;
+  closeChatQuickMenu();
 });
 
 if (mobBackBtn) {
@@ -4847,15 +6079,16 @@ if (friendList) {
     const btn = e.target.closest(".friend-btn");
     if (!btn) return;
     const username = btn.dataset.username;
+    const kind = normalizeChatKind(btn.dataset.kind || "friend");
     if (!username) return;
     e.preventDefault();
-    setActiveFriend(username);
+    setActiveFriend(username, kind);
     showChatOnMobile();
   };
   friendList.addEventListener("click", handleFriendActivate);
 }
 
-// ─── Custom unfriend confirm modal ────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Custom unfriend confirm modal Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const unfriendModal  = document.getElementById("unfriendModal");
 const unfriendCancel  = document.getElementById("unfriendCancel");
 const unfriendConfirm = document.getElementById("unfriendConfirm");
@@ -4934,6 +6167,15 @@ document.addEventListener("keydown", (e) => {
 if (removeFriendBtn) {
   removeFriendBtn.addEventListener("click", () => {
     if (!activeFriend) return;
+    const activeEntry = getActiveChatEntry();
+    const isGroup = normalizeChatKind(activeEntry?.kind || activeChatKind) === "group";
+    if (isGroup) {
+      const label = getFriendDisplayName(activeEntry || { username: activeFriend });
+      const confirmed = window.confirm(`Leave "${label}"?`);
+      if (!confirmed) return;
+      socket.emit("leave_group", { groupId: activeFriend });
+      return;
+    }
     showUnfriendModal(activeFriend);
   });
 }
@@ -5135,6 +6377,7 @@ async function uploadAttachmentFile(file) {
 
   const response = await fetch("/upload-file", {
     method: "POST",
+    headers: buildCsrfHeaders(),
     body: formData,
     credentials: "same-origin",
   });
@@ -5163,6 +6406,11 @@ async function uploadAttachmentFromPicker(file) {
     showToast("Choose a friend before attaching a file.", "error");
     return;
   }
+  const safety = getFriendSafety(activeFriend, activeChatKind);
+  if (safety.blocked) {
+    showToast(safety.blockedByMe ? "Unblock this contact to share files." : "This user has blocked you.", "error");
+    return;
+  }
   if (attachmentUploadState.active) {
     showToast("Please wait for the current upload to finish.", "info");
     return;
@@ -5173,6 +6421,7 @@ async function uploadAttachmentFromPicker(file) {
   }
 
   const targetFriend = activeFriend;
+  const targetKind = normalizeChatKind(activeChatKind);
   const tempId = createClientTempId();
   attachmentUploadState.pendingTempId = tempId;
   attachmentUploadState.target = targetFriend;
@@ -5180,7 +6429,7 @@ async function uploadAttachmentFromPicker(file) {
 
   const pendingLabel = `Uploading ${String(file.name || "file").slice(0, 120)}...`;
   queuePendingMessage(
-    { to: targetFriend, text: pendingLabel, clientTempId: tempId },
+    { to: targetFriend, toType: targetKind, text: pendingLabel, clientTempId: tempId },
     { queue: false, updateFriends: false }
   );
 
@@ -5193,6 +6442,7 @@ async function uploadAttachmentFromPicker(file) {
       sendMessagePayload(
         {
           to: targetFriend,
+          toType: targetKind,
           text: attachment.url,
           attachment,
           clientTempId: pendingTempId,
@@ -5200,7 +6450,7 @@ async function uploadAttachmentFromPicker(file) {
         { optimistic: false }
       );
     } else {
-      sendMessagePayload({ to: targetFriend, text: attachment.url, attachment });
+      sendMessagePayload({ to: targetFriend, toType: targetKind, text: attachment.url, attachment });
     }
     showToast(attachment.kind === "image" ? "Image sent." : "File sent.", "success");
   } catch (error) {
@@ -5225,7 +6475,13 @@ async function uploadAttachmentFromPicker(file) {
 
 async function uploadVoiceBlob(blob) {
   if (!blob || !activeFriend) return;
+  const safety = getFriendSafety(activeFriend, activeChatKind);
+  if (safety.blocked) {
+    showToast(safety.blockedByMe ? "Unblock this contact to send voice messages." : "This user has blocked you.", "error");
+    return;
+  }
   const targetFriend = activeFriend;
+  const targetKind = normalizeChatKind(activeChatKind);
   voiceState.uploading = true;
   if (voiceStatus) voiceStatus.classList.remove("hidden");
   if (voiceLabel) voiceLabel.textContent = "Uploading...";
@@ -5237,7 +6493,7 @@ async function uploadVoiceBlob(blob) {
   if (targetFriend) {
     const tempId = createClientTempId();
     voiceState.pendingTempId = tempId;
-    queuePendingMessage({ to: targetFriend, text: "Uploading voice message...", clientTempId: tempId }, { queue: false, updateFriends: false });
+  queuePendingMessage({ to: targetFriend, toType: targetKind, text: "Uploading voice message...", clientTempId: tempId }, { queue: false, updateFriends: false });
   }
   try {
     const formData = new FormData();
@@ -5245,6 +6501,10 @@ async function uploadVoiceBlob(blob) {
     const data = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/upload-voice");
+      const csrfToken = readCookie(CSRF_COOKIE_NAME);
+      if (csrfToken) {
+        xhr.setRequestHeader(CSRF_HEADER_NAME, csrfToken);
+      }
       xhr.upload.onprogress = (evt) => {
         if (!evt.lengthComputable) return;
         const pct = Math.max(0, Math.min(1, evt.loaded / evt.total));
@@ -5278,9 +6538,9 @@ async function uploadVoiceBlob(blob) {
         );
         renderFriends();
       }
-      sendMessagePayload({ to: targetFriend, text: data.url, clientTempId: tempId }, { optimistic: false });
+      sendMessagePayload({ to: targetFriend, toType: targetKind, text: data.url, clientTempId: tempId }, { optimistic: false });
     } else {
-      sendMessagePayload({ to: targetFriend, text: data.url });
+      sendMessagePayload({ to: targetFriend, toType: targetKind, text: data.url });
     }
     showToast("Voice message sent", "success");
   } catch (err) {
@@ -5318,6 +6578,11 @@ async function startVoiceRecording() {
   if (!voiceBtn) return;
   if (!activeFriend) {
     showToast("Choose a friend before recording.", "error");
+    return;
+  }
+  const safety = getFriendSafety(activeFriend, activeChatKind);
+  if (safety.blocked) {
+    showToast(safety.blockedByMe ? "Unblock this contact to record voice." : "This user has blocked you.", "error");
     return;
   }
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -5561,7 +6826,7 @@ function maybeSendCallLog(status) {
   if (activeFriend && normalizeName(activeFriend) === normalizeName(target)) {
     queuePendingMessage({ to: target, text: payload, clientTempId: tempId }, { queue: false });
   }
-  socket.emit("private_message", { to: target, text: payload, clientTempId: tempId });
+  socket.emit("private_message", { to: target, toType: "friend", text: payload, clientTempId: tempId });
   callState.logSent = true;
 }
 
@@ -5883,6 +7148,20 @@ async function startCall(mediaType = "audio") {
     showToast("Choose a friend first.", "error");
     return;
   }
+  const activeEntry = getActiveChatEntry();
+  if (normalizeChatKind(activeEntry?.kind || activeChatKind) === "group") {
+    showToast("Group calls are coming soon.", "info");
+    return;
+  }
+  const safety = getFriendSafety(activeFriend, "friend");
+  if (safety.blockedByMe) {
+    showToast("Unblock this contact to start calls.", "error");
+    return;
+  }
+  if (safety.blockedYou) {
+    showToast("This user has blocked you.", "error");
+    return;
+  }
   if (!navigator.mediaDevices?.getUserMedia) {
     showToast("Calling not supported in this browser.", "error");
     return;
@@ -6167,6 +7446,7 @@ function retryFailedMessage(tempId, options = {}) {
 
   const payload = {
     to: message.to,
+    toType: normalizeChatKind(message.toType || message.kind || "friend"),
     text: message.text,
     clientTempId: tempId,
   };
@@ -6194,6 +7474,15 @@ function retryFailedMessage(tempId, options = {}) {
 
 function sendQueuedMessage(entry) {
   if (!entry || !socketAvailable || !socket.connected) return false;
+  const target = entry.payload?.to || "";
+  const targetKind = normalizeChatKind(entry.payload?.toType || "friend");
+  if (targetKind === "friend") {
+    const safety = getFriendSafety(target, "friend");
+    if (safety.blocked) {
+      markPendingMessageFailed(entry.tempId, { toast: false });
+      return false;
+    }
+  }
   const pendingMessage = pendingByTempId.get(entry.tempId);
   if (pendingMessage) {
     pendingMessage.failed = false;
@@ -6217,12 +7506,13 @@ function removePendingFromQueue(tempId) {
 
 function queuePendingMessage(payload, options = {}) {
   if (!payload || !payload.to || !payload.text) return;
+  const payloadType = normalizeChatKind(payload.toType || "friend");
   const shouldQueue = options.queue !== false;
   const shouldUpdateFriends = options.updateFriends !== false;
   const tempId = payload.clientTempId || createClientTempId();
   const timestamp = new Date().toISOString();
   const targetIsActiveThread = Boolean(
-    activeFriend && normalizeName(payload.to) === normalizeName(activeFriend)
+    activeFriend && isSameChatTarget(payload.to, payloadType, activeFriend, activeChatKind)
   );
   const wasAtLatest = targetIsActiveThread ? !hasNewerMessages() : false;
 
@@ -6231,6 +7521,9 @@ function queuePendingMessage(payload, options = {}) {
     clientTempId: tempId,
     from: me || "You",
     to: payload.to,
+    toType: payloadType,
+    kind: payloadType,
+    groupId: payloadType === "group" ? payload.to : "",
     text: payload.text,
     timestamp,
     deliveredAt: null,
@@ -6247,7 +7540,7 @@ function queuePendingMessage(payload, options = {}) {
   }
   if (shouldUpdateFriends) {
     friends = friends.map((f) =>
-      normalizeName(f.username) === normalizeName(payload.to)
+      isSameChatTarget(f.username, f.kind || "friend", payload.to, payloadType)
         ? { ...f, lastMessage: payload.text, lastFrom: me, lastTimestamp: timestamp }
         : f
     );
@@ -6321,6 +7614,7 @@ function flushPendingQueue(force = false) {
   const now = Date.now();
   const queueSnapshot = pendingQueue.slice();
   let failedAny = false;
+  let blockedAny = false;
   queueSnapshot.forEach((item) => {
     if (item.attempts >= PENDING_RETRY_MAX_ATTEMPTS) {
       if (markPendingMessageFailed(item.tempId, { toast: false })) {
@@ -6329,19 +7623,36 @@ function flushPendingQueue(force = false) {
       return;
     }
     if (!force && item.nextAttemptAt > now) return;
-    sendQueuedMessage(item);
+    const sent = sendQueuedMessage(item);
+    if (!sent) {
+      const pendingMessage = pendingByTempId.get(item.tempId);
+      if (pendingMessage?.failed) blockedAny = true;
+    }
   });
   if (failedAny) {
     showToast("Some messages failed to send. Tap Retry.", "error");
+  }
+  if (blockedAny) {
+    showToast("Some queued messages are blocked by safety settings.", "info");
   }
   renderNetworkState();
 }
 
 function sendMessagePayload(payload, options = {}) {
   if (!payload || !payload.to) return;
+  const payloadType = normalizeChatKind(payload.toType || activeChatKind || "friend");
+  if (payloadType === "friend") {
+    const safety = getFriendSafety(payload.to, "friend");
+    if (safety.blocked) {
+      if (options.toast !== false) {
+        showToast(safety.blockedByMe ? "Unblock this contact to send messages." : "This user has blocked you.", "error");
+      }
+      return;
+    }
+  }
   const validatedText = validateOutgoingMessageText(payload.text);
   if (validatedText === null || !validatedText) return;
-  const outgoingPayload = { ...payload, text: validatedText };
+  const outgoingPayload = { ...payload, toType: payloadType, text: validatedText };
   const normalizedAttachment = normalizeAttachmentPayload(payload.attachment, validatedText);
   if (normalizedAttachment) {
     outgoingPayload.attachment = normalizedAttachment;
@@ -6393,13 +7704,24 @@ function sendMessagePayload(payload, options = {}) {
 function sendActiveMessage() {
   const text = messageInput.value.trim();
   if (!activeFriend) { showToast("Choose a friend first.", "error"); return; }
+  if (normalizeChatKind(activeChatKind) === "friend") {
+    const safety = getFriendSafety(activeFriend, "friend");
+    if (safety.blockedByMe) {
+      showToast("Unblock this contact to send messages.", "error");
+      return;
+    }
+    if (safety.blockedYou) {
+      showToast("This user has blocked you.", "error");
+      return;
+    }
+  }
   if (!text) return;
 
   if (hasNewerMessages()) {
     showLatestMessages();
   }
   stopLocalTyping();
-  const payload = { to: activeFriend, text };
+  const payload = { to: activeFriend, toType: activeChatKind, text };
   if (replyTo) payload.replyTo = replyTo;
   const sentTempId = sendMessagePayload(payload);
   if (!sentTempId) return;
@@ -6414,10 +7736,159 @@ function sendActiveMessage() {
   keepComposerFocused();
 }
 
+function requestScheduledMessagesForActiveChat() {
+  if (!socketAvailable || !activeFriend) {
+    renderScheduledPanel();
+    return;
+  }
+  socket.emit("list_scheduled_messages", {
+    to: activeFriend,
+    toType: normalizeChatKind(activeChatKind),
+  });
+}
+
+function formatScheduledLocal(isoText) {
+  const date = new Date(isoText || "");
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function buildDefaultScheduleInput() {
+  const date = new Date(Date.now() + 15 * 60 * 1000);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function parseScheduleInput(rawValue) {
+  const raw = String(rawValue || "").trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) {
+    const minutes = Number(raw);
+    if (!Number.isFinite(minutes) || minutes <= 0) return null;
+    return new Date(Date.now() + minutes * 60 * 1000);
+  }
+  const normalized = raw.replace("T", " ");
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/.test(normalized)) {
+    const [datePart, timePart] = normalized.split(/\s+/);
+    const candidate = new Date(`${datePart}T${timePart}:00`);
+    if (!Number.isNaN(candidate.getTime())) return candidate;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function renderScheduledPanel() {
+  if (!scheduledPanel || !scheduledList || !scheduledEmpty) return;
+  if (!activeFriend) {
+    scheduledPanel.classList.add("hidden");
+    scheduledList.innerHTML = "";
+    scheduledEmpty.textContent = "No scheduled messages";
+    return;
+  }
+  const messages = getScheduledMessagesForChat(activeFriend, activeChatKind);
+  scheduledList.innerHTML = "";
+  if (!messages.length) {
+    scheduledPanel.classList.add("hidden");
+    scheduledEmpty.textContent = "No scheduled messages";
+    return;
+  }
+
+  scheduledPanel.classList.remove("hidden");
+  scheduledEmpty.textContent = "";
+  messages.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "scheduled-item";
+    row.dataset.id = String(entry?.id || "");
+
+    const meta = document.createElement("div");
+    meta.className = "scheduled-item-meta";
+    meta.textContent = `Sends ${formatScheduledLocal(entry?.sendAt)}`;
+
+    const text = document.createElement("div");
+    text.className = "scheduled-item-text";
+    const body = String(entry?.text || "").trim();
+    text.textContent = body.length > 120 ? `${body.slice(0, 117)}...` : body;
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "scheduled-item-cancel";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => {
+      const id = String(entry?.id || "").trim();
+      if (!id) return;
+      socket.emit("cancel_scheduled_message", { id });
+    });
+
+    row.append(meta, text, cancelBtn);
+    scheduledList.appendChild(row);
+  });
+}
+
+function scheduleActiveMessage() {
+  if (!activeFriend) {
+    showToast("Choose a chat first.", "error");
+    return;
+  }
+  const text = String(messageInput?.value || "").trim();
+  if (!text) {
+    showToast("Type a message to schedule.", "info");
+    return;
+  }
+  if (normalizeChatKind(activeChatKind) === "friend") {
+    const safety = getFriendSafety(activeFriend, "friend");
+    if (safety.blockedByMe || safety.blockedYou) {
+      showToast("Scheduling is unavailable while blocked.", "error");
+      return;
+    }
+  }
+  const input = window.prompt(
+    "Send when? Use YYYY-MM-DD HH:MM (or minutes from now).",
+    buildDefaultScheduleInput()
+  );
+  if (input === null) return;
+  const scheduleDate = parseScheduleInput(input);
+  if (!scheduleDate || Number.isNaN(scheduleDate.getTime())) {
+    showToast("Invalid date/time format.", "error");
+    return;
+  }
+  if (scheduleDate.getTime() - Date.now() < 30 * 1000) {
+    showToast("Choose a time at least 30 seconds from now.", "error");
+    return;
+  }
+  const payload = {
+    to: activeFriend,
+    toType: normalizeChatKind(activeChatKind),
+    text,
+    sendAt: scheduleDate.toISOString(),
+  };
+  if (replyTo) payload.replyTo = replyTo;
+  socket.emit("schedule_message", payload);
+  messageInput.value = "";
+  removeMessageDraft(activeFriend);
+  if (sendButton) sendButton.classList.remove("ready");
+  clearReply();
+  showToast("Message scheduled.", "success");
+}
+
 messageForm.addEventListener("submit", (e) => {
   e.preventDefault();
   sendActiveMessage();
 });
+if (scheduleBtn) {
+  scheduleBtn.addEventListener("click", () => {
+    scheduleActiveMessage();
+  });
+}
 if (retryFailedBtn) {
   retryFailedBtn.addEventListener("click", (event) => {
     event.preventDefault();
@@ -6429,6 +7900,11 @@ if (attachFileBtn && attachFileInput) {
   attachFileBtn.addEventListener("click", () => {
     if (!activeFriend) {
       showToast("Choose a friend before attaching a file.", "error");
+      return;
+    }
+    const safety = getFriendSafety(activeFriend, activeChatKind);
+    if (safety.blocked) {
+      showToast(safety.blockedByMe ? "Unblock this contact to share files." : "This user has blocked you.", "error");
       return;
     }
     if (attachmentUploadState.active) {
@@ -6496,6 +7972,43 @@ if (profileVideoBtn) {
     startVideoCall();
   });
 }
+if (infoCallBtn) {
+  infoCallBtn.addEventListener("click", () => {
+    startVoiceCall();
+  });
+}
+if (infoMuteBtn) {
+  infoMuteBtn.addEventListener("click", () => {
+    if (!activeFriend) return;
+    const safety = getFriendSafety(activeFriend, activeChatKind);
+    socket.emit("set_mute", {
+      username: activeFriend,
+      muted: !safety.muted,
+    });
+  });
+}
+if (infoBlockBtn) {
+  infoBlockBtn.addEventListener("click", () => {
+    if (!activeFriend) return;
+    const safety = getFriendSafety(activeFriend, activeChatKind);
+    socket.emit("set_block", {
+      username: activeFriend,
+      blocked: !safety.blockedByMe,
+    });
+  });
+}
+if (infoReportBtn) {
+  infoReportBtn.addEventListener("click", () => {
+    if (!activeFriend) return;
+    const reason = window.prompt(`Report @${activeFriend} for:`, "Spam or harassment");
+    if (reason === null) return;
+    socket.emit("report_user", {
+      username: activeFriend,
+      category: "other",
+      reason: String(reason || "").trim(),
+    });
+  });
+}
 if (callMuteBtn) callMuteBtn.addEventListener("click", toggleMute);
 if (callSpeakerBtn) callSpeakerBtn.addEventListener("click", toggleSpeaker);
 if (callCameraBtn) callCameraBtn.addEventListener("click", toggleCamera);
@@ -6534,7 +8047,24 @@ if (messageSearchInput) {
   messageSearchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      if (getSearchScope() === "global") {
+        applyMessageSearch();
+        return;
+      }
       jumpSearchResult(e.shiftKey ? -1 : 1);
+    }
+  });
+}
+if (messageSearchScope) {
+  messageSearchScope.addEventListener("change", () => {
+    applyMessageSearch();
+    if (messageSearchInput) messageSearchInput.focus();
+  });
+}
+if (messageSearchFilter) {
+  messageSearchFilter.addEventListener("change", () => {
+    if (getSearchScope() === "global") {
+      applyMessageSearch();
     }
   });
 }
@@ -6620,16 +8150,19 @@ setInterval(() => {
   flushPendingQueue();
 }, PENDING_RETRY_TICK_MS);
 
-// ─── Socket events ────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Socket events Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 socket.on("register_success", (data) => {
   const previousActiveFriend = activeFriend;
+  const previousActiveChatKind = activeChatKind;
   persistActiveMessageDraft();
   me           = data.username;
   ensureMessageDraftsLoaded(true);
-  friends      = data.friends  || [];
+  friends      = Array.isArray(data.friends) ? data.friends.map((friend) => sanitizeFriendRecord(friend)) : [];
   requests     = data.requests || [];
+  applySafetyState(data.safety || {});
   activeFriend = "";
+  activeChatKind = "friend";
   setActiveChatTarget("");
 
   if (data.profile) {
@@ -6651,9 +8184,10 @@ socket.on("register_success", (data) => {
   syncSettingsPanel();
   clearSidebarSearch();
   if (passwordInput) passwordInput.value = "";
-  if (activeFriendLabel) activeFriendLabel.textContent = "Select a friend";
+  if (activeFriendLabel) activeFriendLabel.textContent = "Select a conversation";
   renderActiveFriendPresence();
   syncRemoveFriendButton();
+  syncSafetyActionButtons();
 
   if (loginCard) loginCard.classList.add("hidden");
   if (chatLayout) chatLayout.classList.remove("hidden");
@@ -6667,19 +8201,25 @@ socket.on("register_success", (data) => {
 
   renderRequests();
   renderFriends();
+  renderScheduledPanel();
   renderDiscover();
   if (sidebarView === "discover") {
     requestDiscoverOnline();
   }
   if (
     previousActiveFriend &&
-    friends.some((friend) => normalizeName(friend.username) === normalizeName(previousActiveFriend))
+    friends.some((friend) => isSameChatTarget(
+      friend.username,
+      friend.kind || "friend",
+      previousActiveFriend,
+      previousActiveChatKind
+    ))
   ) {
-    setActiveFriend(previousActiveFriend);
+    setActiveFriend(previousActiveFriend, previousActiveChatKind);
   }
   if (!hasGreeted) {
     hasGreeted = true;
-    showToast(`Welcome to Novyn, @${me}! ✨`, "success");
+    showToast(`Welcome to Novyn, @${me}!`, "success");
   }
   ensurePushSubscription(false);
 });
@@ -6725,8 +8265,133 @@ socket.on("discover_online", (data) => {
   setDiscoverUsers(data?.users || []);
 });
 
+socket.on("global_search_results", (data) => {
+  const scope = getSearchScope();
+  if (scope !== "global") return;
+  const query = normalizeSearchText(data?.query || "");
+  const currentQuery = normalizeSearchText(messageSearchInput ? messageSearchInput.value : "");
+  const filter = String(data?.filter || "").toLowerCase();
+  const currentFilter = getSearchFilter();
+  if (query !== currentQuery || filter !== currentFilter) return;
+
+  globalSearchState.loading = false;
+  globalSearchState.results = Array.isArray(data?.results) ? data.results : [];
+  renderGlobalSearchResults();
+  if (messageSearchCount) {
+    messageSearchCount.classList.remove("hidden");
+    const count = globalSearchState.results.length;
+    messageSearchCount.textContent = `${count} result${count === 1 ? "" : "s"}`;
+  }
+});
+
+socket.on("scheduled_message_created", (data) => {
+  const message = data?.message;
+  if (!message?.id) return;
+  const chatKey = getScheduledChatKey(message.to, message.toType);
+  const current = scheduledState.byChat.get(chatKey) || [];
+  const next = current.concat([message]).sort((a, b) => String(a?.sendAt || "").localeCompare(String(b?.sendAt || "")));
+  scheduledState.byChat.set(chatKey, next);
+  renderScheduledPanel();
+});
+
+socket.on("scheduled_messages_updated", (data) => {
+  const to = String(data?.to || "").trim();
+  const kind = normalizeChatKind(data?.toType || "friend");
+  if (!to) return;
+  setScheduledMessagesForChat(to, kind, data?.messages || []);
+  if (activeFriend && isSameChatTarget(to, kind, activeFriend, activeChatKind)) {
+    renderScheduledPanel();
+  }
+});
+
+socket.on("scheduled_message_cancelled", (data) => {
+  const id = String(data?.id || "").trim();
+  if (id) showToast("Scheduled message cancelled.", "info");
+  requestScheduledMessagesForActiveChat();
+});
+
+socket.on("scheduled_message_sent", () => {
+  showToast("Scheduled message sent.", "success");
+  requestScheduledMessagesForActiveChat();
+});
+
+socket.on("scheduled_message_failed", (data) => {
+  const reason = String(data?.reason || "").trim();
+  showToast(reason || "Scheduled message could not be delivered.", "error");
+  requestScheduledMessagesForActiveChat();
+});
+
+socket.on("group_created", (data) => {
+  const groupName = String(data?.group?.name || "").trim();
+  if (groupName) {
+    showToast(`Group created: ${groupName}`, "success");
+  } else {
+    showToast("Group created.", "success");
+  }
+});
+
+socket.on("group_members_added", (data) => {
+  const groupName = String(data?.groupName || data?.groupId || "").trim();
+  const added = Array.isArray(data?.added) ? data.added : [];
+  if (!groupName || !added.length) return;
+  showToast(`${added.join(", ")} added to ${groupName}.`, "success");
+});
+
+socket.on("group_member_left", (data) => {
+  const groupName = String(data?.groupName || data?.groupId || "").trim();
+  const username = String(data?.username || "").trim();
+  if (!groupName || !username) return;
+  showToast(`${username} left ${groupName}.`, "info");
+});
+
+socket.on("group_left", (data) => {
+  const groupId = String(data?.groupId || "").trim();
+  if (activeFriend && normalizeName(activeFriend) === normalizeName(groupId) && normalizeChatKind(activeChatKind) === "group") {
+    clearActiveFriendSelection();
+  }
+  showToast("You left the group.", "info");
+});
+
+socket.on("mute_updated", (data) => {
+  const username = String(data?.username || "").trim();
+  const key = normalizeName(username);
+  if (!key) return;
+  if (data?.muted) safetyState.muted.add(key);
+  else safetyState.muted.delete(key);
+  friends = friends.map((friend) =>
+    normalizeName(friend?.username) === key
+      ? { ...friend, muted: Boolean(data?.muted) }
+      : friend
+  );
+  renderFriends();
+  syncActiveConversationAccess();
+  showToast(data?.muted ? `Muted @${username}` : `Unmuted @${username}`, "success");
+});
+
+socket.on("block_updated", (data) => {
+  const username = String(data?.username || "").trim();
+  const key = normalizeName(username);
+  if (!key) return;
+  if (data?.blocked) safetyState.blocked.add(key);
+  else safetyState.blocked.delete(key);
+  friends = friends.map((friend) =>
+    normalizeName(friend?.username) === key
+      ? { ...friend, blockedByMe: Boolean(data?.blocked), muted: data?.blocked ? false : friend.muted }
+      : friend
+  );
+  renderFriends();
+  syncActiveConversationAccess();
+  const label = data?.blocked ? `Blocked @${username}` : `Unblocked @${username}`;
+  showToast(label, "success");
+});
+
+socket.on("report_submitted", (data) => {
+  const username = String(data?.username || "").trim();
+  showToast(username ? `Report submitted for @${username}.` : "Report submitted. Thanks for helping keep chat safe.", "success");
+});
+
 socket.on("friend_request_received", (data) => {
-  showToast(`💬 ${data.from} sent you a friend request`);
+  showToast(`${data.from} sent you a friend request`);
   if (!requests.includes(data.from)) {
     requests = [...requests, data.from];
     renderRequests();
@@ -6736,7 +8401,7 @@ socket.on("friend_request_received", (data) => {
 });
 
 socket.on("friend_request_sent", (data) => {
-  showToast(`✓ Request sent to ${data.to}`, "success");
+  showToast(`Request sent to ${data.to}`, "success");
   const target = String(data?.to || "").trim();
   if (target) {
     discoverUsers = discoverUsers.filter((user) => normalizeName(user?.username) !== normalizeName(target));
@@ -6751,12 +8416,25 @@ socket.on("requests_updated", (data) => {
 });
 
 socket.on("friend_request_accepted", (data) => {
-  showToast(`🎉 ${data.by} is now your friend!`, "success");
+  showToast(`${data.by} is now your friend!`, "success");
 });
 
 socket.on("friend_list_updated", (data) => {
-  friends = data.friends || [];
+  friends = Array.isArray(data.friends) ? data.friends.map((friend) => sanitizeFriendRecord(friend)) : [];
+  const nextMuted = new Set();
+  const nextBlocked = new Set(safetyState.blocked);
   friends.forEach((friend) => {
+    const key = normalizeName(friend?.username);
+    if (!key) return;
+    if (friend?.muted) nextMuted.add(key);
+    else nextMuted.delete(key);
+    if (friend?.blockedByMe) nextBlocked.add(key);
+    else nextBlocked.delete(key);
+  });
+  safetyState.muted = nextMuted;
+  safetyState.blocked = nextBlocked;
+  friends.forEach((friend) => {
+    if (normalizeChatKind(friend?.kind || "friend") !== "friend") return;
     const rawText = friend?.lastMessage || "";
     if (!rawText) return;
     if (!parseCallLogPayload(rawText)) return;
@@ -6771,13 +8449,14 @@ socket.on("friend_list_updated", (data) => {
   // If current chat partner was removed, reset
   if (activeFriend) {
     const stillThere = friends.some(
-      (f) => normalizeName(f.username) === normalizeName(activeFriend)
+      (f) => isSameChatTarget(f.username, f.kind || "friend", activeFriend, activeChatKind)
     );
     if (!stillThere) {
       removeMessageDraft(activeFriend);
       activeFriend                  = "";
+      activeChatKind               = "friend";
       conversationMessages          = [];
-      activeFriendLabel.textContent = "Select a friend";
+      activeFriendLabel.textContent = "Select a conversation";
       setComposerEnabled(false);
       if (messageInput) messageInput.value = "";
       if (sendButton) sendButton.classList.remove("ready");
@@ -6789,6 +8468,8 @@ socket.on("friend_list_updated", (data) => {
   }
 
   renderFriends();
+  syncActiveConversationAccess();
+  renderScheduledPanel();
   renderCallHistory();
   renderDiscover();
   if (sidebarView === "discover") {
@@ -6800,15 +8481,19 @@ socket.on("friend_removed", (data) => {
   const removedUsername = String(data?.username || "").trim();
   const removedKey = normalizeName(removedUsername);
   const activeKey = normalizeName(activeFriend);
+  if (removedKey) {
+    safetyState.muted.delete(removedKey);
+  }
   if (removedUsername) removeMessageDraft(removedUsername);
 
   if (activeFriend && removedKey && activeKey === removedKey) {
     stopLocalTyping(activeFriend);
     activeFriend = "";
+    activeChatKind = "friend";
     setActiveChatTarget("");
     conversationMessages = [];
     clearReply();
-    activeFriendLabel.textContent = "Select a friend";
+    activeFriendLabel.textContent = "Select a conversation";
     setComposerEnabled(false);
     if (messageInput) messageInput.value = "";
     if (sendButton) sendButton.classList.remove("ready");
@@ -6834,6 +8519,14 @@ socket.on("friend_username_changed", (data) => {
   const oldKey = normalizeName(oldUsername);
   const newKey = normalizeName(newUsername);
   renameMessageDraft(oldUsername, newUsername);
+  if (safetyState.muted.has(oldKey)) {
+    safetyState.muted.delete(oldKey);
+    safetyState.muted.add(newKey);
+  }
+  if (safetyState.blocked.has(oldKey)) {
+    safetyState.blocked.delete(oldKey);
+    safetyState.blocked.add(newKey);
+  }
 
   if (activeFriend && normalizeName(activeFriend) === oldKey) {
     activeFriend = newUsername;
@@ -6907,14 +8600,43 @@ socket.on("password_changed", () => {
 });
 
 socket.on("history", (data) => {
-  if (normalizeName(data.with) !== normalizeName(activeFriend)) return;
-  cacheCallLogMessages(data.messages || []);
-  renderMessages(data.messages || []);
+  const payload = normalizeHistoryPayload(data);
+  const incomingKind = normalizeChatKind(payload?.kind || payload?.toType || activeChatKind || "friend");
+  const incomingKey = normalizeName(payload?.to || payload?.with || activeFriend || "");
+  if (!incomingKey) return;
+  if (!activeFriend) return;
+  if (!isSameChatTarget(incomingKey, incomingKind, activeFriend, activeChatKind)) return;
+  const messages = Array.isArray(payload?.messages)
+    ? payload.messages.map((message) => sanitizeMessagePayload(message) || message)
+    : [];
+  cacheCallLogMessages(messages);
+  renderMessages(messages);
+  if (
+    pendingMessageFocus.messageId &&
+    pendingMessageFocus.friendKey &&
+    normalizeName(incomingKey) === pendingMessageFocus.friendKey &&
+    normalizeChatKind(pendingMessageFocus.kind) === incomingKind
+  ) {
+    const focused = revealAndFocusMessage(pendingMessageFocus.messageId);
+    if (!focused) {
+      showToast("That result is outside the loaded message window.", "info");
+    }
+    pendingMessageFocus = { friendKey: "", messageId: "", kind: "friend" };
+  }
 });
 
 socket.on("private_message", (message) => {
+  message = sanitizeMessagePayload(message) || message;
   const tempId = message?.clientTempId || "";
   const isOwnOutgoingMessage = normalizeName(message.from) === normalizeName(me);
+  const messageKind = normalizeChatKind(message?.toType || (message?.groupId ? "group" : "friend"));
+  const chatTargetRaw = messageKind === "group"
+    ? (message?.groupId || message?.toKey || message?.to || "")
+    : (isOwnOutgoingMessage ? message.to : message.from);
+  const chatTarget = String(chatTargetRaw || "").trim();
+  const isIncoming = !isOwnOutgoingMessage;
+  const incomingSafety = isIncoming && messageKind === "friend" ? getFriendSafety(message.from, "friend") : null;
+  const incomingMuted = Boolean(incomingSafety?.muted);
 
   if (tempId && isOwnOutgoingMessage) {
     removePendingFromQueue(tempId);
@@ -6962,14 +8684,12 @@ socket.on("private_message", (message) => {
   const cachedLog = cacheCallLogMessage(message);
   if (cachedLog) renderCallHistory();
 
-  const other =
-    normalizeName(message.from) === normalizeName(me) ? message.to : message.from;
-  const isIncoming = normalizeName(message.from) !== normalizeName(me);
-  const isActiveThread = activeFriend && normalizeName(other) === normalizeName(activeFriend);
+  const isActiveThread = activeFriend
+    && isSameChatTarget(chatTarget, messageKind, activeFriend, activeChatKind);
 
-  if (other) {
+  if (chatTarget) {
     friends = friends.map((f) =>
-      normalizeName(f.username) === normalizeName(other)
+      isSameChatTarget(f.username, f.kind || "friend", chatTarget, messageKind)
         ? { ...f, lastMessage: message.text, lastFrom: message.from, lastTimestamp: message.timestamp || f.lastTimestamp }
         : f
     );
@@ -6977,30 +8697,40 @@ socket.on("private_message", (message) => {
   }
 
   if (!isActiveThread) {
-    // Message is for a different conversation — just show a toast
-    if (isIncoming) {
-      const sender = findFriend(message.from);
+    // Message is for a different conversation - just show a toast
+    if (isIncoming && !incomingMuted) {
+      const sender = findFriend(message.from, "friend");
       const senderName = sender ? getFriendDisplayName(sender) : message.from;
       const callPreview = formatCallLogPreview(message.text, false);
       const preview = callPreview || String(message.text || "");
-      showToast(`💬 ${senderName}: ${preview.slice(0, 40)}${preview.length > 40 ? "..." : ""}`);
+      if (messageKind === "group") {
+        const groupEntry = getChatEntry(chatTarget, "group");
+        const groupName = groupEntry ? getFriendDisplayName(groupEntry) : (chatTarget || "Group");
+        showToast(`${groupName} - ${senderName}: ${preview.slice(0, 40)}${preview.length > 40 ? "..." : ""}`);
+      } else {
+        showToast(`${senderName}: ${preview.slice(0, 40)}${preview.length > 40 ? "..." : ""}`);
+      }
       playIncomingPing();
       notifyIncomingMessage(message, { senderName, force: true });
     }
     return;
   }
 
-  if (isIncoming) {
+  if (isIncoming && !incomingMuted) {
     hideTypingIndicator();
     playIncomingPing();
     notifyIncomingMessage(message);
   }
 
   const wasAtLatest = !hasNewerMessages();
-  conversationMessages.push(message);
+  conversationMessages.push({
+    ...message,
+    toType: messageKind,
+    groupId: messageKind === "group" ? (message.groupId || message.toKey || message.to || "") : "",
+  });
   if (wasAtLatest) {
     messageWindowEnd = conversationMessages.length;
-    appendMessage(message);
+    appendMessage(conversationMessages[conversationMessages.length - 1]);
     if (messagesEl && messagesEl.querySelectorAll("article.message").length > MAX_VISIBLE_MESSAGES) {
       setMessageWindowToLatest();
       renderMessageWindow();
@@ -7010,6 +8740,14 @@ socket.on("private_message", (message) => {
   if (normalizeName(message.from) !== normalizeName(me)) {
     if (window._novynFAB) window._novynFAB.bump();
   }
+});
+
+socket.on("delivery_blocked", (payload) => {
+  const tempId = String(payload?.clientTempId || "").trim();
+  if (tempId) {
+    markPendingMessageFailed(tempId, { toast: false });
+  }
+  showToast("Message blocked by safety settings.", "error");
 });
 
 socket.on("message_status", (payload) => {
@@ -7030,14 +8768,29 @@ socket.on("message_status", (payload) => {
   renderMineMessageMeta(metaEl, timeText, statusKey);
 });
 
-socket.on("typing", ({ from, isTyping }) => {
-  if (!activeFriend || normalizeName(from) !== normalizeName(activeFriend)) return;
+socket.on("typing", ({ from, isTyping, toType, to }) => {
+  const kind = normalizeChatKind(toType || "friend");
+  if (kind === "group") {
+    if (!activeFriend || normalizeChatKind(activeChatKind) !== "group") return;
+    if (normalizeName(to) !== normalizeName(activeFriend)) return;
+    if (normalizeName(from) === normalizeName(me)) return;
+    isTyping ? showTypingIndicator(from) : hideTypingIndicator();
+    return;
+  }
+  if (!activeFriend || normalizeChatKind(activeChatKind) !== "friend") return;
+  if (normalizeName(from) !== normalizeName(activeFriend)) return;
+  if (getFriendSafety(from, "friend").muted) return;
   isTyping ? showTypingIndicator(from) : hideTypingIndicator();
 });
 
 socket.on("call_invite", (data) => {
   const from = String(data?.from || "").trim();
   if (!from) return;
+  const safety = getFriendSafety(from);
+  if (safety.blocked || safety.muted) {
+    socket.emit("call_reject", { to: from });
+    return;
+  }
   if (!INCOMING_CALLS_ENABLED) {
     socket.emit("call_reject", { to: from });
     showToast(`Missed call from ${getCallPeerDisplayName(from)}.`, "info");
@@ -7114,6 +8867,12 @@ socket.on("call_unavailable", () => {
   resetCallState();
 });
 
+socket.on("call_blocked", () => {
+  showToast("Call blocked by safety settings.", "error");
+  maybeSendCallLog("blocked");
+  resetCallState();
+});
+
 socket.on("call_signal", (payload) => {
   handleCallSignal(payload).catch(() => {});
 });
@@ -7136,6 +8895,7 @@ socket.on("connect", () => {
   setNetworkState("Connected", "connected");
   void ensureDashboardSession(true);
   flushPendingQueue(true);
+  requestScheduledMessagesForActiveChat();
 });
 
 socket.on("disconnect", () => {
@@ -7156,7 +8916,7 @@ socket.on("connect_error", () => {
   setNetworkState("Connection issue", "offline");
 });
 
-// ─── Profile helpers ──────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Profile helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function applyMyAvatar() {
   if (!meAvatar) return;
@@ -7180,7 +8940,7 @@ socket.on("profile_updated", (data) => {
   applyMyAvatar();
   syncSettingsPanel();
   syncInfoPanel();
-  showToast("Profile updated ✨", "success");
+  showToast("Profile updated.", "success");
 });
 
 socket.on("friend_profile_updated", (data) => {
@@ -7201,9 +8961,16 @@ socket.on("reaction_updated", (payload) => {
   }
 });
 
+socket.on("safety_state_updated", (data) => {
+  applySafetyState(data || {});
+  renderFriends();
+  syncActiveConversationAccess();
+});
+
 socket.on("message_edited", (payload) => {
   if (!payload?.messageId || !payload?.with) return;
-  if (!activeFriend || normalizeName(payload.with) !== normalizeName(activeFriend)) return;
+  const payloadKind = normalizeChatKind(payload?.toType || "friend");
+  if (!activeFriend || !isSameChatTarget(payload.with, payloadKind, activeFriend, activeChatKind)) return;
   if (!applyConversationMessageEdit(payload.messageId, payload.text, payload.editedAt)) return;
   rerenderConversationMessageRow(payload.messageId);
   applyMessageSearch();
@@ -7212,7 +8979,8 @@ socket.on("message_edited", (payload) => {
 
 socket.on("message_pin_updated", (payload) => {
   if (!payload?.messageId || !payload?.with) return;
-  if (!activeFriend || normalizeName(payload.with) !== normalizeName(activeFriend)) return;
+  const payloadKind = normalizeChatKind(payload?.toType || "friend");
+  if (!activeFriend || !isSameChatTarget(payload.with, payloadKind, activeFriend, activeChatKind)) return;
   if (!applyConversationMessagePin(payload.messageId, payload.pinned, payload.pinnedAt, payload.pinnedBy)) return;
   rerenderConversationMessageRow(payload.messageId);
   applyMessageSearch();
@@ -7221,7 +8989,8 @@ socket.on("message_pin_updated", (payload) => {
 
 socket.on("message_deleted", (payload) => {
   if (!payload?.messageId || !payload?.with) return;
-  if (!activeFriend || normalizeName(payload.with) !== normalizeName(activeFriend)) return;
+  const payloadKind = normalizeChatKind(payload?.toType || "friend");
+  if (!activeFriend || !isSameChatTarget(payload.with, payloadKind, activeFriend, activeChatKind)) return;
 
   markConversationMessageDeleted(payload.messageId, payload.deletedAt, payload.text || DELETED_MESSAGE_TEXT);
   applyDeletedMessageToDom(payload.messageId, payload.text || DELETED_MESSAGE_TEXT);
@@ -7229,11 +8998,12 @@ socket.on("message_deleted", (payload) => {
   syncPinnedMessageBar();
 });
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Init Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 syncViewportLayoutMetrics();
 setComposerEnabled(false);
 renderActiveFriendPresence();
 syncRemoveFriendButton();
+syncSafetyActionButtons();
 syncMessageSearchUi();
 if (messagesEl) {
   messagesEl.addEventListener("scroll", () => {
@@ -7269,6 +9039,7 @@ window._novynMessageWindow = {
 };
 window._novynOpenSettingsPanel = () => setSettingsOpen(true);
 window._novynCloseSettingsPanel = () => setSettingsOpen(false);
+window._novynGetBlockedUsers = getBlockedUsersForSettings;
 window._novynUpdateSession = () => {
   refreshAuthSessionSilently();
 };
@@ -7281,5 +9052,7 @@ if (!socketAvailable) {
   setNetworkState("Realtime unavailable", "offline");
   showToast("Realtime client failed to load. Open Novyn from your server URL.", "error");
 }
+
+
 
 

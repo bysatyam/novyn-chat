@@ -40,6 +40,8 @@
   }
 
   const REMEMBER_KEY = "novyn-remember";
+  const CSRF_COOKIE_NAME = "novyn_csrf";
+  const CSRF_HEADER_NAME = "x-novyn-csrf";
   const DASHBOARD_PATH = "/index.html";
   const LOGOUT_QUERY_KEY = "logout";
   const pageSearchParams = new URLSearchParams(window.location.search || "");
@@ -204,6 +206,29 @@
     return String(input?.value || "").trim();
   }
 
+  function readCookie(name) {
+    const needle = `${String(name || "").trim()}=`;
+    if (!needle) return "";
+    const parts = String(document.cookie || "").split(";");
+    for (const part of parts) {
+      const item = part.trim();
+      if (!item.startsWith(needle)) continue;
+      try {
+        return decodeURIComponent(item.slice(needle.length));
+      } catch (_) {
+        return item.slice(needle.length);
+      }
+    }
+    return "";
+  }
+
+  function buildCsrfHeaders(baseHeaders) {
+    const headers = { ...(baseHeaders || {}) };
+    const csrfToken = readCookie(CSRF_COOKIE_NAME);
+    if (csrfToken) headers[CSRF_HEADER_NAME] = csrfToken;
+    return headers;
+  }
+
   async function postAuth(path, payload) {
     if (authApi?.request) {
       return authApi.request(path, {
@@ -214,7 +239,7 @@
     try {
       const response = await fetch(path, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: buildCsrfHeaders({ "Content-Type": "application/json" }),
         credentials: "same-origin",
         body: JSON.stringify(payload),
       });
@@ -422,6 +447,7 @@
     try {
       const refreshResponse = await fetch("/api/auth/refresh", {
         method: "POST",
+        headers: buildCsrfHeaders(),
         credentials: "same-origin",
       });
       if (!refreshResponse.ok) return false;
@@ -441,6 +467,7 @@
       ? authApi.logout()
       : fetch("/api/auth/logout", {
           method: "POST",
+          headers: buildCsrfHeaders(),
           cache: "no-store",
           credentials: "same-origin",
           keepalive: true,

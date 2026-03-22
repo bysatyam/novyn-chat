@@ -1,15 +1,45 @@
 (() => {
+  const CSRF_COOKIE_NAME = "novyn_csrf";
+  const CSRF_HEADER_NAME = "x-novyn-csrf";
+
   function normalizeText(value) {
     return String(value || "").trim();
   }
 
+  function readCookie(name) {
+    const needle = `${String(name || "").trim()}=`;
+    if (!needle || typeof document === "undefined") return "";
+    const parts = String(document.cookie || "").split(";");
+    for (const part of parts) {
+      const item = part.trim();
+      if (!item.startsWith(needle)) continue;
+      try {
+        return decodeURIComponent(item.slice(needle.length));
+      } catch (_) {
+        return item.slice(needle.length);
+      }
+    }
+    return "";
+  }
+
   async function request(path, options = {}) {
+    const method = String(options.method || "GET").toUpperCase();
+    const headers = { ...(options.headers || (options.body ? { "Content-Type": "application/json" } : {})) };
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      const csrfToken = readCookie(CSRF_COOKIE_NAME);
+      if (csrfToken) {
+        headers[CSRF_HEADER_NAME] = csrfToken;
+      }
+      if (options.body && !headers["Content-Type"]) {
+        headers["Content-Type"] = "application/json";
+      }
+    }
     try {
       const response = await fetch(path, {
-        method: options.method || "GET",
+        method,
         cache: options.cache || "no-store",
         credentials: options.credentials || "same-origin",
-        headers: options.headers || (options.body ? { "Content-Type": "application/json" } : undefined),
+        headers: Object.keys(headers).length ? headers : undefined,
         body: options.body ? JSON.stringify(options.body) : undefined,
       });
       const data = await response.json().catch(() => ({}));
@@ -79,4 +109,3 @@
     hasValidSession,
   };
 })();
-

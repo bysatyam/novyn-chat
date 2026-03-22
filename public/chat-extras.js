@@ -143,10 +143,16 @@
     var fallbackTimer = setTimeout(function () {
       redirectToLogin();
     }, 1200);
+    var csrfToken = '';
+    try {
+      var match = String(document.cookie || '').match(/(?:^|;\s*)novyn_csrf=([^;]+)/);
+      csrfToken = match && match[1] ? decodeURIComponent(match[1]) : '';
+    } catch (e) {}
     var logoutRequest = (window._novynAuth && typeof window._novynAuth.logout === 'function')
       ? window._novynAuth.logout()
       : fetch('/api/auth/logout', {
           method: 'POST',
+          headers: csrfToken ? { 'x-novyn-csrf': csrfToken } : undefined,
           credentials: 'same-origin',
           cache: 'no-store',
           keepalive: true
@@ -196,10 +202,20 @@
   var passwordCurrent = document.getElementById('passwordCurrent');
   var passwordNew = document.getElementById('passwordNew');
   var passwordConfirm = document.getElementById('passwordConfirm');
+  var blockedSearchInput = document.getElementById('settingsBlockedSearch');
+  var blockedList = document.getElementById('settingsBlockedList');
+  var blockedCount = document.getElementById('settingsBlockedCount');
+  var blockedConfirmModal = document.getElementById('blockedConfirmModal');
+  var blockedConfirmDesc = document.getElementById('blockedConfirmDesc');
+  var blockedConfirmCancel = document.getElementById('blockedConfirmCancel');
+  var blockedConfirmOk = document.getElementById('blockedConfirmOk');
 
   var pendingUsername = false;
   var pendingPassword = false;
   var lastPasswordValue = '';
+  var pendingUnblocks = Object.create(null);
+  var blockedSearchQuery = '';
+  var pendingUnblockUsername = '';
   var lastModalFocus = null;
   var modalTrapCleanup = null;
 
@@ -308,6 +324,134 @@
     lastPasswordValue = '';
   }
 
+  function normalizeUserKey(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function normalizeSearchQuery(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function getBlockedUsers() {
+    if (typeof window._novynGetBlockedUsers !== 'function') return [];
+    var users = window._novynGetBlockedUsers();
+    return Array.isArray(users) ? users : [];
+  }
+
+  function prunePendingUnblocks(users) {
+    var valid = Object.create(null);
+    users.forEach(function (user) {
+      var key = normalizeUserKey(user && user.username);
+      if (key) valid[key] = true;
+    });
+    Object.keys(pendingUnblocks).forEach(function (key) {
+      if (!valid[key]) delete pendingUnblocks[key];
+    });
+  }
+
+  function renderBlockedUsers() {
+    if (!blockedList) return;
+    var users = getBlockedUsers();
+    var query = normalizeSearchQuery(blockedSearchQuery);
+    var visibleUsers = query
+      ? users.filter(function (user) {
+          var username = String((user && user.username) || '').toLowerCase();
+          var displayName = String((user && user.displayName) || '').toLowerCase();
+          return username.indexOf(query) !== -1 || displayName.indexOf(query) !== -1;
+        })
+      : users;
+    prunePendingUnblocks(users);
+    if (blockedCount) blockedCount.textContent = String(users.length);
+
+    blockedList.innerHTML = '';
+    if (!visibleUsers.length) {
+      var empty = document.createElement('div');
+      empty.className = 'settings-blocked-empty';
+      empty.textContent = users.length ? ('No blocked users match "' + blockedSearchQuery + '".') : 'No blocked users.';
+      blockedList.appendChild(empty);
+      return;
+    }
+
+    visibleUsers.forEach(function (user) {
+      var username = String((user && user.username) || '').trim();
+      if (!username) return;
+      var key = normalizeUserKey(username);
+      var row = document.createElement('div');
+      row.className = 'settings-blocked-item';
+      row.setAttribute('role', 'listitem');
+
+      var avatar = document.createElement('div');
+      avatar.className = 'settings-blocked-avatar';
+      var displayName = String((user && user.displayName) || username).trim() || username;
+      var initials = displayName.slice(0, 2).toUpperCase();
+      if (window._novynAvatarUtils && typeof window._novynAvatarUtils.applyAvatarToEl === 'function' && user.avatarId) {
+        window._novynAvatarUtils.applyAvatarToEl(avatar, user.avatarId, initials);
+      } else {
+        avatar.textContent = initials;
+      }
+
+      var meta = document.createElement('div');
+      meta.className = 'settings-blocked-meta';
+      var name = document.createElement('div');
+      name.className = 'settings-blocked-name';
+      name.textContent = displayName;
+      var handle = document.createElement('div');
+      handle.className = 'settings-blocked-handle';
+      handle.textContent = '@' + username;
+      meta.appendChild(name);
+      meta.appendChild(handle);
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'settings-unblock-btn';
+      btn.dataset.blockedAction = 'unblock';
+      btn.dataset.unblockUsername = username;
+      btn.dataset.unblockDisplay = displayName;
+      var isPending = Boolean(pendingUnblocks[key]);
+      btn.disabled = isPending;
+      btn.textContent = isPending ? 'Unblocking...' : 'Unblock';
+
+      row.appendChild(avatar);
+      row.appendChild(meta);
+      row.appendChild(btn);
+      blockedList.appendChild(row);
+    });
+  }
+
+  function requestUnblock(username) {
+    var value = String(username || '').trim();
+    if (!value) return;
+    if (!window._novynSocket) {
+      toast('Realtime connection not available.', 'error');
+      return;
+    }
+    pendingUnblocks[normalizeUserKey(value)] = true;
+    renderBlockedUsers();
+    window._novynSocket.emit('set_block', {
+      username: value,
+      blocked: false
+    });
+  }
+
+  function showUnblockConfirm(username, displayName) {
+    var value = String(username || '').trim();
+    if (!value || !blockedConfirmModal) {
+      requestUnblock(value);
+      return;
+    }
+    pendingUnblockUsername = value;
+    if (blockedConfirmDesc) {
+      var name = String(displayName || value).trim() || value;
+      blockedConfirmDesc.textContent = 'Unblock @' + value + ' (' + name + ')? You can block them again anytime from profile info.';
+    }
+    showModal(blockedConfirmModal);
+  }
+
+  function hideUnblockConfirm() {
+    pendingUnblockUsername = '';
+    hideModal(blockedConfirmModal);
+  }
+
   function handleSettingsAction(actionBtn) {
     if (!actionBtn) return;
     var action = actionBtn.dataset.settingsAction;
@@ -336,6 +480,10 @@
     }
     if (action === 'password') {
       showModal(passwordModal);
+      return;
+    }
+    if (action === 'blocked') {
+      renderBlockedUsers();
       return;
     }
     if (action === 'logout') {
@@ -372,6 +520,14 @@
 
   if (settingsPanel) {
     settingsPanel.addEventListener('click', function (e) {
+      var unblockBtn = e.target.closest('[data-blocked-action="unblock"]');
+      if (unblockBtn) {
+        showUnblockConfirm(
+          unblockBtn.dataset.unblockUsername || '',
+          unblockBtn.dataset.unblockDisplay || ''
+        );
+        return;
+      }
       var actionBtn = e.target.closest('[data-settings-action]');
       if (!actionBtn) return;
       handleSettingsAction(actionBtn);
@@ -404,9 +560,16 @@
       resetPasswordForm();
     });
   }
+  if (blockedConfirmModal) {
+    var back3 = blockedConfirmModal.querySelector('.confirm-modal-backdrop');
+    back3 && back3.addEventListener('click', hideUnblockConfirm);
+  }
 
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
+    if (blockedConfirmModal && blockedConfirmModal.style.display !== 'none') {
+      hideUnblockConfirm();
+    }
     if (usernameModal && usernameModal.style.display !== 'none') {
       hideModal(usernameModal);
       resetUsernameForm();
@@ -493,8 +656,48 @@
       if (passwordSave) passwordSave.disabled = false;
       toast(data && data.message ? data.message : 'Could not update password.', 'error');
     });
+    socket.on('block_updated', function (data) {
+      var key = normalizeUserKey(data && data.username);
+      if (key) delete pendingUnblocks[key];
+      if (key && normalizeUserKey(pendingUnblockUsername) === key) {
+        hideUnblockConfirm();
+      }
+      renderBlockedUsers();
+    });
+    socket.on('safety_state_updated', function () {
+      renderBlockedUsers();
+    });
+    socket.on('friends_updated', function () {
+      renderBlockedUsers();
+    });
+    socket.on('welcome', function () {
+      pendingUnblocks = Object.create(null);
+      renderBlockedUsers();
+    });
   }
   bindSocketHandlers();
+
+  if (settingsPanel && typeof MutationObserver === 'function') {
+    var panelObserver = new MutationObserver(function () {
+      if (document.body.classList.contains('settings-open')) {
+        renderBlockedUsers();
+      }
+    });
+    panelObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  }
+  if (blockedSearchInput) {
+    blockedSearchInput.addEventListener('input', function () {
+      blockedSearchQuery = blockedSearchInput.value || '';
+      renderBlockedUsers();
+    });
+  }
+  blockedConfirmCancel && blockedConfirmCancel.addEventListener('click', hideUnblockConfirm);
+  blockedConfirmOk && blockedConfirmOk.addEventListener('click', function () {
+    if (!pendingUnblockUsername) return;
+    requestUnblock(pendingUnblockUsername);
+    hideUnblockConfirm();
+  });
+  renderBlockedUsers();
 })();
 
 /* ── Mobile panel switching ─────────────────────────────────────────────────── */
