@@ -33,7 +33,20 @@
       <nav class="bottom-tab-bar" aria-label="Primary navigation">
 
         <button class="tab-btn active" data-rail="messages" id="navChatsBtn" title="Chats" aria-label="Chats">
-          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <svg class="portal-nav-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <g class="portal-ring-bg">
+              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/>
+            </g>
+            <g class="portal-outer">
+              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/>
+            </g>
+            <g class="portal-inner">
+              <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none"/>
+            </g>
+            <g class="portal-dot">
+              <circle cx="24" cy="24" r="3" fill="currentColor"/>
+            </g>
+          </svg>
           <span>Chats</span>
           <span class="tab-btn-badge hidden" id="chatsBadge"></span>
         </button>
@@ -118,6 +131,7 @@
             <button class="call-filter active" type="button" data-call-filter="all">All</button>
             <button class="call-filter" type="button" data-call-filter="missed">Missed</button>
             <button class="call-filter" type="button" data-call-filter="video">Video</button>
+            <button class="call-filter" type="button" data-call-filter="outgoing">Outgoing</button>
           </div>
         </div>
 
@@ -275,12 +289,23 @@
           <div id="messages" class="messages" role="log" aria-live="polite" aria-label="Messages">
             <div class="messages-empty">
               <div class="messages-empty-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                <svg class="empty-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <g class="portal-ring-bg">
+                    <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/>
+                  </g>
+                  <g class="portal-outer">
+                    <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/>
+                  </g>
+                  <g class="portal-inner">
+                    <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/>
+                  </g>
+                  <g class="portal-dot">
+                    <circle cx="24" cy="24" r="3" fill="currentColor"/>
+                  </g>
                 </svg>
               </div>
-              <p class="messages-empty-title">No conversation open</p>
-              <p class="messages-empty-sub">Pick a contact to start chatting.</p>
+              <p class="messages-empty-title">Your inbox is ready</p>
+              <p class="messages-empty-sub">Choose a conversation to start messaging.</p>
             </div>
           </div>
           <button class="scroll-btn hidden" id="scrollBtn" aria-label="Scroll to latest">
@@ -291,15 +316,24 @@
           </button>
         </div>
 
-        <!-- Typing -->
+        <!-- Typing / speaking indicators -->
         <div id="typingIndicator" class="typing-indicator hidden" aria-live="polite">
-          <div class="typing-av">A</div>
-          <div class="typing-dots">
-            <span class="snap-dot"></span>
-            <span class="snap-dot"></span>
-            <span class="snap-dot"></span>
+          <div id="typingAvatar" class="typing-avatar">A</div>
+          <div class="typing-meta">
+            <span id="typingText" class="typing-label">Typing...</span>
           </div>
-          <span id="typingText" class="snap-typing-label">typing…</span>
+          <div class="typing-portal" aria-hidden="true">
+            <span class="typing-portal-core"></span>
+          </div>
+        </div>
+        <div id="speakingIndicator" class="speaking-indicator hidden" aria-live="polite">
+          <div id="speakingAvatar" class="typing-avatar speaking-avatar">A</div>
+          <div class="typing-meta">
+            <span id="speakingText" class="typing-label">Speaking...</span>
+          </div>
+          <div class="voice-wave" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
         </div>
 
         <!-- Input -->
@@ -312,20 +346,31 @@
             <button class="reply-cancel-btn" id="replyCancelBtn" type="button">✕</button>
           </div>
 
-          <section id="scheduledPanel" class="scheduled-panel hidden" aria-label="Scheduled messages">
-            <div class="scheduled-panel-head">
-              <span class="scheduled-panel-title">Scheduled messages</span>
+          <section id="scheduledPanel" class="scheduled-panel collapsed hidden" aria-label="Scheduled messages">
+            <button id="scheduledPanelToggleBtn" class="scheduled-panel-head" type="button" aria-expanded="false" aria-controls="scheduledPanelBody">
+              <span class="scheduled-panel-title" id="scheduledPanelTitle">Scheduled messages</span>
+              <span class="scheduled-panel-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none">
+                  <path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </button>
+            <div id="scheduledPanelBody" class="scheduled-panel-body">
+              <div id="scheduledList" class="scheduled-list"></div>
+              <div id="scheduledEmpty" class="scheduled-empty">No scheduled messages</div>
             </div>
-            <div id="scheduledList" class="scheduled-list"></div>
-            <div id="scheduledEmpty" class="scheduled-empty">No scheduled messages</div>
           </section>
 
           <div id="voiceStatus" class="voice-status hidden" role="status" aria-live="polite">
             <div class="voice-status-main">
               <span class="voice-dot"></span>
+              <span class="voice-waveform-live" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+              </span>
               <span class="voice-timer" id="voiceTimer">0:00</span>
-              <span class="voice-label" id="voiceLabel">Recording…</span>
             </div>
+            <div class="voice-label-row"><span class="voice-label" id="voiceLabel">Recording...</span></div>
             <div class="voice-status-actions">
               <button class="voice-action voice-cancel" id="voiceCancelBtn" type="button">Cancel</button>
               <button class="voice-action voice-stop" id="voiceStopBtn" type="button">Stop</button>
@@ -333,6 +378,35 @@
             <div class="voice-progress hidden" id="voiceProgress" aria-live="polite">
               <span class="voice-progress-track"><span class="voice-progress-bar" id="voiceProgressBar"></span></span>
               <span class="voice-progress-text" id="voiceProgressText">Uploading… 0%</span>
+            </div>
+          </div>
+
+          <div id="scheduleMenu" class="schedule-menu hidden" role="dialog" aria-modal="false" aria-label="Schedule message">
+            <div class="schedule-menu-head">
+              <span class="schedule-menu-title">Schedule send</span>
+              <button type="button" class="schedule-menu-close" id="scheduleMenuCloseBtn" aria-label="Close schedule menu">✕</button>
+            </div>
+            <div class="schedule-preset-row">
+              <button type="button" class="schedule-preset-btn" data-schedule-minutes="15">+15m</button>
+              <button type="button" class="schedule-preset-btn" data-schedule-minutes="60">+1h</button>
+              <button type="button" class="schedule-preset-btn" data-schedule-minutes="180">+3h</button>
+              <button type="button" class="schedule-preset-btn" data-schedule-minutes="1440">Tomorrow</button>
+            </div>
+            <label class="schedule-input-label" for="scheduleDateInput">Custom schedule</label>
+            <div class="schedule-date-time-row">
+              <div class="schedule-field">
+                <span class="schedule-field-label">Date</span>
+                <input id="scheduleDateInput" class="schedule-date-input" type="date" />
+              </div>
+              <div class="schedule-field">
+                <span class="schedule-field-label">Time</span>
+                <input id="scheduleTimeInput" class="schedule-time-input" type="time" step="60" />
+              </div>
+            </div>
+            <div id="schedulePreviewText" class="schedule-preview" aria-live="polite"></div>
+            <div class="schedule-menu-actions">
+              <button type="button" class="schedule-menu-btn ghost" id="scheduleMenuCancelBtn">Cancel</button>
+              <button type="button" class="schedule-menu-btn" id="scheduleMenuConfirmBtn">Schedule</button>
             </div>
           </div>
 
@@ -366,7 +440,7 @@
                 <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
               </svg>
             </button>
-            <button type="button" class="tool-btn" id="scheduleBtn" aria-label="Schedule send" title="Schedule send">
+            <button type="button" class="tool-btn" id="scheduleBtn" aria-label="Schedule send" title="Schedule send" aria-haspopup="dialog" aria-expanded="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="13" r="8"/>
                 <path d="M12 9v4l3 2"/>
@@ -541,7 +615,7 @@
   <div id="infoPanel" class="info-panel" role="dialog" aria-modal="true" aria-label="Contact info">
     <div class="info-inner">
       <div class="info-top">
-        <span class="info-title">Contact info</span>
+        <span class="info-title" id="infoPanelTitle">Contact info</span>
         <button class="icon-btn mob-close-btn" id="infoCloseBtn" aria-label="Close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -558,10 +632,24 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="13" height="13"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>
             Voice call
           </button>
-          <button class="profile-action-btn" id="infoMuteBtn" type="button">Mute</button>
+          <button class="profile-action-btn" id="infoMuteBtn" type="button" data-icon="on">
+            <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v5"/><path d="M9 9v2a3 3 0 0 0 5.13 2.13"/><path d="M19 10v1a7 7 0 0 1-11.44 5.44"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
+            <span>Mute</span>
+          </button>
           <button class="profile-action-btn action-warn" id="infoBlockBtn" type="button">Block</button>
           <button class="profile-action-btn action-danger" id="removeFriendBtn" type="button">Remove</button>
           <button class="profile-action-btn action-danger ghost" id="infoReportBtn" type="button">Report</button>
+          <button class="profile-action-btn hidden" id="infoAddMembersBtn" type="button">Add members</button>
+        </div>
+      </div>
+      <div class="info-section hidden" id="groupInfoSection">
+        <div class="info-section-title">
+          <span>Group members</span>
+          <span class="group-members-meta" id="groupMembersMeta">0</span>
+        </div>
+        <div class="group-member-list" id="groupMemberList">
+          <div class="group-member-empty">No members yet</div>
         </div>
       </div>
       <div class="info-section">
@@ -613,12 +701,14 @@
         <div class="call-timer hidden" id="callDuration" aria-live="polite">00:00</div>
       </div>
       <div class="call-actions">
-        <button class="call-icon-btn" id="callMuteBtn" type="button" aria-pressed="false" title="Mute">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        <button class="call-icon-btn" id="callMuteBtn" type="button" aria-pressed="false" title="Mute" data-icon="on">
+          <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v5"/><path d="M9 9v2a3 3 0 0 0 5.13 2.13"/><path d="M19 10v1a7 7 0 0 1-11.44 5.44"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
           <span>Mute</span>
         </button>
-        <button class="call-icon-btn active" id="callSpeakerBtn" type="button" aria-pressed="true" title="Speaker">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M19 6a6 6 0 0 1 0 12"/></svg>
+        <button class="call-icon-btn active" id="callSpeakerBtn" type="button" aria-pressed="true" title="Speaker" data-icon="on">
+          <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M19 6a6 6 0 0 1 0 12"/></svg>
+          <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4z"/><line x1="16" y1="9" x2="21" y2="15"/><line x1="21" y1="9" x2="16" y2="15"/></svg>
           <span>Speaker</span>
         </button>
         <button class="call-icon-btn" id="callCameraBtn" type="button" aria-pressed="true" title="Camera">
@@ -631,9 +721,27 @@
         </button>
       </div>
       <div class="call-controls">
-        <button class="call-control-btn accept" id="callAcceptBtn" type="button">Answer</button>
-        <button class="call-control-btn decline" id="callRejectBtn" type="button">Decline</button>
-        <button class="call-control-btn hangup" id="callHangupBtn" type="button">End call</button>
+        <button class="call-control-btn accept" id="callAcceptBtn" type="button" aria-label="Answer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/>
+          </svg>
+          <span class="call-control-label">Answer</span>
+        </button>
+        <button class="call-control-btn decline" id="callRejectBtn" type="button" aria-label="Decline">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/>
+            <line x1="4" y1="4" x2="20" y2="20"/>
+          </svg>
+          <span class="call-control-label">Decline</span>
+        </button>
+        <button class="call-control-btn hangup" id="callHangupBtn" type="button" aria-label="End call">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M3 9.5c2.2-2.2 5.4-3.5 9-3.5s6.8 1.3 9 3.5"/>
+            <path d="M5.5 17.5a2.5 2.5 0 0 1-2.5-2.5v-1.5a2.5 2.5 0 0 1 2.5-2.5h2l1.8 2.2-1.2 2.8z"/>
+            <path d="M18.5 17.5h-2.6l-1.2-2.8 1.8-2.2h2a2.5 2.5 0 0 1 2.5 2.5V15a2.5 2.5 0 0 1-2.5 2.5z"/>
+          </svg>
+          <span class="call-control-label">End call</span>
+        </button>
       </div>
     </div>
   </div>
@@ -918,29 +1026,69 @@
     }
 
     /* ── Theme toggling ── */
-    document.querySelectorAll('[data-settings-action="theme"]').forEach(function(btn) {
+    var themeButtons = Array.prototype.slice.call(
+      document.querySelectorAll('[data-settings-action="theme"]')
+    );
+    var systemThemeMedia = window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null;
+
+    function getResolvedTheme(preference) {
+      if (preference === 'dark' || preference === 'light') return preference;
+      return systemThemeMedia && systemThemeMedia.matches ? 'dark' : 'light';
+    }
+
+    function updateThemeChecks(activePreference) {
+      themeButtons.forEach(function(btn) {
+        var isActive = btn.getAttribute('data-theme') === activePreference;
+        btn.classList.toggle('is-active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        var check = btn.querySelector('.settings-check');
+        if (check) check.style.opacity = isActive ? '1' : '0';
+      });
+    }
+
+    function applyThemePreference(preference, persist) {
+      var nextPreference = (
+        preference === 'dark' ||
+        preference === 'light' ||
+        preference === 'system'
+      ) ? preference : 'system';
+
+      var resolved = getResolvedTheme(nextPreference);
+      document.documentElement.classList.remove('light', 'dark');
+      document.body.classList.remove('light', 'dark');
+      document.documentElement.classList.add(resolved);
+      document.body.classList.add(resolved);
+      document.documentElement.setAttribute('data-theme', resolved);
+      document.documentElement.setAttribute('data-theme-preference', nextPreference);
+      updateThemeChecks(nextPreference);
+
+      if (persist) {
+        localStorage.setItem('novyn-theme', nextPreference);
+      }
+    }
+
+    themeButtons.forEach(function(btn) {
       btn.addEventListener('click', function() {
-        var theme = btn.getAttribute('data-theme');
-        document.documentElement.classList.remove('light', 'dark');
-        document.body.classList.remove('light', 'dark');
-        if (theme === 'dark') {
-          document.documentElement.classList.add('dark');
-          document.body.classList.add('dark');
-        } else if (theme === 'light') {
-          document.documentElement.classList.add('light');
-        }
-        localStorage.setItem('novyn-theme', theme);
-        // Update checkmarks
-        document.querySelectorAll('[data-settings-action="theme"] .settings-check').forEach(function(c) { c.style.opacity='0'; });
-        btn.querySelector('.settings-check') && (btn.querySelector('.settings-check').style.opacity = '1');
+        applyThemePreference(btn.getAttribute('data-theme'), true);
       });
     });
 
-    // Restore saved theme
-    var savedTheme = localStorage.getItem('novyn-theme');
-    if (savedTheme) {
-      var themeBtn = document.querySelector('[data-theme="'+savedTheme+'"]');
-      if (themeBtn) themeBtn.click();
+    applyThemePreference(localStorage.getItem('novyn-theme') || 'system', false);
+
+    if (systemThemeMedia) {
+      var onSystemThemeChanged = function() {
+        var preference = localStorage.getItem('novyn-theme') || 'system';
+        if (preference === 'system') {
+          applyThemePreference('system', false);
+        }
+      };
+      if (typeof systemThemeMedia.addEventListener === 'function') {
+        systemThemeMedia.addEventListener('change', onSystemThemeChanged);
+      } else if (typeof systemThemeMedia.addListener === 'function') {
+        systemThemeMedia.addListener(onSystemThemeChanged);
+      }
     }
 
     /* ── Info panel close ── */

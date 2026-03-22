@@ -35,10 +35,16 @@ const profileStatFiles  = document.getElementById("profileStatFiles") || documen
 const removeFriendBtn   = document.getElementById("removeFriendBtn");
 const messagesEl        = document.getElementById("messages");
 const meAvatar          = document.getElementById("meAvatar");
+const infoPanel         = document.getElementById("infoPanel");
+const infoPanelTitle    = document.getElementById("infoPanelTitle");
 const infoPanelName     = document.getElementById("infoPanelName");
 const infoPanelAvatar   = document.getElementById("infoPanelAvatar");
 const infoPanelHandle   = document.getElementById("infoPanelHandle");
 const infoPanelStatus   = document.getElementById("infoPanelStatus");
+const infoTagsSection   = document.getElementById("infoTagsSection");
+const groupInfoSection  = document.getElementById("groupInfoSection");
+const groupMembersMeta  = document.getElementById("groupMembersMeta");
+const groupMemberList   = document.getElementById("groupMemberList");
 const messageForm       = document.getElementById("messageForm");
 const messageInput      = document.getElementById("messageInput");
 const attachFileBtn     = document.getElementById("attachFileBtn");
@@ -47,7 +53,11 @@ const cameraBtn         = document.getElementById("cameraBtn");
 const cameraCaptureInput = document.getElementById("cameraCaptureInput");
 const toast             = document.getElementById("toast");
 const typingIndicator   = document.getElementById("typingIndicator");
+const typingAvatar      = document.getElementById("typingAvatar");
 const typingText        = document.getElementById("typingText");
+const speakingIndicator = document.getElementById("speakingIndicator");
+const speakingAvatar    = document.getElementById("speakingAvatar");
+const speakingText      = document.getElementById("speakingText");
 const connectionLabel   = document.getElementById("connectionLabel");
 const networkPill       = document.getElementById("networkPill");
 const retryFailedBtn    = document.getElementById("retryFailedBtn");
@@ -80,6 +90,7 @@ const messageSearchCount = document.getElementById("messageSearchCount");
 const messageSearchScope = document.getElementById("messageSearchScope");
 const messageSearchFilter = document.getElementById("messageSearchFilter");
 const globalSearchResults = document.getElementById("globalSearchResults");
+const infoToggleBtn      = document.getElementById("infoToggleBtn");
 const callButton       = document.querySelector(".chat-header-actions .call-btn");
 const videoButton      = document.querySelector(".chat-header-actions .video-btn");
 const profileCallBtn   = document.querySelector(".profile-action-btn[data-action='call']");
@@ -88,6 +99,7 @@ const infoCallBtn      = document.getElementById("infoCallBtn");
 const infoMuteBtn      = document.getElementById("infoMuteBtn");
 const infoBlockBtn     = document.getElementById("infoBlockBtn");
 const infoReportBtn    = document.getElementById("infoReportBtn");
+const infoAddMembersBtn = document.getElementById("infoAddMembersBtn");
 const infoMediaGrid    = document.getElementById("infoMediaGrid");
 const callModal        = document.getElementById("callModal");
 const callBadge        = document.getElementById("callBadge");
@@ -145,7 +157,17 @@ const isDashboardPage   = Boolean(chatLayout) && !document.body.classList.contai
 const MOBILE_BP         = 768;
 const INCOMING_CALLS_ENABLED = true;
 const scheduleBtn       = document.getElementById("scheduleBtn");
+const scheduleMenu      = document.getElementById("scheduleMenu");
+const scheduleDateInput = document.getElementById("scheduleDateInput");
+const scheduleTimeInput = document.getElementById("scheduleTimeInput");
+const schedulePreviewText = document.getElementById("schedulePreviewText");
+const scheduleMenuCloseBtn = document.getElementById("scheduleMenuCloseBtn");
+const scheduleMenuCancelBtn = document.getElementById("scheduleMenuCancelBtn");
+const scheduleMenuConfirmBtn = document.getElementById("scheduleMenuConfirmBtn");
+const schedulePresetButtons = Array.from(document.querySelectorAll("[data-schedule-minutes]"));
 const scheduledPanel    = document.getElementById("scheduledPanel");
+const scheduledPanelToggleBtn = document.getElementById("scheduledPanelToggleBtn");
+const scheduledPanelTitle = document.getElementById("scheduledPanelTitle");
 const scheduledList     = document.getElementById("scheduledList");
 const scheduledEmpty    = document.getElementById("scheduledEmpty");
 const CSRF_COOKIE_NAME = "novyn_csrf";
@@ -213,6 +235,11 @@ const safetyState = {
 const scheduledState = {
   byChat: new Map(),
 };
+const groupInfoState = {
+  byId: new Map(),
+  requestedAt: new Map(),
+};
+let scheduledPanelExpanded = false;
 let pendingMessageFocus = { friendKey: "", messageId: "", kind: "friend" };
 const friendSuggestState = {
   timer: null,
@@ -286,8 +313,18 @@ function normalizeChatKind(value) {
   return String(value || "").trim().toLowerCase() === "group" ? "group" : "friend";
 }
 
+function resolveOutgoingTarget(target, kind = "friend") {
+  const chatKind = normalizeChatKind(kind);
+  const rawTarget = normalizeMojibakeText(target || "").trim();
+  if (!rawTarget) return "";
+  if (chatKind === "group") {
+    return resolveGroupChatId(rawTarget, "group");
+  }
+  return rawTarget;
+}
+
 function getScheduledChatKey(target, kind = "friend") {
-  const key = normalizeName(target);
+  const key = normalizeName(resolveOutgoingTarget(target, kind));
   if (!key) return "";
   return `${normalizeChatKind(kind)}:${key}`;
 }
@@ -309,8 +346,136 @@ function getActiveChatEntry() {
 }
 
 function isSameChatTarget(targetA, kindA, targetB, kindB) {
-  return normalizeName(targetA) === normalizeName(targetB)
-    && normalizeChatKind(kindA) === normalizeChatKind(kindB);
+  const chatKindA = normalizeChatKind(kindA);
+  const chatKindB = normalizeChatKind(kindB);
+  if (chatKindA !== chatKindB) return false;
+  if (chatKindA === "group") {
+    const resolvedA = normalizeName(resolveGroupChatId(targetA, "group"));
+    const resolvedB = normalizeName(resolveGroupChatId(targetB, "group"));
+    if (resolvedA && resolvedB) return resolvedA === resolvedB;
+  }
+  return normalizeName(targetA) === normalizeName(targetB);
+}
+
+function getGroupRole(member = {}) {
+  if (member?.isOwner) return "owner";
+  if (member?.isAdmin) return "admin";
+  return "member";
+}
+
+function getGroupRolePriority(role) {
+  if (role === "owner") return 3;
+  if (role === "admin") return 2;
+  return 1;
+}
+
+function normalizeGroupInfoPayload(raw = {}) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = normalizeMojibakeText(raw.id || "").trim();
+  if (!id) return null;
+  const members = Array.isArray(raw.members) ? raw.members : [];
+  const normalizedMembers = members.map((memberRaw) => {
+    const username = normalizeMojibakeText(memberRaw?.username || "").trim();
+    const roleRaw = normalizeName(memberRaw?.role || "");
+    const isOwner = Boolean(memberRaw?.isOwner) || roleRaw === "owner";
+    const isAdmin = isOwner || Boolean(memberRaw?.isAdmin) || roleRaw === "admin";
+    return {
+      username,
+      displayName: normalizeMojibakeText(memberRaw?.displayName || "").trim(),
+      avatarId: normalizeMojibakeText(memberRaw?.avatarId || "").trim(),
+      online: Boolean(memberRaw?.online),
+      lastSeenAt: normalizeMojibakeText(memberRaw?.lastSeenAt || "").trim(),
+      isOwner,
+      isAdmin,
+      role: isOwner ? "owner" : (isAdmin ? "admin" : "member"),
+    };
+  }).filter((member) => member.username);
+
+  normalizedMembers.sort((a, b) => {
+    const roleDelta = getGroupRolePriority(b.role) - getGroupRolePriority(a.role);
+    if (roleDelta !== 0) return roleDelta;
+    return a.username.localeCompare(b.username);
+  });
+
+  const meKey = normalizeName(raw?.me?.username || me || "");
+  const meMember = normalizedMembers.find((member) => normalizeName(member.username) === meKey) || null;
+  const meRole = meMember ? getGroupRole(meMember) : "member";
+
+  return {
+    id,
+    name: normalizeMojibakeText(raw.name || "").trim() || id,
+    owner: normalizeMojibakeText(raw.owner || "").trim(),
+    createdAt: normalizeMojibakeText(raw.createdAt || "").trim(),
+    updatedAt: normalizeMojibakeText(raw.updatedAt || "").trim(),
+    members: normalizedMembers,
+    me: {
+      username: normalizeMojibakeText(raw?.me?.username || me || "").trim(),
+      role: meRole,
+      isOwner: meRole === "owner",
+      isAdmin: meRole === "owner" || meRole === "admin",
+    },
+  };
+}
+
+function resolveGroupChatId(groupId = activeFriend, kind = activeChatKind) {
+  const raw = normalizeMojibakeText(groupId || "").trim();
+  if (!raw) return "";
+  const rawKey = normalizeName(raw);
+  const rawLoose = rawKey.replace(/[^a-z0-9]/g, "");
+  const groupByDisplay = friends.find((entry) => {
+    if (normalizeChatKind(entry?.kind || "friend") !== "group") return false;
+    const entryDisplay = normalizeName(entry?.displayName || "");
+    if (!entryDisplay) return false;
+    const entryLoose = entryDisplay.replace(/[^a-z0-9]/g, "");
+    return entryDisplay === rawKey || (rawLoose && entryLoose === rawLoose);
+  }) || null;
+  const normalizedKind = normalizeChatKind(kind);
+  if (normalizedKind === "group") {
+    const activeEntry = activeFriend
+      && normalizeChatKind(activeChatKind) === "group"
+      && normalizeName(activeFriend) === rawKey
+      ? getActiveChatEntry()
+      : null;
+    const entry = activeEntry || getChatEntry(raw, "group") || groupByDisplay;
+    return normalizeMojibakeText(entry?.groupId || entry?.username || raw).trim();
+  }
+  const groupEntry = getChatEntry(raw, "group") || groupByDisplay;
+  if (groupEntry) {
+    return normalizeMojibakeText(groupEntry.groupId || groupEntry.username || "").trim();
+  }
+  return raw;
+}
+
+function getGroupInfo(groupId = activeFriend, kind = activeChatKind) {
+  const resolvedGroupId = resolveGroupChatId(groupId, kind);
+  const key = normalizeName(resolvedGroupId);
+  if (!key) return null;
+  return groupInfoState.byId.get(key) || null;
+}
+
+function requestGroupInfo(groupId = activeFriend, options = {}) {
+  const requestedKind = normalizeChatKind(options.kind || activeChatKind);
+  const resolvedGroupId = resolveGroupChatId(groupId, requestedKind);
+  const key = normalizeName(resolvedGroupId);
+  if (!key) return;
+  if (requestedKind !== "group" && !getChatEntry(resolvedGroupId, "group")) return;
+  const now = Date.now();
+  const previous = Number(groupInfoState.requestedAt.get(key) || 0);
+  const minGap = options.force ? 0 : 650;
+  if (now - previous < minGap) return;
+  groupInfoState.requestedAt.set(key, now);
+  socket.emit("get_group_info", { groupId: resolvedGroupId });
+}
+
+function refreshActiveGroupInfo(forceGroupId = "") {
+  if (forceGroupId) {
+    const activeGroupKey = normalizeName(resolveGroupChatId(activeFriend, activeChatKind));
+    const forcedGroupKey = normalizeName(resolveGroupChatId(forceGroupId, "group"));
+    if (!activeGroupKey || forcedGroupKey !== activeGroupKey || normalizeChatKind(activeChatKind) !== "group") return;
+  }
+  const targetGroupId = resolveGroupChatId(forceGroupId || activeFriend, "group");
+  if (!targetGroupId || normalizeChatKind(activeChatKind) !== "group") return;
+  requestGroupInfo(targetGroupId, { kind: "group", force: true });
 }
 
 function setScheduledMessagesForChat(target, kind, messages) {
@@ -1427,7 +1592,7 @@ function syncSettingsPanel() {
 }
 
 function setCallFilter(nextFilter) {
-  const allowed = ["all", "missed", "video"];
+  const allowed = ["all", "missed", "video", "outgoing"];
   callFilter = allowed.includes(nextFilter) ? nextFilter : "all";
   callFilterButtons.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.callFilter === callFilter);
@@ -1440,7 +1605,18 @@ function collectCallHistoryEntries() {
   const seen = new Set();
   const pushEntry = (friend, message, log) => {
     if (!friend || !message) return;
-    const key = `${normalizeName(friend.username)}|${message.timestamp || ""}|${message.text || ""}`;
+    const messageKind = normalizeChatKind(
+      message?.toType || (message?.groupId ? "group" : (friend?.kind || "friend"))
+    );
+    if (messageKind !== "friend") return;
+    if (normalizeChatKind(friend?.kind || "friend") !== "friend") return;
+    const friendKey = normalizeName(friend?.username || "");
+    if (friendKey.startsWith("grp_")) return;
+    const messageId = String(message.id || "").trim();
+    const timestampKey = getTimestampSortValue(message.timestamp || friend.lastTimestamp || "");
+    const key = messageId
+      ? `id:${normalizeName(messageId)}`
+      : `${friendKey}|${timestampKey}|${message.text || ""}`;
     if (seen.has(key)) return;
     seen.add(key);
     entries.push({ friend, message, log });
@@ -1453,7 +1629,12 @@ function collectCallHistoryEntries() {
     if (!log) return;
     const friendName = String(entry.friend || "").trim();
     if (!friendName) return;
-    const friend = findFriend(friendName) || { username: friendName, displayName: "" };
+    const friend = findFriend(friendName)
+      || friends.find((item) => (
+        normalizeChatKind(item?.kind || "friend") === "group"
+        && normalizeName(item?.displayName || "") === normalizeName(friendName)
+      ))
+      || { username: friendName, displayName: "" };
     pushEntry(friend, {
       text: entry.text,
       timestamp: entry.timestamp || "",
@@ -1486,6 +1667,33 @@ function collectCallHistoryEntries() {
   return entries;
 }
 
+function getTimestampSortValue(iso) {
+  const timestamp = Date.parse(iso || "");
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function formatCallHistoryDateLabel(iso) {
+  const date = new Date(iso || "");
+  if (Number.isNaN(date.getTime())) return "EARLIER";
+  const now = new Date();
+  const startOfNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const daysDiff = Math.round((startOfNow - startOfDate) / (24 * 60 * 60 * 1000));
+  if (daysDiff === 0) return "TODAY";
+  if (daysDiff === 1) return "YESTERDAY";
+  return date
+    .toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
+    .replace(",", "")
+    .toUpperCase();
+}
+
+function createCallHistorySeparator(tagName, iso) {
+  const separator = document.createElement(tagName);
+  separator.className = "call-history-separator";
+  separator.textContent = formatCallHistoryDateLabel(iso);
+  return separator;
+}
+
 function renderCallHistory() {
   if (!callHistoryList) return;
   callHistoryList.innerHTML = "";
@@ -1495,12 +1703,18 @@ function renderCallHistory() {
   const filtered = entries.filter((entry) => {
     const log = entry.log || parseCallLogPayload(entry.message?.text || "");
     if (!log) return false;
+    const message = entry.message || {};
+    const fromMe = normalizeName(message.from) === normalizeName(me);
+    const display = getCallLogDisplay(log, fromMe);
     if (callFilter === "missed") {
       const missedStatuses = ["missed", "declined", "busy", "unavailable", "cancelled"];
       if (!missedStatuses.includes(log.status)) return false;
     }
     if (callFilter === "video") {
       if (log.mediaType && log.mediaType !== "video") return false;
+    }
+    if (callFilter === "outgoing" && display.direction !== "outgoing") {
+      return false;
     }
     if (!query) return true;
     const name = getFriendDisplayName(entry.friend || {});
@@ -1520,31 +1734,36 @@ function renderCallHistory() {
   filtered.sort((a, b) => {
     const aTs = a.message?.timestamp || a.friend?.lastTimestamp || "";
     const bTs = b.message?.timestamp || b.friend?.lastTimestamp || "";
-    if (aTs && bTs) return bTs.localeCompare(aTs);
-    if (aTs) return -1;
-    if (bTs) return 1;
-    return 0;
+    return getTimestampSortValue(bTs) - getTimestampSortValue(aTs);
   });
 
+  let lastDateKey = "";
   filtered.forEach((entry) => {
     const friend = entry.friend || {};
     const message = entry.message || {};
+    const timestamp = message.timestamp || friend.lastTimestamp || "";
+    const dateKey = getLocalDateKey(timestamp) || "unknown";
+    if (dateKey !== lastDateKey) {
+      lastDateKey = dateKey;
+      callHistoryList.appendChild(createCallHistorySeparator("li", timestamp));
+    }
     const log = entry.log || parseCallLogPayload(message.text);
     if (!log) return;
     const fromMe = normalizeName(message.from) === normalizeName(me);
     const display = getCallLogDisplay(log, fromMe);
-    const timeText = formatFriendTime(message.timestamp || friend.lastTimestamp || "");
+    const timeText = formatFriendTime(timestamp);
     const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(display.status);
     const isNeutralStatus = display.status === "ended";
     const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
+    const targetKind = normalizeChatKind(friend?.kind || "friend");
 
     const item = document.createElement("li");
-    const mediaClass = log.mediaType === "video" ? "video" : "audio";
+    const mediaClass = log.mediaType === "video" ? "video" : "voice";
     item.className = `call-log-item ${display.direction === "incoming" ? "incoming" : "outgoing"} status-${statusClass} ${mediaClass}`;
 
     const icon = document.createElement("div");
     icon.className = "call-log-item-icon";
-    icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>`;
+    icon.innerHTML = `${getCallMediaIconSvg(log.mediaType)}${getCallDirectionBadgeSvg(display.direction, statusClass)}`;
 
     const content = document.createElement("div");
     content.className = "call-log-item-content";
@@ -1556,7 +1775,7 @@ function renderCallHistory() {
     subtitle.textContent = display.subtitle;
     const status = document.createElement("div");
     status.className = `call-status-pill ${statusClass}`;
-    status.textContent = display.title;
+    status.textContent = display.statusLabel || "Call";
     content.append(title, subtitle, status);
 
     const time = document.createElement("div");
@@ -1567,17 +1786,17 @@ function renderCallHistory() {
     actionBtn.type = "button";
     actionBtn.className = "call-log-action";
     actionBtn.title = "Call back";
-    actionBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>`;
+    actionBtn.innerHTML = getCallMediaIconSvg("audio");
     actionBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (friend?.username) {
-        setActiveFriend(friend.username);
+        setActiveFriend(friend.username, targetKind);
         setTimeout(() => startVoiceCall(), 240);
       }
     });
 
     item.addEventListener("click", () => {
-      if (friend?.username) setActiveFriend(friend.username);
+      if (friend?.username) setActiveFriend(friend.username, targetKind);
     });
 
     item.append(icon, content, time, actionBtn);
@@ -1605,14 +1824,15 @@ function showSidebarOnMobile() {
 
 function setActiveChatTarget(friendName, chatKind = activeChatKind) {
   if (!socketAvailable || !isDashboardPage) return;
-  const target = String(friendName || "").trim();
+  const kind = normalizeChatKind(chatKind);
+  const target = resolveOutgoingTarget(friendName, kind);
   if (!target) {
     socket.emit("set_active_chat", "");
     return;
   }
   socket.emit("set_active_chat", {
     to: target,
-    toType: normalizeChatKind(chatKind),
+    toType: kind,
   });
 }
 
@@ -1779,7 +1999,10 @@ function syncSafetyActionButtons() {
     const muted = Boolean(safety?.muted);
     infoMuteBtn.disabled = !hasActive || isGroup;
     infoMuteBtn.classList.toggle("hidden", isGroup);
-    infoMuteBtn.textContent = muted ? "Unmute" : "Mute";
+    infoMuteBtn.dataset.icon = muted ? "off" : "on";
+    const muteLabel = infoMuteBtn.querySelector("span");
+    if (muteLabel) muteLabel.textContent = muted ? "Unmute" : "Mute";
+    else infoMuteBtn.textContent = muted ? "Unmute" : "Mute";
     infoMuteBtn.title = hasActive ? (muted ? "Unmute notifications" : "Mute notifications") : "Mute";
   }
 
@@ -1988,6 +2211,17 @@ function formatFullTimestamp(iso) {
 function getMessageStatusKey(message) {
   if (message?.failed) return "failed";
   if (message?.pending) return "pending";
+  const messageKind = normalizeChatKind(message?.toType || (message?.groupId ? "group" : "friend"));
+  if (messageKind === "group") {
+    const seenCount = Number(message?.seenCount);
+    if (Number.isFinite(seenCount) && seenCount > 0) return "seen";
+    const myKey = normalizeName(me);
+    const seenBy = Array.isArray(message?.seenBy)
+      ? Array.from(new Set(message.seenBy.map((entry) => normalizeName(entry)).filter(Boolean)))
+      : [];
+    const hasBeenSeenByOthers = seenBy.some((viewerKey) => viewerKey && viewerKey !== myKey);
+    if (hasBeenSeenByOthers) return "seen";
+  }
   if (message?.seenAt) return "seen";
   if (message?.deliveredAt) return "delivered";
   return "sent";
@@ -2614,6 +2848,24 @@ function getCallLogDisplay(log, fromMe) {
   return { title, subtitle, direction, status: log.status, statusLabel };
 }
 
+function getCallMediaIconSvg(mediaType = "audio") {
+  if (String(mediaType || "").trim().toLowerCase() === "video") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>`;
+}
+
+function getCallDirectionBadgeSvg(direction = "outgoing", statusClass = "neutral") {
+  const incoming = normalizeName(direction) === "incoming";
+  const badgeClass = incoming
+    ? (statusClass === "bad" ? "in" : "ok")
+    : "out";
+  const badgePath = incoming
+    ? "M7 1 L1 7 M5 7 L1 7 L1 3"
+    : "M1 7 L7 1 M3 1 L7 1 L7 5";
+  return `<span class="call-dir-badge ${badgeClass}" aria-hidden="true"><svg viewBox="0 0 8 8"><path d="${badgePath}"/></svg></span>`;
+}
+
 function formatCallLogPreview(rawText, fromMe) {
   const log = parseCallLogPayload(rawText);
   if (!log) return "";
@@ -2679,17 +2931,7 @@ function getFriendPresenceText(friend) {
   }
   if (friend?.blockedByMe) return "Blocked by you";
   if (friend?.blockedYou) return "Blocked you";
-  const statusText = friend.online ? "Online now" : formatLastSeen(friend.lastSeenAt);
-  const mutedPrefix = friend?.muted ? "Muted - " : "";
-  const bio = cleanDisplayName(friend?.bio);
-  if (bio) {
-    const compactBio = bio.length > 48 ? `${bio.slice(0, 45)}...` : bio;
-    return `${mutedPrefix}${statusText} - ${compactBio}`;
-  }
-  if (displayDiffersFromUsername(friend)) {
-    return `${mutedPrefix}${statusText} - @${friend.username}`;
-  }
-  return `${mutedPrefix}${statusText}`;
+  return friend.online ? "Online now" : formatLastSeen(friend.lastSeenAt);
 }
 
 function getContactBucket(friend) {
@@ -2840,21 +3082,28 @@ function syncCallLogPanel() {
   }
 
   callLogList.innerHTML = "";
-  logs
-    .slice(-5)
-    .reverse()
-    .forEach((message) => {
+  const sortedLogs = logs
+    .slice()
+    .sort((a, b) => getTimestampSortValue(b?.timestamp || "") - getTimestampSortValue(a?.timestamp || ""));
+  const recentLogs = sortedLogs.slice(0, 12);
+  let lastDateKey = "";
+
+  recentLogs.forEach((message) => {
       const log = parseCallLogPayload(message.text);
       if (!log) return;
+      const timestamp = message.timestamp || "";
+      const dateKey = getLocalDateKey(timestamp) || "unknown";
+      if (dateKey !== lastDateKey) {
+        lastDateKey = dateKey;
+        callLogList.appendChild(createCallHistorySeparator("div", timestamp));
+      }
       const fromMe = normalizeName(message.from) === normalizeName(me);
       const display = getCallLogDisplay(log, fromMe);
 
       const item = document.createElement("div");
-      item.className = `call-log-item ${display.direction === "incoming" ? "incoming" : "outgoing"}`;
 
       const icon = document.createElement("div");
       icon.className = "call-log-item-icon";
-      icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.09 9.81 19.79 19.79 0 01.22 1.2 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16h-.08z"/></svg>`;
 
       const content = document.createElement("div");
       content.className = "call-log-item-content";
@@ -2868,19 +3117,22 @@ function syncCallLogPanel() {
       const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(display.status);
       const isNeutralStatus = display.status === "ended";
       const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
+      const mediaClass = log.mediaType === "video" ? "video" : "voice";
+      item.className = `call-log-item ${display.direction === "incoming" ? "incoming" : "outgoing"} status-${statusClass} ${mediaClass}`;
+      icon.innerHTML = `${getCallMediaIconSvg(log.mediaType)}${getCallDirectionBadgeSvg(display.direction, statusClass)}`;
       status.className = `call-status-pill ${statusClass}`;
       status.textContent = display.statusLabel || "Call";
       content.append(title, subtitle, status);
 
       const time = document.createElement("div");
       time.className = "call-log-item-time";
-      time.textContent = prettyTime(message.timestamp);
+      time.textContent = prettyTime(timestamp);
 
       const actionBtn = document.createElement("button");
       actionBtn.type = "button";
       actionBtn.className = "call-log-action";
       actionBtn.title = "Call back";
-      actionBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.09 9.81 19.79 19.79 0 01.22 1.2 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16h-.08z"/></svg>`;
+      actionBtn.innerHTML = getCallMediaIconSvg("audio");
       actionBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         startVoiceCall();
@@ -2963,13 +3215,11 @@ function syncProfilePanel(friend) {
 function showTypingIndicator(username) {
   if (!typingIndicator || !typingText) return;
   const displayName = username ? getFriendDisplayName(findFriend(username) || { username }) : "";
-  typingText.textContent = displayName ? `${displayName} is typing...` : "typing...";
+  typingText.textContent = displayName ? `${displayName} is typing...` : "Typing...";
   typingIndicator.classList.remove("hidden");
-  const avatar = typingIndicator.querySelector(".typing-av");
-  if (avatar) {
-    avatar.textContent = displayName ? displayName.slice(0, 1).toUpperCase() : "?";
+  if (typingAvatar) {
+    typingAvatar.textContent = displayName ? displayName.slice(0, 1).toUpperCase() : "?";
   }
-  // If user is near bottom, scroll down to keep typing dots visible
   if (isNearBottom()) scrollToBottom(true);
 }
 
@@ -2978,9 +3228,49 @@ function hideTypingIndicator() {
   typingIndicator.classList.add("hidden");
 }
 
+function showSpeakingIndicator(peer) {
+  if (!speakingIndicator || !speakingText) return;
+  const source = String(arguments[1]?.source || "voice-note").trim() || "voice-note";
+  const displayName = getCallPeerDisplayName(peer || callState.peer);
+  speakingText.textContent = displayName ? `${displayName} is speaking...` : "Speaking...";
+  if (speakingAvatar) {
+    speakingAvatar.textContent = displayName ? displayName.slice(0, 1).toUpperCase() : "?";
+  }
+  speakingIndicator.dataset.source = source;
+  speakingIndicatorState.source = source;
+  speakingIndicator.classList.remove("hidden");
+  if (isNearBottom()) scrollToBottom(true);
+}
+
+function hideSpeakingIndicator(source = "") {
+  if (!speakingIndicator) return;
+  const requiredSource = String(source || "").trim();
+  const currentSource = String(speakingIndicator.dataset.source || speakingIndicatorState.source || "").trim();
+  if (requiredSource && currentSource && requiredSource !== currentSource) return;
+  speakingIndicator.classList.add("hidden");
+  if (!requiredSource || requiredSource === currentSource) {
+    speakingIndicator.dataset.source = "";
+    speakingIndicatorState.source = "none";
+  }
+}
+
 function emitTyping(isTyping, target = activeFriend, targetKind = activeChatKind) {
-  if (!target) return;
-  socket.emit("typing", { to: target, toType: normalizeChatKind(targetKind), isTyping });
+  const kind = normalizeChatKind(targetKind);
+  const resolvedTarget = resolveOutgoingTarget(target, kind);
+  if (!resolvedTarget) return;
+  socket.emit("typing", { to: resolvedTarget, toType: kind, isTyping });
+}
+
+function emitVoiceActivity(isSpeaking, target = activeFriend, targetKind = activeChatKind) {
+  if (!socketAvailable) return;
+  const kind = normalizeChatKind(targetKind);
+  const resolvedTarget = resolveOutgoingTarget(target, kind);
+  if (!resolvedTarget) return;
+  socket.emit("voice_activity", {
+    to: resolvedTarget,
+    toType: kind,
+    isSpeaking: Boolean(isSpeaking),
+  });
 }
 
 function clearLocalTypingTimer() {
@@ -4407,8 +4697,19 @@ function renderMessagesEmptyState(text) {
   icon.className = "messages-empty-icon";
   icon.setAttribute("aria-hidden", "true");
   icon.innerHTML = `
-    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <svg class="empty-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g class="portal-ring-bg">
+        <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/>
+      </g>
+      <g class="portal-outer">
+        <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/>
+      </g>
+      <g class="portal-inner">
+        <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/>
+      </g>
+      <g class="portal-dot">
+        <circle cx="24" cy="24" r="3" fill="currentColor"/>
+      </g>
     </svg>
   `;
 
@@ -4430,38 +4731,34 @@ function renderMineMessageMeta(metaEl, timeText, statusKey) {
   metaEl.innerHTML = "";
   metaEl.classList.add("mine");
   metaEl.dataset.time = timeText;
-  metaEl.dataset.status = statusKey;
+  const normalizedStatus = ["pending", "sent", "delivered", "seen", "failed"].includes(statusKey) ? statusKey : "sent";
+  metaEl.dataset.status = normalizedStatus;
 
   const time = document.createElement("span");
   time.className = "message-meta-time";
   time.textContent = timeText;
 
   const status = document.createElement("span");
-  status.className = `message-status message-status-${statusKey}`;
-
-  if (statusKey === "pending") {
-    status.textContent = "...";
-    metaEl.append(time, status);
-    return;
-  }
-
-  if (statusKey === "failed") {
-    status.textContent = "!";
-    status.title = "Failed to send";
-    metaEl.append(time, status);
-    return;
-  }
-
-  const tickA = document.createElement("span");
-  tickA.className = "tick";
-  tickA.textContent = "v";
-  status.appendChild(tickA);
-  if (statusKey === "seen") {
-    const tickB = document.createElement("span");
-    tickB.className = "tick";
-    tickB.textContent = "v";
-    status.appendChild(tickB);
-  }
+  status.className = `message-status message-status-${normalizedStatus}`;
+  const statusLabelMap = {
+    pending: "Sending...",
+    sent: "Sent",
+    delivered: "Delivered",
+    seen: "Seen",
+    failed: "Failed to send",
+  };
+  const statusLabel = statusLabelMap[normalizedStatus] || "Sent";
+  status.title = statusLabel;
+  status.setAttribute("role", "img");
+  status.setAttribute("aria-label", statusLabel);
+  status.innerHTML = `
+    <svg class="msg-status" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <circle class="portal-ring-bg" cx="8" cy="8" r="6.25" />
+      <circle class="portal-ring" cx="8" cy="8" r="6.25" />
+      <circle class="portal-center" cx="8" cy="8" r="1.6" />
+      <path class="portal-cross" d="M5.85 5.85L10.15 10.15M10.15 5.85L5.85 10.15" />
+    </svg>
+  `;
   metaEl.append(time, status);
 }
 
@@ -4724,12 +5021,16 @@ function buildMessageElement(message, skipAnimation = false) {
       body.dataset.rawText = attachment.name || attachmentUrl || message.text || "";
     } else if (callLog) {
       const log = getCallLogDisplay(callLog, mine);
+      const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(log.status);
+      const isNeutralStatus = log.status === "ended";
+      const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
+      const mediaClass = callLog.mediaType === "video" ? "video" : "voice";
       const card = document.createElement("div");
-      card.className = `call-log-card ${log.direction === "incoming" ? "incoming" : "outgoing"}`;
+      card.className = `call-log-card ${log.direction === "incoming" ? "incoming" : "outgoing"} status-${statusClass} ${mediaClass}`;
 
       const icon = document.createElement("div");
       icon.className = "call-log-icon";
-      icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.09 9.81 19.79 19.79 0 01.22 1.2 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16h-.08z"/></svg>`;
+      icon.innerHTML = `${getCallMediaIconSvg(callLog.mediaType)}${getCallDirectionBadgeSvg(log.direction, statusClass)}`;
 
       const content = document.createElement("div");
       content.className = "call-log-content";
@@ -4739,19 +5040,22 @@ function buildMessageElement(message, skipAnimation = false) {
       const subtitle = document.createElement("div");
       subtitle.className = "call-log-subtitle";
       subtitle.textContent = log.subtitle;
+      const subRow = document.createElement("div");
+      subRow.className = "call-log-subrow";
       const status = document.createElement("div");
-      const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable"].includes(log.status);
-      const isNeutralStatus = log.status === "ended";
-      const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
       status.className = `call-status-pill ${statusClass}`;
       status.textContent = log.statusLabel || "Call";
-      content.append(title, subtitle, status);
+      subRow.append(subtitle, status);
+      content.append(title, subRow);
 
       const time = document.createElement("div");
       time.className = "call-log-time";
       time.textContent = prettyTime(message.timestamp);
+      const right = document.createElement("div");
+      right.className = "call-log-right";
+      right.append(time);
 
-      card.append(icon, content, time);
+      card.append(icon, content, right);
       body.appendChild(card);
     } else if (isAudio) {
       body.classList.add("message-audio");
@@ -4902,6 +5206,7 @@ function ensureLoadOlderButton() {
     loadOlderBtn.type = "button";
     loadOlderBtn.className = "messages-load-older hidden";
     loadOlderBtn.textContent = "Load older messages";
+    loadOlderBtn.setAttribute("aria-label", "Load older messages");
     loadOlderBtn.addEventListener("click", loadOlderMessages);
   }
   if (!loadOlderBtn.parentNode) {
@@ -4913,7 +5218,24 @@ function ensureLoadOlderButton() {
 function updateLoadOlderButton() {
   const btn = ensureLoadOlderButton();
   if (!btn) return;
-  btn.classList.toggle("hidden", messageWindowStart <= 0);
+  const remaining = Math.max(0, Number(messageWindowStart) || 0);
+  if (remaining <= 0) {
+    btn.classList.add("hidden");
+    btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    btn.dataset.remaining = "0";
+    return;
+  }
+  const chunk = Math.min(MESSAGE_WINDOW_PAGE, remaining);
+  const chunkLabel = chunk === 1 ? "message" : "messages";
+  const remainingLabel = remaining === 1 ? "1 older message left" : `${remaining} older messages left`;
+  btn.textContent = `Load ${chunk} older ${chunkLabel}`;
+  btn.title = remainingLabel;
+  btn.setAttribute("aria-label", `${btn.textContent}. ${remainingLabel}.`);
+  btn.classList.remove("hidden");
+  btn.disabled = false;
+  btn.removeAttribute("aria-busy");
+  btn.dataset.remaining = String(remaining);
 }
 
 function setMessageWindowToLatest() {
@@ -4966,6 +5288,12 @@ function renderMessageWindow(options = {}) {
 
 function loadOlderMessages() {
   if (messageWindowStart <= 0) return;
+  const btn = ensureLoadOlderButton();
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    btn.textContent = "Loading older messages...";
+  }
   messageWindowStart = Math.max(0, messageWindowStart - MESSAGE_WINDOW_PAGE);
   messageWindowEnd = Math.min(conversationMessages.length, messageWindowStart + MAX_VISIBLE_MESSAGES);
   renderMessageWindow({ preserveScroll: true });
@@ -5020,6 +5348,7 @@ function setComposerEnabled(isEnabled) {
   }
 
   if (!isEnabled) {
+    closeScheduleMenu();
     cameraCaptureModal.close();
     stopLocalTyping();
     hideTypingIndicator();
@@ -5399,45 +5728,223 @@ function maybeResetInfoPanelScroll() {
   lastInfoPanelFriendKey = nextKey;
 }
 
+function setInfoPanelMode(mode = "contact") {
+  const isGroup = mode === "group";
+  if (infoPanel) {
+    infoPanel.classList.toggle("is-group", isGroup);
+    infoPanel.setAttribute("aria-label", isGroup ? "Group info" : "Contact info");
+  }
+  if (infoToggleBtn) infoToggleBtn.setAttribute("aria-label", isGroup ? "Group details" : "Contact details");
+  if (infoPanelTitle) infoPanelTitle.textContent = isGroup ? "Group info" : "Contact info";
+  if (infoTagsSection) infoTagsSection.classList.toggle("hidden", isGroup);
+  if (groupInfoSection) groupInfoSection.classList.toggle("hidden", !isGroup);
+}
+
+function renderGroupMemberList(groupInfo) {
+  if (!groupMemberList || !groupMembersMeta) return;
+  if (!groupInfo || !Array.isArray(groupInfo.members) || !groupInfo.members.length) {
+    groupMembersMeta.textContent = "0";
+    groupMemberList.innerHTML = '<div class="group-member-empty">No members yet</div>';
+    return;
+  }
+
+  const meRole = groupInfo?.me?.role || "member";
+  const canManageMembers = meRole === "owner" || meRole === "admin";
+  const canManageRoles = meRole === "owner";
+
+  groupMembersMeta.textContent = `${groupInfo.members.length}`;
+  groupMemberList.innerHTML = "";
+
+  groupInfo.members.forEach((member) => {
+    const item = document.createElement("div");
+    item.className = "group-member-item";
+
+    const avatar = document.createElement("div");
+    avatar.className = "group-member-avatar";
+    const fallback = (member.displayName || member.username || "?").slice(0, 2).toUpperCase();
+    if (member.avatarId && window._novynAvatarUtils) {
+      window._novynAvatarUtils.applyAvatarToEl(avatar, member.avatarId, fallback);
+    } else {
+      avatar.textContent = fallback;
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "group-member-meta";
+
+    const name = document.createElement("div");
+    name.className = "group-member-name";
+    const display = member.displayName || member.username;
+    const isMe = normalizeName(member.username) === normalizeName(me);
+    name.textContent = isMe ? `${display} (You)` : display;
+    name.title = `@${member.username}`;
+
+    const sub = document.createElement("div");
+    sub.className = "group-member-sub";
+    if (member.online) {
+      sub.textContent = "Online";
+    } else if (member.lastSeenAt) {
+      sub.textContent = formatLastSeen(member.lastSeenAt);
+    } else {
+      sub.textContent = "Offline";
+    }
+
+    const role = document.createElement("span");
+    role.className = `group-member-role ${member.role}`;
+    role.textContent = member.role === "owner" ? "Owner" : (member.role === "admin" ? "Admin" : "Member");
+
+    meta.append(name, sub);
+    item.append(avatar, meta, role);
+
+    const canToggleRole = canManageRoles && !member.isOwner && !isMe;
+    const canRemove = canManageMembers
+      && !member.isOwner
+      && !isMe
+      && (meRole === "owner" || !member.isAdmin);
+
+    if (canToggleRole || canRemove) {
+      const actions = document.createElement("div");
+      actions.className = "group-member-actions";
+
+      if (canToggleRole) {
+        const roleBtn = document.createElement("button");
+        roleBtn.type = "button";
+        roleBtn.className = "group-member-action-btn role";
+        roleBtn.textContent = member.isAdmin ? "Make member" : "Make admin";
+        roleBtn.addEventListener("click", () => {
+          socket.emit("set_group_member_role", {
+            groupId: groupInfo.id,
+            username: member.username,
+            role: member.isAdmin ? "member" : "admin",
+          });
+        });
+        actions.appendChild(roleBtn);
+      }
+
+      if (canRemove) {
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "group-member-action-btn remove";
+        removeBtn.textContent = "Remove";
+        removeBtn.addEventListener("click", () => {
+          const confirmed = window.confirm(`Remove @${member.username} from this group?`);
+          if (!confirmed) return;
+          socket.emit("remove_group_member", {
+            groupId: groupInfo.id,
+            username: member.username,
+          });
+        });
+        actions.appendChild(removeBtn);
+      }
+
+      item.appendChild(actions);
+    }
+
+    groupMemberList.appendChild(item);
+  });
+}
+
+function syncGroupInfoSection() {
+  const activeEntry = getActiveChatEntry();
+  const isGroup = normalizeChatKind(activeEntry?.kind || activeChatKind) === "group";
+  setInfoPanelMode(isGroup ? "group" : "contact");
+
+  if (!infoAddMembersBtn) {
+    if (isGroup) requestGroupInfo(resolveGroupChatId(activeFriend, "group"), { kind: "group" });
+    return;
+  }
+
+  infoAddMembersBtn.classList.toggle("hidden", !isGroup);
+  infoAddMembersBtn.disabled = !isGroup;
+
+  if (!isGroup) return;
+
+  const groupId = resolveGroupChatId(activeFriend, "group");
+  const groupInfo = getGroupInfo(groupId, "group");
+  const meRole = groupInfo?.me?.role || "member";
+  const canAdd = meRole === "owner" || meRole === "admin";
+  infoAddMembersBtn.disabled = !canAdd;
+  infoAddMembersBtn.textContent = "Add members";
+  infoAddMembersBtn.title = canAdd ? "Add members to this group" : "Only admins can add members";
+
+  if (!groupInfo) {
+    if (!groupId) {
+      if (groupMembersMeta) groupMembersMeta.textContent = "0";
+      if (groupMemberList) {
+        groupMemberList.innerHTML = '<div class="group-member-empty">Unable to load members.</div>';
+      }
+      return;
+    }
+    if (groupMembersMeta) groupMembersMeta.textContent = "...";
+    if (groupMemberList) {
+      groupMemberList.innerHTML = '<div class="group-member-empty">Loading members...</div>';
+    }
+    requestGroupInfo(groupId, { kind: "group" });
+    return;
+  }
+  renderGroupMemberList(groupInfo);
+}
+
 function syncInfoPanel() {
   if (!infoPanelName || !infoPanelAvatar || !infoPanelHandle || !infoPanelStatus) return;
 
   if (activeFriend) {
-    const friend = findFriend(activeFriend);
+    const friend = findFriend(activeFriend, activeChatKind);
+    const isGroup = normalizeChatKind(friend?.kind || activeChatKind) === "group";
     if (!friend) {
       infoPanelName.textContent = "Loading...";
       infoPanelHandle.textContent = "";
       setInfoPanelStatus("Offline", "offline");
+      syncGroupInfoSection();
       maybeResetInfoPanelScroll();
       return;
     }
 
     infoPanelName.textContent = getFriendDisplayName(friend);
-    infoPanelHandle.textContent = `@${friend.username}`;
-    infoPanelHandle.title = `@${friend.username}`;
+    infoPanelHandle.textContent = isGroup ? `#${friend.username}` : `@${friend.username}`;
+    infoPanelHandle.title = isGroup ? `#${friend.username}` : `@${friend.username}`;
     applyInfoAvatar(
       infoPanelAvatar,
       friend.avatarId,
-      friend.username.slice(0, 2).toUpperCase()
+      getFriendDisplayName(friend).slice(0, 2).toUpperCase()
     );
-    const safety = getFriendSafety(friend.username);
-    const statusText = safety.blockedByMe
-      ? "Blocked by you"
-      : safety.blockedYou
-        ? "Blocked you"
+    if (isGroup) {
+      const members = Number(friend.memberCount) || 0;
+      const online = Number(friend.onlineCount) || 0;
+      const statusText = online > 0
+        ? `${online} online - ${members} members`
+        : `${members} member${members === 1 ? "" : "s"}`;
+      setInfoPanelStatus(statusText, online > 0 ? "online" : "offline");
+      infoPanelStatus.title = statusText;
+    } else {
+      const safety = getFriendSafety(friend.username);
+      const statusText = safety.blockedByMe
+        ? "Blocked by you"
+        : safety.blockedYou
+          ? "Blocked you"
+          : friend.online
+            ? "Online"
+            : "Offline";
+      setInfoPanelStatus(statusText, friend.online && !safety.blocked ? "online" : "offline");
+      infoPanelStatus.title = safety.blocked
+        ? (safety.blockedByMe ? "You blocked this user." : "This user blocked you.")
         : friend.online
-          ? "Online"
-          : "Offline";
-    setInfoPanelStatus(statusText, friend.online && !safety.blocked ? "online" : "offline");
-    infoPanelStatus.title = safety.blocked
-      ? (safety.blockedByMe ? "You blocked this user." : "This user blocked you.")
-      : friend.online
-        ? "Online now"
-        : formatLastSeen(friend.lastSeenAt);
+          ? "Online now"
+          : formatLastSeen(friend.lastSeenAt);
+    }
+    syncGroupInfoSection();
     maybeResetInfoPanelScroll();
     return;
   }
 
+  setInfoPanelMode("contact");
+  if (groupMemberList && groupMembersMeta) {
+    groupMembersMeta.textContent = "0";
+    groupMemberList.innerHTML = '<div class="group-member-empty">No members yet</div>';
+  }
+  if (infoAddMembersBtn) {
+    infoAddMembersBtn.classList.add("hidden");
+    infoAddMembersBtn.disabled = true;
+  }
   const myName = getMyDisplayName();
   infoPanelName.textContent = myName;
   infoPanelHandle.textContent = me ? `@${me}` : "@you";
@@ -5566,6 +6073,8 @@ function syncRemoveFriendButton() {
 function clearActiveFriendSelection() {
   persistActiveMessageDraft();
   if (activeFriend) stopLocalTyping(activeFriend);
+  closeScheduleMenu();
+  setScheduledPanelExpanded(false);
   activeFriend = "";
   activeChatKind = "friend";
   pendingUnreadJump = { friendKey: "", count: 0 };
@@ -5599,6 +6108,8 @@ function clearActiveFriendSelection() {
 
 function setActiveFriend(username, kind = "friend") {
   persistActiveMessageDraft();
+  closeScheduleMenu();
+  setScheduledPanelExpanded(false);
   const nextKind = normalizeChatKind(kind);
   if (
     activeFriend &&
@@ -5636,6 +6147,7 @@ function setActiveFriend(username, kind = "friend") {
   applyActiveMessageDraft();
   renderMessagesEmptyState("Loading conversation...");
   socket.emit("get_history", { to: username, toType: nextKind });
+  if (nextKind === "group") requestGroupInfo(resolveGroupChatId(username, "group"), { kind: "group", force: true });
   requestScheduledMessagesForActiveChat();
   renderFriends();
 
@@ -5743,19 +6255,21 @@ function renderFriends() {
 
     const preview = document.createElement("span");
     preview.className = "chat-preview";
+    const isDirectMessage = chatKind === "friend";
     if (isContactsView) {
       preview.textContent = getFriendPresenceText(friend);
     } else if (isMessagesView && blockedEntry) {
       const safety = getFriendSafety(friend.username, chatKind);
       preview.textContent = safety.blockedByMe ? "Blocked by you" : "Blocked you";
+    } else if (isMessagesView && isDirectMessage) {
+      preview.textContent = getFriendPresenceText(friend);
     } else {
       preview.textContent = friendPreview(friend);
     }
     preview.title = preview.textContent;
-    if (isContactsView) {
-      preview.classList.toggle("status-online", !!friend.online);
-      preview.classList.toggle("status-offline", !friend.online);
-    }
+    const showPresenceState = (isContactsView || (isMessagesView && isDirectMessage)) && !blockedEntry;
+    preview.classList.toggle("status-online", showPresenceState && !!friend.online);
+    preview.classList.toggle("status-offline", showPresenceState && !friend.online);
 
     const nameRow = document.createElement("div");
     nameRow.className = "chat-name-row";
@@ -5946,6 +6460,68 @@ function openCreateGroupPrompt() {
     name: groupName,
     members,
   });
+}
+
+function openAddGroupMembersPrompt() {
+  if (!activeFriend || normalizeChatKind(activeChatKind) !== "group") {
+    showToast("Open a group chat first.", "error");
+    return;
+  }
+  const groupId = resolveGroupChatId(activeFriend, "group");
+  if (!groupId) {
+    showToast("Unable to resolve this group.", "error");
+    return;
+  }
+  const groupInfo = getGroupInfo(groupId, "group");
+  if (!groupInfo) {
+    requestGroupInfo(groupId, { kind: "group", force: true });
+  }
+  if (groupInfo && !(groupInfo.me?.isAdmin || groupInfo.me?.isOwner)) {
+    showToast("Only group admins can add members.", "error");
+    return;
+  }
+
+  const existingMembers = new Set((groupInfo?.members || []).map((member) => normalizeName(member.username)));
+  const candidateFriends = friends.filter((entry) => {
+    if (normalizeChatKind(entry?.kind || "friend") !== "friend") return false;
+    const key = normalizeName(entry.username);
+    if (!key || existingMembers.has(key)) return false;
+    if (entry?.blockedByMe || entry?.blockedYou) return false;
+    return true;
+  });
+  if (!candidateFriends.length) {
+    showToast("No eligible friends to add.", "info");
+    return;
+  }
+
+  const suggestedMembers = candidateFriends.slice(0, 6).map((entry) => entry.username).join(", ");
+  const membersInput = window.prompt(
+    "Add friends by username (comma-separated):",
+    suggestedMembers
+  );
+  if (membersInput === null) return;
+  const allowed = new Set(candidateFriends.map((entry) => normalizeName(entry.username)));
+  const members = Array.from(
+    new Set(
+      String(membersInput || "")
+        .split(",")
+        .map((value) => value.trim().replace(/^@+/, ""))
+        .filter(Boolean)
+    )
+  ).filter((username) => allowed.has(normalizeName(username)));
+  if (!members.length) {
+    showToast("Select at least one valid friend to add.", "error");
+    return;
+  }
+
+  socket.emit("add_group_members", {
+    groupId,
+    members,
+  });
+  if (!groupInfo) {
+    showToast("Invites sent. Refreshing group members...", "success");
+    requestGroupInfo(groupId, { kind: "group", force: true });
+  }
 }
 
 if (createGroupBtn) {
@@ -6211,6 +6787,10 @@ const voiceState = {
   startedAt: 0,
   timerId: null,
   pendingTempId: "",
+  activitySent: false,
+  activityTarget: "",
+  activityKind: "friend",
+  activityPingId: null,
 };
 
 const DEFAULT_ICE_SERVERS = [
@@ -6332,11 +6912,34 @@ const callState = {
   answerRetryCount: 0,
 };
 
+const remoteSpeakingState = {
+  context: null,
+  analyser: null,
+  source: null,
+  data: null,
+  rafId: 0,
+  speakingFrames: 0,
+  silentFrames: 0,
+  speaking: false,
+};
+const speakingIndicatorState = {
+  source: "none",
+};
+
 function resetVoiceState() {
+  if (voiceState.activitySent) {
+    emitVoiceActivity(
+      false,
+      voiceState.activityTarget || activeFriend,
+      voiceState.activityKind || activeChatKind
+    );
+  }
   if (voiceState.timeout) clearTimeout(voiceState.timeout);
   voiceState.timeout = null;
   if (voiceState.timerId) clearInterval(voiceState.timerId);
   voiceState.timerId = null;
+  if (voiceState.activityPingId) clearInterval(voiceState.activityPingId);
+  voiceState.activityPingId = null;
   if (voiceState.recorder && voiceState.recorder.state !== "inactive") {
     voiceState.recorder.stop();
   }
@@ -6350,12 +6953,19 @@ function resetVoiceState() {
   voiceState.cancelNext = false;
   voiceState.startedAt = 0;
   voiceState.pendingTempId = "";
+  voiceState.activitySent = false;
+  voiceState.activityTarget = "";
+  voiceState.activityKind = "friend";
   if (voiceBtn) {
     voiceBtn.classList.remove("recording");
     voiceBtn.setAttribute("aria-pressed", "false");
     voiceBtn.disabled = messageInput?.disabled;
+    voiceBtn.title = "Voice message";
   }
-  if (voiceStatus) voiceStatus.classList.add("hidden");
+  if (voiceStatus) {
+    voiceStatus.classList.add("hidden");
+    voiceStatus.dataset.state = "idle";
+  }
   if (voiceLabel) voiceLabel.textContent = "Recording...";
   if (voiceTimer) voiceTimer.textContent = "0:00";
   if (voiceProgress) voiceProgress.classList.add("hidden");
@@ -6363,6 +6973,9 @@ function resetVoiceState() {
   if (voiceProgressText) voiceProgressText.textContent = "Uploading... 0%";
   if (voiceCancelBtn) voiceCancelBtn.disabled = false;
   if (voiceStopBtn) voiceStopBtn.disabled = false;
+  if (callState.status !== "active") {
+    hideSpeakingIndicator("voice-note");
+  }
 }
 
 function setAttachmentUploadUiState(isUploading) {
@@ -6483,7 +7096,10 @@ async function uploadVoiceBlob(blob) {
   const targetFriend = activeFriend;
   const targetKind = normalizeChatKind(activeChatKind);
   voiceState.uploading = true;
-  if (voiceStatus) voiceStatus.classList.remove("hidden");
+  if (voiceStatus) {
+    voiceStatus.classList.remove("hidden");
+    voiceStatus.dataset.state = "uploading";
+  }
   if (voiceLabel) voiceLabel.textContent = "Uploading...";
   if (voiceProgress) voiceProgress.classList.remove("hidden");
   if (voiceProgressBar) voiceProgressBar.style.transform = "scaleX(0)";
@@ -6555,7 +7171,10 @@ async function uploadVoiceBlob(blob) {
     if (voiceProgress) voiceProgress.classList.add("hidden");
     if (voiceCancelBtn) voiceCancelBtn.disabled = false;
     if (voiceStopBtn) voiceStopBtn.disabled = false;
-    if (voiceStatus) voiceStatus.classList.add("hidden");
+    if (voiceStatus) {
+      voiceStatus.classList.add("hidden");
+      voiceStatus.dataset.state = "idle";
+    }
   }
 }
 
@@ -6563,6 +7182,18 @@ function stopVoiceRecording(cancelled = false) {
   if (!voiceState.isRecording) return;
   voiceState.isRecording = false;
   voiceState.cancelNext = cancelled;
+  if (voiceState.activityPingId) {
+    clearInterval(voiceState.activityPingId);
+    voiceState.activityPingId = null;
+  }
+  if (voiceState.activitySent) {
+    emitVoiceActivity(
+      false,
+      voiceState.activityTarget || activeFriend,
+      voiceState.activityKind || activeChatKind
+    );
+    voiceState.activitySent = false;
+  }
   if (voiceState.timeout) clearTimeout(voiceState.timeout);
   voiceState.timeout = null;
   if (voiceState.recorder && voiceState.recorder.state !== "inactive") {
@@ -6594,6 +7225,8 @@ async function startVoiceRecording() {
     return;
   }
 
+  stopLocalTyping(activeFriend, activeChatKind);
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const recorder = new MediaRecorder(stream);
@@ -6604,6 +7237,9 @@ async function startVoiceRecording() {
     voiceState.isRecording = true;
     voiceState.cancelNext = false;
     voiceState.startedAt = Date.now();
+    voiceState.activitySent = false;
+    voiceState.activityTarget = activeFriend;
+    voiceState.activityKind = normalizeChatKind(activeChatKind);
 
     recorder.ondataavailable = (evt) => {
       if (evt?.data?.size > 0) voiceState.chunks.push(evt.data);
@@ -6623,8 +7259,24 @@ async function startVoiceRecording() {
     voiceBtn.classList.add("recording");
     voiceBtn.setAttribute("aria-pressed", "true");
     voiceBtn.title = "Stop recording";
-    if (voiceStatus) voiceStatus.classList.remove("hidden");
-    if (voiceLabel) voiceLabel.textContent = "Recording...";
+    if (voiceStatus) {
+      voiceStatus.classList.remove("hidden");
+      voiceStatus.dataset.state = "recording";
+    }
+    if (voiceLabel) {
+      voiceLabel.textContent = "Recording voice note...";
+    }
+    if (callState.status !== "active") {
+      // Receiver-only speaking indicator: don't show this local chip to sender.
+      hideSpeakingIndicator("voice-note");
+      emitVoiceActivity(true, voiceState.activityTarget, voiceState.activityKind);
+      voiceState.activitySent = true;
+      if (voiceState.activityPingId) clearInterval(voiceState.activityPingId);
+      voiceState.activityPingId = setInterval(() => {
+        if (!voiceState.isRecording || !voiceState.activitySent) return;
+        emitVoiceActivity(true, voiceState.activityTarget, voiceState.activityKind);
+      }, 1400);
+    }
     if (voiceTimer) voiceTimer.textContent = "0:00";
     if (voiceProgress) voiceProgress.classList.add("hidden");
     if (voiceProgressBar) voiceProgressBar.style.transform = "scaleX(0)";
@@ -6849,6 +7501,13 @@ function setCallMinimized(value) {
 
 function updateCallUi() {
   if (!callModal) return;
+  const setCallControlText = (btn, text) => {
+    if (!btn) return;
+    const label = btn.querySelector(".call-control-label");
+    if (label) label.textContent = text;
+    else btn.textContent = text;
+    btn.setAttribute("aria-label", text);
+  };
   const show = callState.status !== "idle" && !callState.minimized;
   callModal.classList.toggle("hidden", !show);
   callModal.setAttribute("aria-hidden", show ? "false" : "true");
@@ -6882,10 +7541,15 @@ function updateCallUi() {
 
   if (callAcceptBtn) callAcceptBtn.style.display = callState.status === "incoming" ? "inline-flex" : "none";
   if (callRejectBtn) callRejectBtn.style.display = callState.status === "incoming" ? "inline-flex" : "none";
+  setCallControlText(callAcceptBtn, "Answer");
+  setCallControlText(callRejectBtn, "Decline");
   if (callHangupBtn) {
     const showHangup = ["outgoing", "ringing", "connecting", "reconnecting", "active"].includes(callState.status);
     callHangupBtn.style.display = showHangup ? "inline-flex" : "none";
-    callHangupBtn.textContent = ["outgoing", "ringing"].includes(callState.status) ? "Cancel" : "End call";
+    setCallControlText(
+      callHangupBtn,
+      ["outgoing", "ringing"].includes(callState.status) ? "Cancel" : "End call"
+    );
   }
 
   const controlsEnabled = callState.status !== "idle";
@@ -6893,14 +7557,18 @@ function updateCallUi() {
     callMuteBtn.disabled = !controlsEnabled;
     callMuteBtn.classList.toggle("muted", callState.muted);
     callMuteBtn.classList.toggle("active", callState.muted);
+    callMuteBtn.dataset.icon = callState.muted ? "off" : "on";
     callMuteBtn.setAttribute("aria-pressed", callState.muted ? "true" : "false");
+    callMuteBtn.title = callState.muted ? "Unmute" : "Mute";
     const label = callMuteBtn.querySelector("span");
     if (label) label.textContent = callState.muted ? "Unmute" : "Mute";
   }
   if (callSpeakerBtn) {
     callSpeakerBtn.disabled = !controlsEnabled;
     callSpeakerBtn.classList.toggle("active", callState.speakerOn);
+    callSpeakerBtn.dataset.icon = callState.speakerOn ? "on" : "off";
     callSpeakerBtn.setAttribute("aria-pressed", callState.speakerOn ? "true" : "false");
+    callSpeakerBtn.title = callState.speakerOn ? "Speaker" : "Speaker off";
     const label = callSpeakerBtn.querySelector("span");
     if (label) label.textContent = callState.speakerOn ? "Speaker" : "Speaker off";
   }
@@ -6920,6 +7588,9 @@ function updateCallUi() {
     const hasLocalVideo = Boolean(callState.localStream && callState.localStream.getVideoTracks().length);
     callFlipBtn.disabled = !controlsEnabled || !showVideo || !hasLocalVideo;
   }
+  if (callState.status !== "active") {
+    hideSpeakingIndicator("call");
+  }
   updateCallTimer();
 }
 
@@ -6928,6 +7599,7 @@ function resetCallState() {
   clearOfferRetry();
   clearAnswerRetry();
   clearReconnectTimer();
+  stopRemoteSpeakingMonitor();
   stopCallTimer();
   if (callState.pc) {
     callState.pc.onicecandidate = null;
@@ -6996,6 +7668,113 @@ function applySpeakerState() {
   if (callRemoteVideo) {
     callRemoteVideo.muted = true;
   }
+}
+
+function stopRemoteSpeakingMonitor() {
+  if (remoteSpeakingState.rafId) {
+    cancelAnimationFrame(remoteSpeakingState.rafId);
+    remoteSpeakingState.rafId = 0;
+  }
+  if (remoteSpeakingState.source) {
+    try { remoteSpeakingState.source.disconnect(); } catch (_) {}
+  }
+  if (remoteSpeakingState.analyser) {
+    try { remoteSpeakingState.analyser.disconnect(); } catch (_) {}
+  }
+  if (remoteSpeakingState.context) {
+    const ctx = remoteSpeakingState.context;
+    remoteSpeakingState.context = null;
+    Promise.resolve(ctx.close()).catch(() => {});
+  }
+  remoteSpeakingState.source = null;
+  remoteSpeakingState.analyser = null;
+  remoteSpeakingState.data = null;
+  remoteSpeakingState.speakingFrames = 0;
+  remoteSpeakingState.silentFrames = 0;
+  remoteSpeakingState.speaking = false;
+  hideSpeakingIndicator("call");
+}
+
+function startRemoteSpeakingMonitor(stream) {
+  stopRemoteSpeakingMonitor();
+  if (!(stream instanceof MediaStream)) return;
+  if (!stream.getAudioTracks().length) return;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (typeof AudioContextClass !== "function") return;
+
+  let context = null;
+  try {
+    context = new AudioContextClass();
+  } catch (_) {
+    return;
+  }
+  if (!context) return;
+
+  let analyser = null;
+  let source = null;
+  try {
+    analyser = context.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.86;
+    source = context.createMediaStreamSource(stream);
+    source.connect(analyser);
+  } catch (_) {
+    Promise.resolve(context.close()).catch(() => {});
+    return;
+  }
+
+  remoteSpeakingState.context = context;
+  remoteSpeakingState.analyser = analyser;
+  remoteSpeakingState.source = source;
+  remoteSpeakingState.data = new Uint8Array(analyser.frequencyBinCount);
+  remoteSpeakingState.speakingFrames = 0;
+  remoteSpeakingState.silentFrames = 0;
+  remoteSpeakingState.speaking = false;
+
+  Promise.resolve(context.resume()).catch(() => {});
+
+  const detectSpeaking = () => {
+    if (!remoteSpeakingState.analyser || !remoteSpeakingState.data) {
+      stopRemoteSpeakingMonitor();
+      return;
+    }
+
+    if (callState.status === "idle" || !callState.remoteStream || !callState.remoteStream.getAudioTracks().length) {
+      stopRemoteSpeakingMonitor();
+      return;
+    }
+
+    remoteSpeakingState.analyser.getByteFrequencyData(remoteSpeakingState.data);
+    let total = 0;
+    let peak = 0;
+    for (const value of remoteSpeakingState.data) {
+      total += value;
+      if (value > peak) peak = value;
+    }
+    const average = remoteSpeakingState.data.length ? total / remoteSpeakingState.data.length : 0;
+    const speakingLevel = Math.max(average, peak * 0.72);
+    const isSpeakingFrame = speakingLevel > 20;
+
+    if (isSpeakingFrame) {
+      remoteSpeakingState.speakingFrames += 1;
+      remoteSpeakingState.silentFrames = 0;
+    } else {
+      remoteSpeakingState.silentFrames += 1;
+      remoteSpeakingState.speakingFrames = 0;
+    }
+
+    if (!remoteSpeakingState.speaking && remoteSpeakingState.speakingFrames >= 2 && callState.status === "active") {
+      remoteSpeakingState.speaking = true;
+      showSpeakingIndicator(callState.peer, { source: "call" });
+    } else if (remoteSpeakingState.speaking && (remoteSpeakingState.silentFrames >= 8 || callState.status !== "active")) {
+      remoteSpeakingState.speaking = false;
+      hideSpeakingIndicator("call");
+    }
+
+    remoteSpeakingState.rafId = requestAnimationFrame(detectSpeaking);
+  };
+
+  remoteSpeakingState.rafId = requestAnimationFrame(detectSpeaking);
 }
 
 function toggleMute() {
@@ -7091,6 +7870,7 @@ function createCallPeerConnection() {
         callRemoteVideo.play().catch(() => {});
       }
     }
+    startRemoteSpeakingMonitor(callState.remoteStream);
   };
 
   pc.onconnectionstatechange = () => {
@@ -7641,8 +8421,10 @@ function flushPendingQueue(force = false) {
 function sendMessagePayload(payload, options = {}) {
   if (!payload || !payload.to) return;
   const payloadType = normalizeChatKind(payload.toType || activeChatKind || "friend");
+  const resolvedTo = resolveOutgoingTarget(payload.to, payloadType);
+  if (!resolvedTo) return;
   if (payloadType === "friend") {
-    const safety = getFriendSafety(payload.to, "friend");
+    const safety = getFriendSafety(resolvedTo, "friend");
     if (safety.blocked) {
       if (options.toast !== false) {
         showToast(safety.blockedByMe ? "Unblock this contact to send messages." : "This user has blocked you.", "error");
@@ -7652,7 +8434,7 @@ function sendMessagePayload(payload, options = {}) {
   }
   const validatedText = validateOutgoingMessageText(payload.text);
   if (validatedText === null || !validatedText) return;
-  const outgoingPayload = { ...payload, toType: payloadType, text: validatedText };
+  const outgoingPayload = { ...payload, to: resolvedTo, toType: payloadType, text: validatedText };
   const normalizedAttachment = normalizeAttachmentPayload(payload.attachment, validatedText);
   if (normalizedAttachment) {
     outgoingPayload.attachment = normalizedAttachment;
@@ -7716,6 +8498,7 @@ function sendActiveMessage() {
     }
   }
   if (!text) return;
+  closeScheduleMenu();
 
   if (hasNewerMessages()) {
     showLatestMessages();
@@ -7726,6 +8509,7 @@ function sendActiveMessage() {
   const sentTempId = sendMessagePayload(payload);
   if (!sentTempId) return;
   messageInput.value = "";
+  messageInput.dispatchEvent(new Event("input", { bubbles: true }));
   removeMessageDraft(activeFriend);
   if (sendButton) sendButton.classList.remove("ready");
   clearReply();
@@ -7741,9 +8525,12 @@ function requestScheduledMessagesForActiveChat() {
     renderScheduledPanel();
     return;
   }
+  const payloadType = normalizeChatKind(activeChatKind);
+  const resolvedTo = resolveOutgoingTarget(activeFriend, payloadType);
+  if (!resolvedTo) return;
   socket.emit("list_scheduled_messages", {
-    to: activeFriend,
-    toType: normalizeChatKind(activeChatKind),
+    to: resolvedTo,
+    toType: payloadType,
   });
 }
 
@@ -7758,14 +8545,20 @@ function formatScheduledLocal(isoText) {
   });
 }
 
-function buildDefaultScheduleInput() {
-  const date = new Date(Date.now() + 15 * 60 * 1000);
+function buildDefaultScheduleDateParts(baseDate = null) {
+  const date = baseDate instanceof Date && !Number.isNaN(baseDate.getTime())
+    ? new Date(baseDate.getTime())
+    : new Date(Date.now() + 15 * 60 * 1000);
+  date.setSeconds(0, 0);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   const hour = String(date.getHours()).padStart(2, "0");
   const minute = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day} ${hour}:${minute}`;
+  return {
+    dateValue: `${year}-${month}-${day}`,
+    timeValue: `${hour}:${minute}`,
+  };
 }
 
 function parseScheduleInput(rawValue) {
@@ -7787,28 +8580,99 @@ function parseScheduleInput(rawValue) {
   return parsed;
 }
 
+function updateSchedulePreview(date) {
+  if (!schedulePreviewText) return;
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    schedulePreviewText.textContent = "Pick a date and time";
+    return;
+  }
+  schedulePreviewText.textContent = `Will send ${formatScheduledLocal(date.toISOString())}`;
+}
+
+function readScheduleDateFromInputs() {
+  const datePart = String(scheduleDateInput?.value || "").trim();
+  const timePart = String(scheduleTimeInput?.value || "").trim() || "09:00";
+  if (!datePart) return null;
+  return parseScheduleInput(`${datePart} ${timePart}`);
+}
+
+function setScheduleInputFromDate(date) {
+  const nextParts = buildDefaultScheduleDateParts(date);
+  if (scheduleDateInput) scheduleDateInput.value = nextParts.dateValue;
+  if (scheduleTimeInput) scheduleTimeInput.value = nextParts.timeValue;
+  updateSchedulePreview(readScheduleDateFromInputs());
+}
+
+function setScheduledPanelExpanded(nextValue) {
+  const expanded = Boolean(nextValue);
+  scheduledPanelExpanded = expanded;
+  if (!scheduledPanel) return;
+  scheduledPanel.classList.toggle("collapsed", !expanded);
+  if (scheduledPanelToggleBtn) {
+    scheduledPanelToggleBtn.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+}
+
+function isScheduleMenuOpen() {
+  return Boolean(scheduleMenu && !scheduleMenu.classList.contains("hidden"));
+}
+
+function closeScheduleMenu() {
+  if (!scheduleMenu) return;
+  scheduleMenu.classList.add("hidden");
+  if (scheduleBtn) scheduleBtn.setAttribute("aria-expanded", "false");
+}
+
+function openScheduleMenu() {
+  if (!scheduleMenu) return;
+  if (!activeFriend) {
+    showToast("Choose a chat first.", "error");
+    return;
+  }
+  requestScheduledMessagesForActiveChat();
+  scheduleMenu.classList.remove("hidden");
+  if (scheduleBtn) scheduleBtn.setAttribute("aria-expanded", "true");
+  if (scheduleDateInput) {
+    setScheduleInputFromDate();
+    scheduleDateInput.focus();
+  }
+}
+
 function renderScheduledPanel() {
   if (!scheduledPanel || !scheduledList || !scheduledEmpty) return;
   if (!activeFriend) {
     scheduledPanel.classList.add("hidden");
+    if (scheduledPanelTitle) scheduledPanelTitle.textContent = "Scheduled messages";
     scheduledList.innerHTML = "";
     scheduledEmpty.textContent = "No scheduled messages";
+    setScheduledPanelExpanded(false);
     return;
   }
   const messages = getScheduledMessagesForChat(activeFriend, activeChatKind);
   scheduledList.innerHTML = "";
   if (!messages.length) {
     scheduledPanel.classList.add("hidden");
+    if (scheduledPanelTitle) scheduledPanelTitle.textContent = "Scheduled messages";
     scheduledEmpty.textContent = "No scheduled messages";
+    setScheduledPanelExpanded(false);
     return;
   }
 
   scheduledPanel.classList.remove("hidden");
+  if (scheduledPanelTitle) {
+    scheduledPanelTitle.textContent = messages.length === 1
+      ? "1 scheduled message"
+      : `${messages.length} scheduled messages`;
+  }
+  setScheduledPanelExpanded(scheduledPanelExpanded);
   scheduledEmpty.textContent = "";
   messages.forEach((entry) => {
     const row = document.createElement("div");
     row.className = "scheduled-item";
     row.dataset.id = String(entry?.id || "");
+
+    const main = document.createElement("div");
+    main.className = "scheduled-item-main";
 
     const meta = document.createElement("div");
     meta.className = "scheduled-item-meta";
@@ -7818,6 +8682,7 @@ function renderScheduledPanel() {
     text.className = "scheduled-item-text";
     const body = String(entry?.text || "").trim();
     text.textContent = body.length > 120 ? `${body.slice(0, 117)}...` : body;
+    text.title = body;
 
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
@@ -7829,55 +8694,57 @@ function renderScheduledPanel() {
       socket.emit("cancel_scheduled_message", { id });
     });
 
-    row.append(meta, text, cancelBtn);
+    main.append(meta, text);
+    row.append(main, cancelBtn);
     scheduledList.appendChild(row);
   });
 }
 
-function scheduleActiveMessage() {
+function scheduleActiveMessage(scheduleDate) {
   if (!activeFriend) {
     showToast("Choose a chat first.", "error");
-    return;
+    return false;
   }
   const text = String(messageInput?.value || "").trim();
   if (!text) {
     showToast("Type a message to schedule.", "info");
-    return;
+    return false;
   }
   if (normalizeChatKind(activeChatKind) === "friend") {
     const safety = getFriendSafety(activeFriend, "friend");
     if (safety.blockedByMe || safety.blockedYou) {
       showToast("Scheduling is unavailable while blocked.", "error");
-      return;
+      return false;
     }
   }
-  const input = window.prompt(
-    "Send when? Use YYYY-MM-DD HH:MM (or minutes from now).",
-    buildDefaultScheduleInput()
-  );
-  if (input === null) return;
-  const scheduleDate = parseScheduleInput(input);
-  if (!scheduleDate || Number.isNaN(scheduleDate.getTime())) {
+  if (!(scheduleDate instanceof Date) || Number.isNaN(scheduleDate.getTime())) {
     showToast("Invalid date/time format.", "error");
-    return;
+    return false;
   }
   if (scheduleDate.getTime() - Date.now() < 30 * 1000) {
     showToast("Choose a time at least 30 seconds from now.", "error");
-    return;
+    return false;
   }
   const payload = {
-    to: activeFriend,
+    to: resolveOutgoingTarget(activeFriend, activeChatKind),
     toType: normalizeChatKind(activeChatKind),
     text,
     sendAt: scheduleDate.toISOString(),
   };
+  if (!payload.to) {
+    showToast("Unable to resolve this chat.", "error");
+    return false;
+  }
   if (replyTo) payload.replyTo = replyTo;
   socket.emit("schedule_message", payload);
   messageInput.value = "";
+  messageInput.dispatchEvent(new Event("input", { bubbles: true }));
   removeMessageDraft(activeFriend);
   if (sendButton) sendButton.classList.remove("ready");
   clearReply();
+  closeScheduleMenu();
   showToast("Message scheduled.", "success");
+  return true;
 }
 
 messageForm.addEventListener("submit", (e) => {
@@ -7885,10 +8752,88 @@ messageForm.addEventListener("submit", (e) => {
   sendActiveMessage();
 });
 if (scheduleBtn) {
-  scheduleBtn.addEventListener("click", () => {
-    scheduleActiveMessage();
+  scheduleBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (isScheduleMenuOpen()) {
+      closeScheduleMenu();
+      return;
+    }
+    openScheduleMenu();
   });
 }
+if (scheduleMenuCloseBtn) {
+  scheduleMenuCloseBtn.addEventListener("click", closeScheduleMenu);
+}
+if (scheduleMenuCancelBtn) {
+  scheduleMenuCancelBtn.addEventListener("click", closeScheduleMenu);
+}
+if (scheduleMenuConfirmBtn) {
+  scheduleMenuConfirmBtn.addEventListener("click", () => {
+    const scheduleDate = readScheduleDateFromInputs();
+    if (!scheduleDate) {
+      showToast("Choose a valid schedule time.", "error");
+      return;
+    }
+    scheduleActiveMessage(scheduleDate);
+  });
+}
+if (scheduleDateInput) {
+  scheduleDateInput.addEventListener("input", () => {
+    updateSchedulePreview(readScheduleDateFromInputs());
+  });
+  scheduleDateInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const scheduleDate = readScheduleDateFromInputs();
+    if (!scheduleDate) {
+      showToast("Choose a valid schedule time.", "error");
+      return;
+    }
+    scheduleActiveMessage(scheduleDate);
+  });
+}
+if (scheduleTimeInput) {
+  scheduleTimeInput.addEventListener("input", () => {
+    updateSchedulePreview(readScheduleDateFromInputs());
+  });
+  scheduleTimeInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const scheduleDate = readScheduleDateFromInputs();
+    if (!scheduleDate) {
+      showToast("Choose a valid schedule time.", "error");
+      return;
+    }
+    scheduleActiveMessage(scheduleDate);
+  });
+}
+schedulePresetButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const minutes = Number(btn.dataset.scheduleMinutes);
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    const scheduleDate = new Date(Date.now() + minutes * 60 * 1000);
+    setScheduleInputFromDate(scheduleDate);
+    scheduleActiveMessage(scheduleDate);
+  });
+});
+if (scheduledPanelToggleBtn) {
+  scheduledPanelToggleBtn.addEventListener("click", () => {
+    setScheduledPanelExpanded(!scheduledPanelExpanded);
+  });
+}
+document.addEventListener("click", (event) => {
+  if (!isScheduleMenuOpen()) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (scheduleMenu && scheduleMenu.contains(target)) return;
+  if (scheduleBtn && scheduleBtn.contains(target)) return;
+  closeScheduleMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (!isScheduleMenuOpen()) return;
+  closeScheduleMenu();
+});
 if (retryFailedBtn) {
   retryFailedBtn.addEventListener("click", (event) => {
     event.preventDefault();
@@ -8007,6 +8952,23 @@ if (infoReportBtn) {
       category: "other",
       reason: String(reason || "").trim(),
     });
+  });
+}
+if (infoAddMembersBtn) {
+  infoAddMembersBtn.addEventListener("click", () => {
+    openAddGroupMembersPrompt();
+  });
+}
+if (infoToggleBtn) {
+  infoToggleBtn.addEventListener("click", () => {
+    window.setTimeout(() => {
+      if (!document.body || !document.body.classList.contains("info-open")) return;
+      syncInfoPanel();
+      if (normalizeChatKind(activeChatKind) === "group") {
+        const groupId = resolveGroupChatId(activeFriend, "group");
+        if (groupId) requestGroupInfo(groupId, { kind: "group", force: true });
+      }
+    }, 60);
   });
 }
 if (callMuteBtn) callMuteBtn.addEventListener("click", toggleMute);
@@ -8159,6 +9121,8 @@ socket.on("register_success", (data) => {
   me           = data.username;
   ensureMessageDraftsLoaded(true);
   friends      = Array.isArray(data.friends) ? data.friends.map((friend) => sanitizeFriendRecord(friend)) : [];
+  groupInfoState.byId.clear();
+  groupInfoState.requestedAt.clear();
   requests     = data.requests || [];
   applySafetyState(data.safety || {});
   activeFriend = "";
@@ -8321,6 +9285,35 @@ socket.on("scheduled_message_failed", (data) => {
   requestScheduledMessagesForActiveChat();
 });
 
+socket.on("group_info", (data) => {
+  const normalized = normalizeGroupInfoPayload(data?.group || data);
+  if (!normalized) return;
+  const groupKey = normalizeName(normalized.id);
+  groupInfoState.byId.set(groupKey, normalized);
+
+  const onlineCount = normalized.members.reduce((count, member) => (
+    member.online && normalizeName(member.username) !== normalizeName(me) ? count + 1 : count
+  ), 0);
+  friends = friends.map((friend) => {
+    if (!isSameChatTarget(friend?.username, friend?.kind || "friend", normalized.id, "group")) {
+      return friend;
+    }
+    return {
+      ...friend,
+      displayName: normalized.name || friend.displayName,
+      memberCount: normalized.members.length,
+      onlineCount,
+      online: onlineCount > 0,
+    };
+  });
+
+  if (activeFriend && isSameChatTarget(activeFriend, activeChatKind, normalized.id, "group")) {
+    syncInfoPanel();
+    renderActiveFriendPresence();
+  }
+  renderFriends();
+});
+
 socket.on("group_created", (data) => {
   const groupName = String(data?.group?.name || "").trim();
   if (groupName) {
@@ -8335,6 +9328,8 @@ socket.on("group_members_added", (data) => {
   const added = Array.isArray(data?.added) ? data.added : [];
   if (!groupName || !added.length) return;
   showToast(`${added.join(", ")} added to ${groupName}.`, "success");
+  const groupId = String(data?.groupId || "").trim();
+  if (groupId) refreshActiveGroupInfo(groupId);
 });
 
 socket.on("group_member_left", (data) => {
@@ -8342,14 +9337,44 @@ socket.on("group_member_left", (data) => {
   const username = String(data?.username || "").trim();
   if (!groupName || !username) return;
   showToast(`${username} left ${groupName}.`, "info");
+  const groupId = String(data?.groupId || "").trim();
+  if (groupId) refreshActiveGroupInfo(groupId);
+});
+
+socket.on("group_member_removed", (data) => {
+  const groupName = String(data?.groupName || data?.groupId || "").trim();
+  const username = String(data?.username || "").trim();
+  if (groupName && username) {
+    showToast(`${username} was removed from ${groupName}.`, "info");
+  }
+  const groupId = String(data?.groupId || "").trim();
+  if (groupId) refreshActiveGroupInfo(groupId);
+});
+
+socket.on("group_member_role_updated", (data) => {
+  const groupName = String(data?.groupName || data?.groupId || "").trim();
+  const username = String(data?.username || "").trim();
+  const role = String(data?.role || "").trim().toLowerCase();
+  if (groupName && username) {
+    const roleLabel = role === "admin" ? "admin" : "member";
+    showToast(`${username} is now ${roleLabel} in ${groupName}.`, "success");
+  }
+  const groupId = String(data?.groupId || "").trim();
+  if (groupId) refreshActiveGroupInfo(groupId);
 });
 
 socket.on("group_left", (data) => {
   const groupId = String(data?.groupId || "").trim();
+  if (groupId) {
+    const groupKey = normalizeName(groupId);
+    groupInfoState.byId.delete(groupKey);
+    groupInfoState.requestedAt.delete(groupKey);
+  }
   if (activeFriend && normalizeName(activeFriend) === normalizeName(groupId) && normalizeChatKind(activeChatKind) === "group") {
     clearActiveFriendSelection();
   }
-  showToast("You left the group.", "info");
+  const wasRemoved = String(data?.reason || "").trim().toLowerCase() === "removed";
+  showToast(wasRemoved ? "You were removed from the group." : "You left the group.", "info");
 });
 
 socket.on("mute_updated", (data) => {
@@ -8433,6 +9458,18 @@ socket.on("friend_list_updated", (data) => {
   });
   safetyState.muted = nextMuted;
   safetyState.blocked = nextBlocked;
+  const availableGroupKeys = new Set(
+    friends
+      .filter((friend) => normalizeChatKind(friend?.kind || "friend") === "group")
+      .map((friend) => normalizeName(friend?.username))
+      .filter(Boolean)
+  );
+  Array.from(groupInfoState.byId.keys()).forEach((groupKey) => {
+    if (!availableGroupKeys.has(groupKey)) {
+      groupInfoState.byId.delete(groupKey);
+      groupInfoState.requestedAt.delete(groupKey);
+    }
+  });
   friends.forEach((friend) => {
     if (normalizeChatKind(friend?.kind || "friend") !== "friend") return;
     const rawText = friend?.lastMessage || "";
@@ -8472,6 +9509,7 @@ socket.on("friend_list_updated", (data) => {
   renderScheduledPanel();
   renderCallHistory();
   renderDiscover();
+  refreshActiveGroupInfo();
   if (sidebarView === "discover") {
     requestDiscoverOnline();
   }
@@ -8751,12 +9789,32 @@ socket.on("delivery_blocked", (payload) => {
 });
 
 socket.on("message_status", (payload) => {
-  if (!payload?.id || !payload?.with) return;
-  if (!activeFriend || normalizeName(payload.with) !== normalizeName(activeFriend)) return;
+  const statusType = normalizeChatKind(payload?.toType || (payload?.groupId ? "group" : "friend"));
+  const statusTarget = String(payload?.with || payload?.groupId || "").trim();
+  if (!payload?.id || !statusTarget || !activeFriend) return;
+  const matchesActiveThread = statusType === "group"
+    ? normalizeName(resolveGroupChatId(activeFriend, activeChatKind)) === normalizeName(statusTarget)
+    : isSameChatTarget(statusTarget, statusType, activeFriend, activeChatKind);
+  if (!matchesActiveThread) return;
+  let updatedMessage = null;
   for (const message of conversationMessages) {
     if (message.id !== payload.id) continue;
     if (payload.deliveredAt) message.deliveredAt = payload.deliveredAt;
     if (payload.seenAt) message.seenAt = payload.seenAt;
+    if (statusType === "group" && Array.isArray(payload.seenBy)) {
+      message.seenBy = Array.from(new Set(payload.seenBy.map((entry) => normalizeName(entry)).filter(Boolean)));
+    }
+    if (statusType === "group") {
+      const seenCount = Number(payload.seenCount);
+      const memberCount = Number(payload.memberCount);
+      if (Number.isFinite(seenCount)) {
+        message.seenCount = Math.max(0, Math.floor(seenCount));
+      }
+      if (Number.isFinite(memberCount)) {
+        message.memberCount = Math.max(0, Math.floor(memberCount));
+      }
+    }
+    updatedMessage = message;
     break;
   }
   const msgEl = messagesEl.querySelector(`[data-message-id="${payload.id}"]`);
@@ -8764,23 +9822,69 @@ socket.on("message_status", (payload) => {
   const metaEl = msgEl.querySelector(".message-meta");
   if (!metaEl) return;
   const timeText = msgEl.dataset.timeLabel || prettyTime(msgEl.dataset.timestamp) || "";
-  const statusKey = payload.seenAt ? "seen" : payload.deliveredAt ? "delivered" : "sent";
+  const fallbackSeen = statusType === "group"
+    ? (
+      Number(payload.seenCount) > 0
+      || (
+        Array.isArray(payload.seenBy)
+        && payload.seenBy.some((entry) => normalizeName(entry) !== normalizeName(me))
+      )
+    )
+    : Boolean(payload.seenAt);
+  const statusKey = updatedMessage
+    ? getMessageStatusKey(updatedMessage)
+    : (fallbackSeen ? "seen" : payload.deliveredAt ? "delivered" : "sent");
   renderMineMessageMeta(metaEl, timeText, statusKey);
 });
 
 socket.on("typing", ({ from, isTyping, toType, to }) => {
+  const speakingSource = String(speakingIndicator?.dataset?.source || speakingIndicatorState.source || "").trim();
+  const voiceNoteSpeakingVisible = Boolean(
+    speakingIndicator
+    && !speakingIndicator.classList.contains("hidden")
+    && speakingSource === "voice-note"
+  );
   const kind = normalizeChatKind(toType || "friend");
   if (kind === "group") {
     if (!activeFriend || normalizeChatKind(activeChatKind) !== "group") return;
-    if (normalizeName(to) !== normalizeName(activeFriend)) return;
+    const activeGroupId = resolveGroupChatId(activeFriend, "group");
+    if (normalizeName(to) !== normalizeName(activeGroupId)) return;
     if (normalizeName(from) === normalizeName(me)) return;
+    if (isTyping && voiceNoteSpeakingVisible) return;
     isTyping ? showTypingIndicator(from) : hideTypingIndicator();
     return;
   }
   if (!activeFriend || normalizeChatKind(activeChatKind) !== "friend") return;
   if (normalizeName(from) !== normalizeName(activeFriend)) return;
   if (getFriendSafety(from, "friend").muted) return;
+  if (isTyping && voiceNoteSpeakingVisible) return;
   isTyping ? showTypingIndicator(from) : hideTypingIndicator();
+});
+
+socket.on("voice_activity", ({ from, isSpeaking, toType, to }) => {
+  const kind = normalizeChatKind(toType || "friend");
+  if (kind === "group") {
+    if (!activeFriend || normalizeChatKind(activeChatKind) !== "group") return;
+    const activeGroupId = resolveGroupChatId(activeFriend, "group");
+    if (normalizeName(to) !== normalizeName(activeGroupId)) return;
+    if (normalizeName(from) === normalizeName(me)) return;
+    if (isSpeaking) {
+      hideTypingIndicator();
+      showSpeakingIndicator(from, { source: "voice-note" });
+    } else {
+      hideSpeakingIndicator("voice-note");
+    }
+    return;
+  }
+  if (!activeFriend || normalizeChatKind(activeChatKind) !== "friend") return;
+  if (normalizeName(from) !== normalizeName(activeFriend)) return;
+  if (getFriendSafety(from, "friend").muted) return;
+  if (isSpeaking) {
+    hideTypingIndicator();
+    showSpeakingIndicator(from, { source: "voice-note" });
+  } else {
+    hideSpeakingIndicator("voice-note");
+  }
 });
 
 socket.on("call_invite", (data) => {
@@ -8888,7 +9992,17 @@ socket.on("user_status", ({ username, online, lastSeenAt }) => {
 });
 
 socket.on("error_message", (data) => {
-  showToast(data.message || "Something went wrong", "error");
+  const message = String(data?.message || "Something went wrong");
+  if (
+    normalizeChatKind(activeChatKind) === "group"
+    && /group not found/i.test(message)
+    && groupMemberList
+    && groupMembersMeta
+  ) {
+    groupMembersMeta.textContent = "0";
+    groupMemberList.innerHTML = '<div class="group-member-empty">Unable to load members right now.</div>';
+  }
+  showToast(message, "error");
 });
 
 socket.on("connect", () => {
@@ -8896,6 +10010,10 @@ socket.on("connect", () => {
   void ensureDashboardSession(true);
   flushPendingQueue(true);
   requestScheduledMessagesForActiveChat();
+  if (normalizeChatKind(activeChatKind) === "group" && activeFriend) {
+    const groupId = resolveGroupChatId(activeFriend, "group");
+    if (groupId) requestGroupInfo(groupId, { kind: "group", force: true });
+  }
 });
 
 socket.on("disconnect", () => {
@@ -9052,7 +10170,3 @@ if (!socketAvailable) {
   setNetworkState("Realtime unavailable", "offline");
   showToast("Realtime client failed to load. Open Novyn from your server URL.", "error");
 }
-
-
-
-

@@ -942,15 +942,17 @@
   var maxAttr = Number(input && input.maxLength);
   var MAX = Number.isFinite(maxAttr) && maxAttr > 0 ? Math.floor(maxAttr) : 1000;
   var WARN = Math.floor(MAX * 0.8);
+  var SHOW_AT = WARN;
   if (!input || !counter) return;
   input.addEventListener('input', function () {
     var len = input.value.length;
-    if (len === 0) { counter.classList.add('hidden'); return; }
+    if (len < SHOW_AT) { counter.classList.add('hidden'); return; }
     counter.classList.remove('hidden', 'warn', 'limit');
-    counter.textContent = len + ' / ' + MAX;
+    counter.textContent = len + '/' + MAX;
     if (len >= MAX) counter.classList.add('limit');
     else if (len >= WARN) counter.classList.add('warn');
   });
+  input.dispatchEvent(new Event('input', { bubbles: true }));
 })();
 
 /* ── Composer emoji picker ─────────────────────────────────────────────────── */

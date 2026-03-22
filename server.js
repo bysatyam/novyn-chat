@@ -2127,6 +2127,72 @@ function getGroupMemberUsernames(group) {
   return names;
 }
 
+function getGroupMemberRole(group, memberKey) {
+  const key = normalizeName(memberKey);
+  if (!group || !key || !isGroupMember(group, key)) return "member";
+  const ownerKey = normalizeName(group.ownerKey);
+  if (ownerKey && key === ownerKey) return "owner";
+  if (group.admins instanceof Set && group.admins.has(key)) return "admin";
+  return "member";
+}
+
+function buildGroupInfoForViewer(group, viewerKey) {
+  const viewer = normalizeName(viewerKey);
+  if (!group || !viewer || !isGroupMember(group, viewer)) return null;
+  const members = [];
+  for (const memberKey of group.members || []) {
+    const user = users.get(memberKey);
+    const username = user?.username || memberKey;
+    const role = getGroupMemberRole(group, memberKey);
+    members.push({
+      username,
+      displayName: user?.displayName || "",
+      avatarId: user?.avatarId || "",
+      online: onlineUsers.has(memberKey),
+      lastSeenAt: user?.lastSeenAt || "",
+      role,
+      isOwner: role === "owner",
+      isAdmin: role === "owner" || role === "admin",
+    });
+  }
+
+  members.sort((a, b) => {
+    const roleRank = (role) => (role === "owner" ? 3 : role === "admin" ? 2 : 1);
+    const delta = roleRank(b.role) - roleRank(a.role);
+    if (delta !== 0) return delta;
+    return normalizeName(a.username).localeCompare(normalizeName(b.username));
+  });
+
+  const ownerUser = users.get(normalizeName(group.ownerKey));
+  const viewerUser = users.get(viewer);
+  const viewerRole = getGroupMemberRole(group, viewer);
+
+  return {
+    id: group.id,
+    name: group.name || group.id,
+    owner: ownerUser?.username || group.ownerKey || "",
+    createdAt: group.createdAt || "",
+    updatedAt: group.updatedAt || "",
+    members,
+    me: {
+      username: viewerUser?.username || viewer,
+      role: viewerRole,
+      isOwner: viewerRole === "owner",
+      isAdmin: viewerRole === "owner" || viewerRole === "admin",
+    },
+  };
+}
+
+function emitGroupInfoToMember(memberKey, group) {
+  const normalizedMemberKey = normalizeName(memberKey);
+  if (!normalizedMemberKey || !group) return;
+  const memberSocket = onlineUsers.get(normalizedMemberKey);
+  if (!memberSocket) return;
+  const payload = buildGroupInfoForViewer(group, normalizedMemberKey);
+  if (!payload) return;
+  io.to(memberSocket).emit("group_info", { group: payload });
+}
+
 function getConversationKeyForTarget(userKey, targetKey, targetType = "friend") {
   const kind = normalizeChatKind(targetType);
   if (kind === "group") {
@@ -2410,6 +2476,7 @@ function deliverGroupMessage(params = {}) {
   group.updatedAt = nowIso();
   runRetentionMaintenance();
 
+  let seenByChanged = false;
   for (const memberKey of group.members) {
     const member = users.get(memberKey);
     if (!member) continue;
@@ -2425,6 +2492,7 @@ function deliverGroupMessage(params = {}) {
       setUnreadCount(member, group.id, 0);
       if (memberKey !== fromKey && !message.seenBy.includes(memberKey)) {
         message.seenBy.push(memberKey);
+        seenByChanged = true;
       }
     } else {
       incrementUnread(member, group.id);
@@ -2446,6 +2514,10 @@ function deliverGroupMessage(params = {}) {
     }
 
     emitFriendList(memberKey);
+  }
+
+  if (seenByChanged) {
+    emitGroupMessageStatus(group, message);
   }
 
   schedulePersist();
@@ -3133,6 +3205,31 @@ function emitMessageStatus(message) {
   }
 }
 
+function emitGroupMessageStatus(group, message) {
+  if (!group || !message?.id) return;
+  const groupId = normalizeGroupId(group.id || message.groupId || message.toKey);
+  if (!groupId) return;
+  const seenBy = Array.isArray(message.seenBy)
+    ? Array.from(new Set(message.seenBy.map(normalizeName).filter(Boolean)))
+    : [];
+  const payload = {
+    id: message.id,
+    with: groupId,
+    toType: "group",
+    groupId,
+    deliveredAt: message.deliveredAt || null,
+    seenAt: message.seenAt || null,
+    seenBy,
+    seenCount: Math.max(0, seenBy.length - 1),
+    memberCount: Math.max(0, Number(group.members?.size || 0)),
+  };
+  for (const memberKey of group.members || []) {
+    const socketId = onlineUsers.get(normalizeName(memberKey));
+    if (!socketId) continue;
+    io.to(socketId).emit("message_status", payload);
+  }
+}
+
 function markUndeliveredAsDelivered(userKey) {
   let changed = false;
 
@@ -3162,16 +3259,23 @@ function markConversationAsSeen(viewerKey, targetKey, targetType = "friend") {
     const conversation = conversations.get(key) || [];
     const unreadChanged = setUnreadCount(viewer, groupId, 0);
     let seenChanged = false;
+    const touchedMessages = [];
     for (const message of conversation) {
       if (!message || normalizeName(message.fromKey) === viewerKey) continue;
       if (!Array.isArray(message.seenBy)) message.seenBy = [];
       if (!message.seenBy.includes(viewerKey)) {
         message.seenBy.push(viewerKey);
         seenChanged = true;
+        touchedMessages.push(message);
       }
     }
     if (unreadChanged || seenChanged) {
       schedulePersist();
+    }
+    if (seenChanged) {
+      for (const message of touchedMessages) {
+        emitGroupMessageStatus(group, message);
+      }
     }
     if (unreadChanged) {
       emitFriendList(viewerKey);
@@ -4764,6 +4868,56 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("voice_activity", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    if (!allowSocketAction(socket, "voice_activity", 200, 60 * 1000)) return;
+
+    const to = toDisplayName(payload?.to);
+    const toType = normalizeChatKind(payload?.toType || "friend");
+    const isSpeaking = Boolean(payload?.isSpeaking);
+    const me = users.get(userKey);
+    if (!me) return;
+
+    if (toType === "group") {
+      const groupId = normalizeGroupId(to);
+      const group = groups.get(groupId);
+      if (!group || !isGroupMember(group, userKey)) {
+        return;
+      }
+      for (const memberKey of group.members) {
+        if (memberKey === userKey) continue;
+        const memberSocket = onlineUsers.get(memberKey);
+        if (!memberSocket) continue;
+        io.to(memberSocket).emit("voice_activity", {
+          from: me.username,
+          isSpeaking,
+          toType: "group",
+          to: group.id,
+        });
+      }
+      return;
+    }
+
+    const toKey = normalizeName(to);
+    if (!toKey || !me.friends.has(toKey)) {
+      return;
+    }
+    if (usersAreBlocked(userKey, toKey)) {
+      return;
+    }
+
+    const friendSocket = onlineUsers.get(toKey);
+    if (friendSocket) {
+      io.to(friendSocket).emit("voice_activity", {
+        from: me.username,
+        isSpeaking,
+        toType: "friend",
+        to: me.username,
+      });
+    }
+  });
+
   socket.on("call_invite", (payload) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
@@ -4998,6 +5152,21 @@ io.on("connection", (socket) => {
     schedulePersist();
   });
 
+  socket.on("get_group_info", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    if (!allowSocketAction(socket, "get_group_info", 180, 60 * 1000)) return;
+    const groupId = normalizeGroupId(payload?.groupId || payload?.to || payload);
+    const group = groups.get(groupId);
+    if (!group || !isGroupMember(group, userKey)) {
+      socket.emit("error_message", { message: "Group not found." });
+      return;
+    }
+    const groupInfo = buildGroupInfoForViewer(group, userKey);
+    if (!groupInfo) return;
+    socket.emit("group_info", { group: groupInfo });
+  });
+
   socket.on("create_group", (payload) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
@@ -5042,6 +5211,7 @@ io.on("connection", (socket) => {
       member.groups.add(group.id);
       setUnreadCount(member, group.id, 0);
       emitFriendList(memberKey);
+      emitGroupInfoToMember(memberKey, group);
       const memberSocket = onlineUsers.get(memberKey);
       if (memberSocket) {
         io.to(memberSocket).emit("group_created", {
@@ -5103,6 +5273,7 @@ io.on("connection", (socket) => {
     const allMembers = Array.from(group.members);
     for (const memberKey of allMembers) {
       emitFriendList(memberKey);
+      emitGroupInfoToMember(memberKey, group);
       const memberSocket = onlineUsers.get(memberKey);
       if (memberSocket) {
         io.to(memberSocket).emit("group_members_added", {
@@ -5114,6 +5285,165 @@ io.on("connection", (socket) => {
         });
       }
     }
+    schedulePersist();
+  });
+
+  socket.on("remove_group_member", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    if (!allowSocketAction(socket, "remove_group_member", 40, 60 * 60 * 1000)) {
+      socket.emit("error_message", { message: "Too many group updates. Try again later." });
+      return;
+    }
+    const groupId = normalizeGroupId(payload?.groupId || payload?.to || payload?.group);
+    const group = groups.get(groupId);
+    const me = users.get(userKey);
+    if (!group || !me || !isGroupMember(group, userKey)) {
+      socket.emit("error_message", { message: "Group not found." });
+      return;
+    }
+    if (!(group.admins instanceof Set) || !group.admins.has(userKey)) {
+      socket.emit("error_message", { message: "Only group admins can remove members." });
+      return;
+    }
+
+    const targetName = toDisplayName(payload?.username || payload?.member || payload?.target).replace(/^@+/, "");
+    const targetKey = normalizeName(targetName);
+    const targetUser = users.get(targetKey);
+    if (!targetKey || !targetUser || !group.members.has(targetKey)) {
+      socket.emit("error_message", { message: "Member not found in this group." });
+      return;
+    }
+    if (targetKey === userKey) {
+      socket.emit("error_message", { message: "Use Leave to exit this group." });
+      return;
+    }
+    if (normalizeName(group.ownerKey) === targetKey) {
+      socket.emit("error_message", { message: "Group owner cannot be removed." });
+      return;
+    }
+    const targetIsAdmin = group.admins instanceof Set && group.admins.has(targetKey);
+    if (targetIsAdmin && normalizeName(group.ownerKey) !== userKey) {
+      socket.emit("error_message", { message: "Only owner can remove another admin." });
+      return;
+    }
+
+    group.members.delete(targetKey);
+    if (group.admins instanceof Set) group.admins.delete(targetKey);
+    targetUser.groups?.delete(group.id);
+    targetUser.unread?.delete(group.id);
+    group.updatedAt = nowIso();
+
+    const remainingMembers = Array.from(group.members);
+    const removedUsername = targetUser.username || targetKey;
+    const actorName = me.username || userKey;
+
+    emitFriendList(targetKey);
+    for (const memberKey of remainingMembers) {
+      emitFriendList(memberKey);
+      emitGroupInfoToMember(memberKey, group);
+      const memberSocket = onlineUsers.get(memberKey);
+      if (memberSocket) {
+        io.to(memberSocket).emit("group_member_removed", {
+          groupId: group.id,
+          groupName: group.name || group.id,
+          username: removedUsername,
+          by: actorName,
+        });
+      }
+    }
+
+    const targetSocketId = onlineUsers.get(targetKey);
+    if (targetSocketId) {
+      const targetSocket = io.sockets.sockets.get(targetSocketId);
+      if (
+        targetSocket &&
+        targetSocket.data?.activeChatKind === "group" &&
+        normalizeGroupId(targetSocket.data?.activeChatWith) === group.id
+      ) {
+        targetSocket.data.activeChatWith = null;
+        targetSocket.data.activeChatKind = "friend";
+        io.to(targetSocketId).emit("group_left", {
+          groupId: group.id,
+          groupName: group.name || group.id,
+          reason: "removed",
+        });
+      }
+      io.to(targetSocketId).emit("group_member_removed", {
+        groupId: group.id,
+        groupName: group.name || group.id,
+        username: removedUsername,
+        by: actorName,
+      });
+    }
+
+    schedulePersist();
+  });
+
+  socket.on("set_group_member_role", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    if (!allowSocketAction(socket, "set_group_member_role", 50, 60 * 60 * 1000)) {
+      socket.emit("error_message", { message: "Too many role updates. Try again later." });
+      return;
+    }
+    const groupId = normalizeGroupId(payload?.groupId || payload?.to || payload?.group);
+    const group = groups.get(groupId);
+    const me = users.get(userKey);
+    if (!group || !me || !isGroupMember(group, userKey)) {
+      socket.emit("error_message", { message: "Group not found." });
+      return;
+    }
+    if (normalizeName(group.ownerKey) !== userKey) {
+      socket.emit("error_message", { message: "Only group owner can change roles." });
+      return;
+    }
+
+    const targetName = toDisplayName(payload?.username || payload?.member || payload?.target).replace(/^@+/, "");
+    const targetKey = normalizeName(targetName);
+    if (!targetKey || !group.members.has(targetKey)) {
+      socket.emit("error_message", { message: "Member not found in this group." });
+      return;
+    }
+    if (targetKey === normalizeName(group.ownerKey)) {
+      socket.emit("error_message", { message: "Owner role cannot be changed." });
+      return;
+    }
+
+    const requestedRole = normalizeName(payload?.role || "");
+    const makeAdmin = requestedRole === "admin";
+    if (!(group.admins instanceof Set)) group.admins = new Set();
+    const alreadyAdmin = group.admins.has(targetKey);
+    if (makeAdmin === alreadyAdmin) {
+      socket.emit("error_message", {
+        message: makeAdmin ? "Member is already an admin." : "Member is already not an admin.",
+      });
+      return;
+    }
+
+    if (makeAdmin) group.admins.add(targetKey);
+    else group.admins.delete(targetKey);
+    group.updatedAt = nowIso();
+
+    const role = makeAdmin ? "admin" : "member";
+    const targetUser = users.get(targetKey);
+    const changedUsername = targetUser?.username || targetKey;
+    const actorName = me.username || userKey;
+
+    for (const memberKey of group.members) {
+      emitFriendList(memberKey);
+      emitGroupInfoToMember(memberKey, group);
+      const memberSocket = onlineUsers.get(memberKey);
+      if (!memberSocket) continue;
+      io.to(memberSocket).emit("group_member_role_updated", {
+        groupId: group.id,
+        groupName: group.name || group.id,
+        username: changedUsername,
+        role,
+        by: actorName,
+      });
+    }
+
     schedulePersist();
   });
 
@@ -5167,12 +5497,13 @@ io.on("connection", (socket) => {
     ) {
       socket.data.activeChatWith = null;
       socket.data.activeChatKind = "friend";
-      socket.emit("group_left", { groupId, groupName: group.name || groupId });
+      socket.emit("group_left", { groupId, groupName: group.name || groupId, reason: "left" });
     }
 
     emitFriendList(userKey);
     for (const memberKey of remainingMembers) {
       emitFriendList(memberKey);
+      emitGroupInfoToMember(memberKey, group);
       const memberSocket = onlineUsers.get(memberKey);
       if (memberSocket) {
         io.to(memberSocket).emit("group_member_left", {
