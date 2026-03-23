@@ -21,8 +21,29 @@ app.use((req, res, next) => {
   next();
 });
 
-const uploadsDir = path.join(__dirname, "uploads");
-fs.mkdirSync(uploadsDir, { recursive: true });
+const defaultUploadsDir = path.join(__dirname, "uploads");
+const configuredUploadsDir = String(process.env.UPLOADS_DIR || "").trim();
+let uploadsDir = configuredUploadsDir ? path.resolve(configuredUploadsDir) : defaultUploadsDir;
+try {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+} catch (err) {
+  if (configuredUploadsDir) {
+    console.warn(
+      `UPLOADS_DIR "${configuredUploadsDir}" is not writable. Falling back to "${defaultUploadsDir}".`,
+      err
+    );
+    uploadsDir = defaultUploadsDir;
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  } else {
+    throw err;
+  }
+}
+
+if (!hasCloudinaryConfig && process.env.NODE_ENV === "production" && !configuredUploadsDir) {
+  console.warn(
+    "Cloudinary is not configured and UPLOADS_DIR is not set. Uploaded media is stored on local disk and can disappear after restarts/redeploys."
+  );
+}
 
 const uploadVoice = multer({
   dest: uploadsDir,
@@ -6010,8 +6031,9 @@ async function bootstrap() {
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
     const usingMongo = hasMongoStorage();
+    const mediaStorage = hasCloudinaryConfig ? "cloudinary" : `local(${uploadsDir})`;
     console.log(
-      `Chat app running on http://localhost:${PORT} | retention=${CHAT_RETENTION_DAYS} day(s) | storage=${usingMongo ? "mongodb(collections)" : "file"}`
+      `Chat app running on http://localhost:${PORT} | retention=${CHAT_RETENTION_DAYS} day(s) | storage=${usingMongo ? "mongodb(collections)" : "file"} | media=${mediaStorage}`
     );
   });
 }

@@ -57,8 +57,22 @@ You can deploy this Node app to services like Render, Railway, Fly.io, or a VPS.
    - `MONGODB_DB` (optional)
    - `CHAT_RETENTION_DAYS` (optional, e.g. `30`)
    - `RTC_ICE_SERVERS_JSON` or `RTC_STUN_URLS`/`RTC_TURN_*` (optional, for production-grade calling)
+   - `UPLOAD_TOKEN_SECRET` (recommended, stable secret for signed `/uploads/*` URLs)
+   - `CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` (optional but recommended for persistent media)
+   - `UPLOADS_DIR` (optional local-media path; use a mounted persistent disk path on hosting providers)
 
 After deployment, anyone can access your public URL and chat in real time.
+
+## Media upload persistence (Render and similar hosts)
+
+By default, if Cloudinary is not configured, uploads are stored in a local `uploads/` folder on the server. On Render, that local filesystem is ephemeral, so files can disappear after restart/redeploy.
+
+Use one of these options in production:
+
+1. Cloudinary (recommended): set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET`.
+2. Persistent disk: mount a disk and set `UPLOADS_DIR` to that mount path (for example `/var/data/uploads` on Render), and keep `UPLOAD_TOKEN_SECRET` stable.
+
+Without one of the above, old image/file messages may show as broken links after redeploy.
 
 ## Important note
 
