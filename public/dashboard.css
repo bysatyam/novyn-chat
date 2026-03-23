@@ -3302,7 +3302,15 @@ button.settings-row.danger:hover { background:rgba(240,82,79,0.06); }
 body.info-open .info-panel { opacity:1; transform:translate(-50%,-50%) scale(1); pointer-events:auto; }
 body.info-open .info-scrim { opacity:1; pointer-events:auto; }
 .info-scrim { position:fixed; inset:0; background:rgba(8,10,18,0.35); opacity:0; pointer-events:none; transition:opacity .2s; z-index:199; }
-.info-inner { display:flex; flex-direction:column; height:100%; overflow-y:auto; padding-bottom:16px; background:var(--surface); }
+.info-inner {
+  display:flex;
+  flex-direction:column;
+  height:100%;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-bottom:16px;
+  background:var(--surface);
+}
 .info-top {
   position:sticky; top:0; z-index:2;
   display:flex; align-items:center; justify-content:space-between;
@@ -3624,18 +3632,44 @@ body.info-open .info-scrim { opacity:1; pointer-events:auto; }
   font-size:10px; color:var(--text4);
   margin-top:4px; letter-spacing:0.06em; text-transform:uppercase;
 }
-.media-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+.media-grid {
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  padding:0 2px 8px;
+  scroll-snap-type:x proximity;
+  scrollbar-width:thin;
+  scrollbar-color:var(--mint-2) transparent;
+}
+.media-grid::-webkit-scrollbar {
+  height:7px;
+}
+.media-grid::-webkit-scrollbar-track {
+  background:transparent;
+}
+.media-grid::-webkit-scrollbar-thumb {
+  background:var(--mint-2);
+  border-radius:999px;
+}
+.media-grid::-webkit-scrollbar-thumb:hover {
+  background:var(--mint-1);
+}
 .media-thumb {
+  flex:0 0 122px;
   aspect-ratio:1;
   border-radius:10px;
   display:flex; align-items:center; justify-content:center;
   font-size:18px; cursor:pointer;
   background:var(--surface2);
   border:1px solid var(--border);
+  overflow:hidden;
+  scroll-snap-align:start;
   transition:transform .12s, opacity .12s;
 }
 .media-thumb:hover { opacity:.9; transform:translateY(-1px); }
 .media-thumb img {
+  display:block;
   width:100%;
   height:100%;
   object-fit:cover;
@@ -3649,7 +3683,7 @@ body.info-open .info-scrim { opacity:1; pointer-events:auto; }
   color:var(--text2);
 }
 .media-grid-empty {
-  grid-column:1 / -1;
+  flex:0 0 100%;
   border:1px dashed var(--border);
   border-radius:10px;
   background:var(--surface2);
