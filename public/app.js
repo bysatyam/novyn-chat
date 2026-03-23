@@ -253,8 +253,9 @@ let messageWindowStart = 0;
 let messageWindowEnd = 0;
 let historyRenderWarningShown = false;
 let loadOlderBtn = null;
-const MAX_VISIBLE_MESSAGES = 200;
-const MESSAGE_WINDOW_PAGE = 80;
+const MAX_VISIBLE_MESSAGES = 100;
+const MESSAGE_WINDOW_PAGE = 100;
+const LOAD_OLDER_SHOW_TOP_THRESHOLD = 80;
 const PENDING_RETRY_BASE_MS = 2500;
 const PENDING_RETRY_MAX_MS = 20000;
 const PENDING_RETRY_TICK_MS = 1500;
@@ -2487,6 +2488,11 @@ function isNearBottom() {
     messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <=
     threshold
   );
+}
+
+function isNearTop() {
+  if (!messagesEl) return false;
+  return messagesEl.scrollTop <= LOAD_OLDER_SHOW_TOP_THRESHOLD;
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Network state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -5204,7 +5210,43 @@ function ensureLoadOlderButton() {
     loadOlderBtn = document.createElement("button");
     loadOlderBtn.type = "button";
     loadOlderBtn.className = "messages-load-older hidden";
-    loadOlderBtn.textContent = "Load older messages";
+    loadOlderBtn.innerHTML = `
+      <span class="load-older-line" aria-hidden="true"></span>
+      <span class="load-older-content">
+        <span class="load-older-icon" aria-hidden="true">
+          <svg viewBox="0 0 22 22" fill="none" focusable="false">
+            <g class="load-older-ring-outer">
+              <circle
+                cx="11"
+                cy="11"
+                r="9"
+                stroke="var(--mint-2)"
+                stroke-width="1.5"
+                stroke-dasharray="9 24"
+                stroke-linecap="round"
+              ></circle>
+            </g>
+            <g class="load-older-ring-inner">
+              <circle
+                cx="11"
+                cy="11"
+                r="5"
+                stroke="var(--mint-2)"
+                stroke-width="1.2"
+                stroke-dasharray="5 17"
+                stroke-linecap="round"
+                opacity="0.45"
+              ></circle>
+            </g>
+            <g class="load-older-dot">
+              <circle cx="11" cy="11" r="2.2" fill="var(--mint-2)"></circle>
+            </g>
+          </svg>
+        </span>
+        <span class="load-older-text">Load older messages</span>
+      </span>
+      <span class="load-older-line" aria-hidden="true"></span>
+    `;
     loadOlderBtn.setAttribute("aria-label", "Load older messages");
     loadOlderBtn.addEventListener("click", loadOlderMessages);
   }
@@ -5214,23 +5256,36 @@ function ensureLoadOlderButton() {
   return loadOlderBtn;
 }
 
+function setLoadOlderButtonText(text, btn = loadOlderBtn) {
+  if (!btn) return;
+  const labelEl = btn.querySelector(".load-older-text");
+  if (labelEl) {
+    labelEl.textContent = text;
+  } else {
+    btn.textContent = text;
+  }
+}
+
 function updateLoadOlderButton() {
   const btn = ensureLoadOlderButton();
   if (!btn) return;
   const remaining = Math.max(0, Number(messageWindowStart) || 0);
   if (remaining <= 0) {
     btn.classList.add("hidden");
+    btn.classList.remove("is-loading");
     btn.disabled = false;
     btn.removeAttribute("aria-busy");
+    btn.removeAttribute("title");
+    btn.setAttribute("aria-label", "Load older messages");
     btn.dataset.remaining = "0";
+    setLoadOlderButtonText("Load older messages", btn);
     return;
   }
-  const chunk = Math.min(MESSAGE_WINDOW_PAGE, remaining);
-  const chunkLabel = chunk === 1 ? "message" : "messages";
   const remainingLabel = remaining === 1 ? "1 older message left" : `${remaining} older messages left`;
-  btn.textContent = `Load ${chunk} older ${chunkLabel}`;
+  setLoadOlderButtonText("Load older messages", btn);
   btn.title = remainingLabel;
-  btn.setAttribute("aria-label", `${btn.textContent}. ${remainingLabel}.`);
+  btn.setAttribute("aria-label", `Load older messages. ${remainingLabel}.`);
+  btn.classList.remove("is-loading");
   btn.disabled = false;
   btn.removeAttribute("aria-busy");
   btn.dataset.remaining = String(remaining);
@@ -5244,7 +5299,7 @@ function syncLoadOlderButtonVisibility(btn = loadOlderBtn) {
     btn.classList.add("hidden");
     return;
   }
-  btn.classList.toggle("hidden", isNearBottom());
+  btn.classList.toggle("hidden", !isNearTop());
 }
 
 function setMessageWindowToLatest() {
@@ -5301,8 +5356,9 @@ function loadOlderMessages() {
   const btn = ensureLoadOlderButton();
   if (btn) {
     btn.disabled = true;
+    btn.classList.add("is-loading");
     btn.setAttribute("aria-busy", "true");
-    btn.textContent = "Loading older messages...";
+    setLoadOlderButtonText("Loading older messages...", btn);
   }
   messageWindowStart = Math.max(0, messageWindowStart - MESSAGE_WINDOW_PAGE);
   messageWindowEnd = Math.min(conversationMessages.length, messageWindowStart + MAX_VISIBLE_MESSAGES);

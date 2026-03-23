@@ -2232,51 +2232,122 @@ body.camera-capture-open { overflow: hidden; }
 /* Load older */
 .messages-load-older,
 .load-older-btn {
-  align-self:center;
+  align-self:stretch;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  margin:4px 0 10px;
+  padding:10px 16px 8px;
+  border:none;
+  background:none;
+  position:sticky;
+  top:8px;
+  z-index:2;
+  cursor:pointer;
+  transform:translateY(-6px);
+  opacity:0.95;
+  transition:opacity .25s ease, transform .25s ease, color .15s ease;
+}
+.messages-load-older .load-older-line,
+.load-older-btn .load-older-line {
+  flex:1;
+  height:1px;
+  border-radius:999px;
+  background:var(--border);
+  opacity:0.9;
+}
+.messages-load-older .load-older-content,
+.load-older-btn .load-older-content {
   display:inline-flex;
   align-items:center;
-  justify-content:center;
-  gap:6px;
-  height:34px;
-  min-width:184px;
-  max-width:calc(100% - 26px);
-  margin:2px auto 10px;
-  padding:0 16px;
-  border-radius:999px;
-  border:1.5px solid rgba(0,201,122,0.28);
-  background:linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%);
-  color:var(--mint-2);
+  gap:8px;
+  color:var(--text3);
   font-family:var(--font-body);
   font-size:12px;
   font-weight:600;
   letter-spacing:0.01em;
+}
+.messages-load-older .load-older-icon,
+.load-older-btn .load-older-icon {
+  width:22px;
+  height:22px;
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+}
+.messages-load-older .load-older-icon svg,
+.load-older-btn .load-older-icon svg {
+  width:22px;
+  height:22px;
+  overflow:visible;
+}
+.messages-load-older .load-older-ring-outer,
+.load-older-btn .load-older-ring-outer {
+  transform-origin:11px 11px;
+  animation:loadOlderSpin 1.8s linear infinite;
+}
+.messages-load-older .load-older-ring-inner,
+.load-older-btn .load-older-ring-inner {
+  transform-origin:11px 11px;
+  animation:loadOlderSpin 1.1s linear infinite reverse;
+}
+.messages-load-older .load-older-dot,
+.load-older-btn .load-older-dot {
+  transform-origin:11px 11px;
+  animation:loadOlderDot 1s ease-in-out infinite;
+}
+.messages-load-older .load-older-text,
+.load-older-btn .load-older-text {
   white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  box-shadow:0 6px 18px rgba(10,16,28,0.08);
-  backdrop-filter:blur(8px);
-  position:sticky;
-  top:8px;
-  z-index:2;
-  transition:background .15s, border-color .15s, transform .12s, box-shadow .15s, opacity .15s;
+  user-select:none;
 }
 .messages-load-older:hover:not(:disabled),
 .load-older-btn:hover:not(:disabled) {
-  background:var(--mint-dim);
-  border-color:rgba(0,201,122,0.42);
-  box-shadow:0 10px 24px rgba(0,201,122,0.12);
+  opacity:1;
 }
+.messages-load-older:hover:not(:disabled) .load-older-text,
+.load-older-btn:hover:not(:disabled) .load-older-text { color:var(--mint-2); }
+.messages-load-older:hover:not(:disabled) .load-older-ring-outer,
+.load-older-btn:hover:not(:disabled) .load-older-ring-outer { animation-duration:1s; }
 .messages-load-older:active:not(:disabled),
-.load-older-btn:active:not(:disabled) { transform:translateY(1px); }
+.load-older-btn:active:not(:disabled) { transform:translateY(-4px); }
 .messages-load-older:focus-visible,
 .load-older-btn:focus-visible {
   outline:none;
-  box-shadow:0 0 0 3px rgba(0,201,122,0.22), 0 8px 20px rgba(10,16,28,0.12);
+  border-radius:10px;
+  box-shadow:0 0 0 3px rgba(0,201,122,0.22);
 }
 .messages-load-older:disabled,
 .load-older-btn:disabled {
-  opacity:0.68;
-  cursor:not-allowed;
+  opacity:0.72;
+  cursor:wait;
+}
+.messages-load-older:disabled .load-older-text,
+.load-older-btn:disabled .load-older-text {
+  color:var(--mint-2);
+}
+.messages-load-older[aria-busy="true"] .load-older-ring-outer,
+.messages-load-older.is-loading .load-older-ring-outer,
+.load-older-btn[aria-busy="true"] .load-older-ring-outer,
+.load-older-btn.is-loading .load-older-ring-outer {
+  animation-duration:0.8s;
+}
+.messages-load-older[aria-busy="true"] .load-older-ring-inner,
+.messages-load-older.is-loading .load-older-ring-inner,
+.load-older-btn[aria-busy="true"] .load-older-ring-inner,
+.load-older-btn.is-loading .load-older-ring-inner {
+  animation-duration:0.5s;
+}
+@keyframes loadOlderSpin {
+  from { transform:rotate(0deg); }
+  to { transform:rotate(360deg); }
+}
+@keyframes loadOlderDot {
+  0%, 100% { opacity:0.3; transform:scale(0.5); }
+  50% { opacity:1; transform:scale(1); }
 }
 
 /* Typing + speaking indicators */
