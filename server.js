@@ -138,7 +138,25 @@ function resolveUploadExtension(mime, originalName, fallbackExt = ".bin") {
 function sanitizeMessageAttachment(rawAttachment, fallbackUrl = "") {
   if (!rawAttachment || typeof rawAttachment !== "object") return null;
 
-  const url = withUploadToken(rawAttachment.url || fallbackUrl);
+  const rawUrl = toDisplayName(rawAttachment.url || fallbackUrl);
+  let normalizedUrl = rawUrl;
+  if (
+    normalizedUrl
+    && !/^(?:https?:)?\/\//i.test(normalizedUrl)
+    && !/^data:/i.test(normalizedUrl)
+    && !/^blob:/i.test(normalizedUrl)
+  ) {
+    if (normalizedUrl.startsWith("uploads/")) {
+      normalizedUrl = `/${normalizedUrl}`;
+    } else if (
+      !normalizedUrl.includes("/")
+      && /^[a-z0-9][a-z0-9._-]*\.(?:png|jpe?g|gif|webp|bmp|svg|mp4|mov|webm|mp3|wav|ogg|m4a|aac|pdf|txt|csv|zip|rar|7z|docx?|pptx?|xlsx?)(?:[?#].*)?$/i.test(normalizedUrl)
+    ) {
+      normalizedUrl = `/uploads/${normalizedUrl}`;
+    }
+  }
+
+  const url = withUploadToken(normalizedUrl);
   if (!url) return null;
 
   const mime = toDisplayName(rawAttachment.mime).toLowerCase().slice(0, 120);

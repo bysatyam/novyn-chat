@@ -257,6 +257,7 @@ let historyRenderWarningShown = false;
 let loadOlderBtn = null;
 const MAX_VISIBLE_MESSAGES = 100;
 const MESSAGE_WINDOW_PAGE = 100;
+const INFO_MEDIA_PREVIEW_LIMIT = 120;
 const LOAD_OLDER_SHOW_TOP_THRESHOLD = 80;
 const PENDING_RETRY_BASE_MS = 2500;
 const PENDING_RETRY_MAX_MS = 20000;
@@ -635,9 +636,27 @@ function sanitizeFriendRecord(rawFriend) {
   };
 }
 
+function normalizeAttachmentUrl(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!value) return "";
+  if (/^(?:https?:)?\/\//i.test(value) || /^data:/i.test(value) || /^blob:/i.test(value)) {
+    return value;
+  }
+  if (value.startsWith("/uploads/")) return value;
+  if (value.startsWith("uploads/")) return `/${value}`;
+  if (value.startsWith("./uploads/")) return `/${value.slice(2)}`;
+
+  const bareUploadFilePattern =
+    /^[a-z0-9][a-z0-9._-]*\.(?:png|jpe?g|gif|webp|bmp|svg|mp4|mov|webm|mp3|wav|ogg|m4a|aac|pdf|txt|csv|zip|rar|7z|docx?|pptx?|xlsx?)(?:[?#].*)?$/i;
+  if (bareUploadFilePattern.test(value) && !value.includes("/")) {
+    return `/uploads/${value}`;
+  }
+  return value;
+}
+
 function normalizeAttachmentPayload(rawAttachment, fallbackUrl = "") {
   if (!rawAttachment || typeof rawAttachment !== "object") return null;
-  const url = String(rawAttachment.url || fallbackUrl || "").trim();
+  const url = normalizeAttachmentUrl(rawAttachment.url || fallbackUrl || "");
   if (!url) return null;
   const mime = normalizeMojibakeText(rawAttachment.mime || "").trim().toLowerCase();
   const name = normalizeMojibakeText(rawAttachment.name || "").trim().slice(0, 120);
@@ -3236,7 +3255,7 @@ function syncInfoMediaGrid() {
         name: url,
       });
     }
-    if (items.length >= 20) break;
+    if (items.length >= INFO_MEDIA_PREVIEW_LIMIT) break;
   }
 
   if (!items.length) {
@@ -3245,7 +3264,7 @@ function syncInfoMediaGrid() {
   }
 
   infoMediaGrid.innerHTML = "";
-  items.slice(0, 20).forEach((item) => {
+  items.slice(0, INFO_MEDIA_PREVIEW_LIMIT).forEach((item) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `media-thumb media-thumb-${item.type}`;
