@@ -7,9 +7,8 @@
   }
 
   function readCookie(name) {
-    const key = String(name || "").trim();
-    if (!key || typeof document === "undefined") return "";
-    const needle = `${key}=`;
+    const needle = `${String(name || "").trim()}=`;
+    if (!needle || typeof document === "undefined") return "";
     const parts = String(document.cookie || "").split(";");
     for (const part of parts) {
       const item = part.trim();

@@ -1,25 +1,11 @@
   let cur = 'si';
 
   function go(t) {
-    cur = t === "su" ? "su" : "si";
-    const su = cur === "su";
-    const fTrack = document.getElementById("f-track");
-    const hTrack = document.getElementById("h-track");
-    const authTabs = document.getElementById("authTabs");
-    const tabSignIn = document.getElementById("tabSignIn");
-    const tabSignUp = document.getElementById("tabSignUp");
-
-    if (fTrack) fTrack.classList.toggle("slid", su);
-    if (hTrack) hTrack.classList.toggle("slid", su);
-    if (authTabs) authTabs.classList.toggle("on-signup", su);
-    if (tabSignIn) {
-      tabSignIn.classList.toggle("active", !su);
-      tabSignIn.setAttribute("aria-selected", su ? "false" : "true");
-    }
-    if (tabSignUp) {
-      tabSignUp.classList.toggle("active", su);
-      tabSignUp.setAttribute("aria-selected", su ? "true" : "false");
-    }
+    if (t === cur) return;
+    cur = t;
+    const su = t === 'su';
+    document.getElementById('f-track').classList.toggle('slid', su);
+    document.getElementById('h-track').classList.toggle('slid', su);
   }
 
   function togglePw(id, btn) {
@@ -94,8 +80,6 @@
   const statNewUsers = document.getElementById("statNewUsers");
 
   let pendingReset = false;
-  let statsPollTimer = null;
-  let statsPollingEnabled = true;
 
   function formatStat(value) {
     const num = Number(value);
@@ -145,13 +129,7 @@
     if (!statUsers && !statOnline && !statMessages) return;
     try {
       const response = await fetch("/api/stats", { cache: "no-store" });
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          statsPollingEnabled = false;
-          stopStatsPolling();
-        }
-        throw new Error("stats");
-      }
+      if (!response.ok) throw new Error("stats");
       const data = await response.json();
       const users = Number(data?.users ?? 0);
       const online = Number(data?.online ?? 0);
@@ -161,26 +139,9 @@
       if (statOnline) animateStat(statOnline, online);
       if (statMessages) animateStat(statMessages, messages);
       if (statNewUsers) animateStat(statNewUsers, newUsersToday);
-      statsPollingEnabled = true;
     } catch (_) {
       // Keep placeholders if stats are unavailable.
     }
-  }
-
-  function stopStatsPolling() {
-    if (!statsPollTimer) return;
-    clearInterval(statsPollTimer);
-    statsPollTimer = null;
-  }
-
-  function startStatsPolling() {
-    stopStatsPolling();
-    if (!statsPollingEnabled || document.hidden) return;
-    statsPollTimer = setInterval(() => {
-      if (!document.hidden && statsPollingEnabled) {
-        loadStats();
-      }
-    }, 15000);
   }
 
   try {
@@ -246,9 +207,8 @@
   }
 
   function readCookie(name) {
-    const key = String(name || "").trim();
-    if (!key || typeof document === "undefined") return "";
-    const needle = `${key}=`;
+    const needle = `${String(name || "").trim()}=`;
+    if (!needle) return "";
     const parts = String(document.cookie || "").split(";");
     for (const part of parts) {
       const item = part.trim();
@@ -334,7 +294,7 @@
         setMessage(result?.data?.message || "Authentication failed.", "error");
         return;
       }
-      setMessage(isSignup ? "Account created. Redirecting..." : "Signed in. Redirecting...", "success");
+      setMessage("Signed in. Redirecting...", "success");
       redirectToDashboard();
     } catch (_) {
       setMessage("Connection issue. Try again.", "error");
@@ -461,7 +421,6 @@
       handleAuth("signup");
     });
   }
-  go(cur);
 
   async function hasValidSession() {
     if (authApi?.hasValidSession) {
@@ -503,47 +462,25 @@
     }
   }
 
-  async function initPageSession() {
-    if (forceLoggedOut) {
-      const logoutRequest = authApi?.logout
-        ? authApi.logout()
-        : fetch("/api/auth/logout", {
-            method: "POST",
-            headers: buildCsrfHeaders(),
-            cache: "no-store",
-            credentials: "same-origin",
-            keepalive: true,
-          });
-      Promise.resolve(logoutRequest).catch(() => {});
-      if (window.history && typeof window.history.replaceState === "function") {
-        const cleanPath = `${window.location.pathname}${window.location.hash || ""}`;
-        window.history.replaceState(null, "", cleanPath || "/login.html");
-      }
-      return;
+  if (forceLoggedOut) {
+    const logoutRequest = authApi?.logout
+      ? authApi.logout()
+      : fetch("/api/auth/logout", {
+          method: "POST",
+          headers: buildCsrfHeaders(),
+          cache: "no-store",
+          credentials: "same-origin",
+          keepalive: true,
+        });
+    Promise.resolve(logoutRequest).catch(() => {});
+    if (window.history && typeof window.history.replaceState === "function") {
+      const cleanPath = `${window.location.pathname}${window.location.hash || ""}`;
+      window.history.replaceState(null, "", cleanPath || "/login.html");
     }
-
-    if (await hasValidSession()) {
-      redirectToDashboard();
-      return;
-    }
-
-    await loadStats();
-    startStatsPolling();
   }
 
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      stopStatsPolling();
-      return;
-    }
-    if (!statsPollingEnabled) return;
-    void loadStats();
-    startStatsPolling();
-  });
-
-  window.addEventListener("beforeunload", stopStatsPolling);
-
-  void initPageSession();
+  loadStats();
+  setInterval(loadStats, 15000);
 
   if (socket) {
     socket.on("password_reset_sent", (data) => {

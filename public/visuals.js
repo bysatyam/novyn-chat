@@ -3,7 +3,7 @@
   const prefersReduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const lowMemory = typeof navigator !== "undefined" && navigator.deviceMemory && navigator.deviceMemory <= 4;
   const saveData = typeof navigator !== "undefined" && navigator.connection && navigator.connection.saveData;
-  const isSmallScreen = window.innerWidth <= 760 || window.innerHeight <= 660;
+  const isSmallScreen = Math.min(window.innerWidth, window.innerHeight) <= 820;
   if (prefersReduced || lowMemory || saveData || isSmallScreen) return;
 
   const canvas = document.getElementById("bgScene") || document.getElementById("bgCanvas");

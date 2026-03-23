@@ -12,17 +12,10 @@ const { cloudinary, hasCloudinaryConfig } = require("./cloudinary");
 
 const app = express();
 const server = http.createServer(app);
-app.disable("x-powered-by");
 app.use(express.json({ limit: "64kb" }));
 app.use("/api/auth", createIpRateLimiter("auth-api", 80, 15 * 60 * 1000));
 app.use("/upload-voice", createIpRateLimiter("voice-upload", 40, 15 * 60 * 1000));
 app.use("/upload-file", createIpRateLimiter("file-upload", 40, 15 * 60 * 1000));
-app.use((req, res, next) => {
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  next();
-});
 app.use((req, res, next) => {
   ensureCsrfCookie(req, res);
   next();
@@ -43,21 +36,16 @@ const uploadFile = multer({
     fileSize: 15 * 1024 * 1024,
   },
 });
-const isProductionEnv = String(process.env.NODE_ENV || "").trim().toLowerCase() === "production";
+const uploadTokenSecret =
+  process.env.UPLOAD_TOKEN_SECRET ||
+  process.env.CLOUDINARY_API_SECRET ||
+  "dev-secret";
 
-function createEphemeralSecret(label) {
-  const secret = crypto.randomBytes(32).toString("hex");
-  console.warn(`${label} is not set. Generated an ephemeral development secret.`);
-  return secret;
+if (!process.env.UPLOAD_TOKEN_SECRET && !process.env.CLOUDINARY_API_SECRET) {
+  console.warn(
+    "UPLOAD_TOKEN_SECRET is not set. Using an insecure dev secret for upload links."
+  );
 }
-
-const uploadTokenSecretConfig = String(
-  process.env.UPLOAD_TOKEN_SECRET || process.env.CLOUDINARY_API_SECRET || process.env.AUTH_SECRET || ""
-).trim();
-if (!uploadTokenSecretConfig && isProductionEnv) {
-  throw new Error("UPLOAD_TOKEN_SECRET must be set in production.");
-}
-const uploadTokenSecret = uploadTokenSecretConfig || createEphemeralSecret("UPLOAD_TOKEN_SECRET");
 
 const VAPID_SUBJECT = toDisplayName(process.env.VAPID_SUBJECT) || "mailto:admin@novyn.local";
 const VAPID_PUBLIC_KEY = toDisplayName(process.env.VAPID_PUBLIC_KEY);
@@ -126,6 +114,7 @@ function resolveUploadExtension(mime, originalName, fallbackExt = ".bin") {
     "image/png": ".png",
     "image/gif": ".gif",
     "image/webp": ".webp",
+    "image/svg+xml": ".svg",
     "application/pdf": ".pdf",
     "text/plain": ".txt",
     "text/csv": ".csv",
@@ -341,18 +330,11 @@ app.post(
   }
 );
 
-const socketCorsOrigins = String(process.env.ALLOWED_ORIGIN || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const io = new Server(server, socketCorsOrigins.length
-  ? {
-      cors: {
-        origin: socketCorsOrigins,
-        credentials: true,
-      },
-    }
-  : {});
+const io = new Server(server, {
+  cors: {
+    origin: process.env.ALLOWED_ORIGIN ? process.env.ALLOWED_ORIGIN.split(",") : "*",
+  },
+});
 
 app.use((req, res, next) => {
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -413,15 +395,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-app.get("/api/stats", createIpRateLimiter("stats-api", 60, 60 * 1000), (req, res) => {
-  const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {
-    allowRefreshFallback: true,
-  });
-  const user = auth.userKey ? users.get(auth.userKey) : null;
-  if (!user || !user.isRegistered) {
-    res.status(401).json({ message: "Sign in required." });
-    return;
-  }
+app.get("/api/stats", (req, res) => {
   const totalUsers = Array.from(users.values()).filter((user) => user?.isRegistered).length;
   const onlineCount = onlineUsers.size;
   const now = Date.now();
@@ -463,7 +437,7 @@ const CHAT_RETENTION_DAYS = Math.max(
     ? Math.floor(Number(process.env.CHAT_RETENTION_DAYS))
     : 30
 );
-const MIN_PASSWORD_LENGTH = 8;
+const MIN_PASSWORD_LENGTH = 4;
 const PASSWORD_ITERATIONS = 120000;
 const PASSWORD_KEY_LENGTH = 64;
 const PASSWORD_DIGEST = "sha512";
@@ -495,6 +469,7 @@ const ALLOWED_FILE_MIME = new Set([
   "image/png",
   "image/gif",
   "image/webp",
+  "image/svg+xml",
   "application/pdf",
   "text/plain",
   "text/csv",
@@ -520,14 +495,10 @@ const RTC_TURN_USERNAME = toDisplayName(process.env.RTC_TURN_USERNAME);
 const RTC_TURN_CREDENTIAL = toDisplayName(process.env.RTC_TURN_CREDENTIAL);
 const RTC_TURN_CREDENTIAL_TYPE = toDisplayName(process.env.RTC_TURN_CREDENTIAL_TYPE) || "password";
 const RTC_ICE_SERVERS = resolveRtcIceServers();
-const authSecretConfig =
+const AUTH_SECRET =
   toDisplayName(process.env.AUTH_SECRET) ||
   toDisplayName(process.env.UPLOAD_TOKEN_SECRET) ||
-  "";
-if (!authSecretConfig && isProductionEnv) {
-  throw new Error("AUTH_SECRET must be set in production.");
-}
-const AUTH_SECRET = authSecretConfig || uploadTokenSecret;
+  "dev-auth-secret";
 const AUTH_ACCESS_COOKIE = "novyn_at";
 const AUTH_REFRESH_COOKIE = "novyn_rt";
 const AUTH_CSRF_COOKIE = "novyn_csrf";
@@ -539,8 +510,8 @@ const AUTH_REFRESH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const AUTH_ALIAS_TTL_MS = AUTH_REFRESH_REMEMBER_TTL_MS;
 const AUTH_COOKIE_SECURE = process.env.NODE_ENV === "production";
 
-if (!process.env.AUTH_SECRET && !process.env.UPLOAD_TOKEN_SECRET && !isProductionEnv) {
-  console.warn("AUTH_SECRET is not set. Reusing development upload-token secret for auth tokens.");
+if (!process.env.AUTH_SECRET && !process.env.UPLOAD_TOKEN_SECRET) {
+  console.warn("AUTH_SECRET is not set. Using an insecure dev secret for auth tokens.");
 }
 
 const users = new Map();

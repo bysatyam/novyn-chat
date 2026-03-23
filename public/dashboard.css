@@ -1672,78 +1672,62 @@ html.preclear-search #sidebarSearchInput { visibility:hidden; }
   color:var(--text);
 }
 .message.me .message-body.message-audio ~ .message-meta { color:var(--text3); }
-
-/* ── Base card (received) ── */
 .audio-card {
   display:flex;
   align-items:center;
   gap:10px;
   min-width:220px;
   max-width:300px;
-  padding:10px 14px 10px 10px;
+  padding:10px 12px;
   border-radius:16px 16px 16px 4px;
-  background:var(--surface2);
+  background:var(--surface);
   border:1px solid var(--border);
-  box-shadow:0 2px 10px rgba(0,0,0,0.06);
-  position:relative;
+  box-shadow:0 2px 12px rgba(0,0,0,0.05);
 }
-
-/* ── Sent card ── sits on top of the mint bubble */
 .message.me .audio-card {
+  background:#EDF9F4;
+  border-color:rgba(0,201,122,0.22);
   border-radius:16px 16px 4px 16px;
-  background:rgba(0,0,0,0.12);
-  border-color:rgba(255,255,255,0.18);
-  box-shadow:none;
+  box-shadow:0 4px 18px rgba(0,201,122,0.1);
 }
 body.dark .message.me .audio-card {
-  background:rgba(0,0,0,0.18);
-  border-color:rgba(255,255,255,0.12);
+  background:rgba(60,255,160,0.07);
+  border-color:rgba(60,255,160,0.18);
+  box-shadow:0 4px 18px rgba(60,255,160,0.08);
 }
-
-/* ── Play / pause button ── */
 .audio-play {
-  width:38px;
-  height:38px;
-  border-radius:50%;
+  width:36px;
+  height:36px;
+  border-radius:var(--r2);
   border:none;
+  background:var(--surface2);
+  color:var(--mint-2);
   display:flex;
   align-items:center;
   justify-content:center;
   flex-shrink:0;
   cursor:pointer;
-  transition:transform .12s, box-shadow .15s;
-  /* received */
+  transition:opacity .15s, transform .12s;
+}
+.audio-play:active { transform:scale(0.93); }
+.audio-play svg { width:15px; height:15px; fill:currentColor; }
+.message.me .audio-play {
   background:var(--mint);
   color:#fff;
-  box-shadow:0 3px 10px rgba(0,201,122,0.30);
-}
-.audio-play:hover  { box-shadow:0 4px 14px rgba(0,201,122,0.45); }
-.audio-play:active { transform:scale(0.91); }
-.audio-play svg    { width:15px; height:15px; fill:currentColor; }
-
-/* sent: white button, mint icon */
-.message.me .audio-play {
-  background:#fff;
-  color:var(--mint-2);
-  box-shadow:0 2px 8px rgba(0,0,0,0.18);
 }
 body.dark .message.me .audio-play {
-  background:rgba(255,255,255,0.92);
-  color:var(--mint-3);
-  box-shadow:0 2px 10px rgba(0,0,0,0.28);
+  background:var(--mint-2);
+  box-shadow:0 4px 12px rgba(60,255,160,0.25);
 }
-
 .audio-card .icon-pause { display:none; }
-.audio-card.is-playing .icon-play  { display:none; }
+.audio-card.is-playing .icon-play { display:none; }
 .audio-card.is-playing .icon-pause { display:block; }
-
-/* ── Waveform ── */
 .audio-waveform {
   flex:1;
   display:flex;
   align-items:center;
   gap:2px;
-  height:30px;
+  height:28px;
   overflow:hidden;
   cursor:pointer;
   position:relative;
@@ -1752,21 +1736,15 @@ body.dark .message.me .audio-play {
   flex-shrink:0;
   width:3px;
   border-radius:2px;
-  transition:background-color .1s;
+  transition:background-color .12s;
 }
-
-/* received bars */
 .wv-bar.played  { background:var(--mint-2); }
 .wv-bar.pending { background:var(--surface3); }
-body.dark .wv-bar.pending { background:rgba(255,255,255,0.15); }
-
-/* sent bars: white on mint background */
-.message.me .wv-bar.played  { background:rgba(255,255,255,0.95); }
-.message.me .wv-bar.pending { background:rgba(255,255,255,0.35); }
-body.dark .message.me .wv-bar.played  { background:rgba(255,255,255,0.95); }
-body.dark .message.me .wv-bar.pending { background:rgba(255,255,255,0.28); }
-
-/* ── Timestamp ── */
+body.dark .wv-bar.pending { background:var(--surface3); }
+.message.me .wv-bar.played  { background:var(--mint-2); }
+.message.me .wv-bar.pending { background:rgba(0,201,122,0.22); }
+body.dark .message.me .wv-bar.played  { background:var(--mint); }
+body.dark .message.me .wv-bar.pending { background:rgba(60,255,160,0.18); }
 .audio-time {
   font-family:var(--font-mono);
   font-size:10.5px;
@@ -1775,11 +1753,9 @@ body.dark .message.me .wv-bar.pending { background:rgba(255,255,255,0.28); }
   flex-shrink:0;
   letter-spacing:-0.01em;
 }
-/* sent: white time text */
-.message.me .audio-time { color:rgba(255,255,255,0.82); }
-body.dark .message.me .audio-time { color:rgba(255,255,255,0.75); }
-
-.audio-el    { display:none; }
+.message.me .audio-time { color:var(--mint-3); }
+body.dark .message.me .audio-time { color:var(--mint-2); }
+.audio-el { display:none; }
 .audio-track { display:none; }
 
 /* Call log cards inside messages */
@@ -1885,10 +1861,6 @@ body.dark .message.me .audio-time { color:rgba(255,255,255,0.75); }
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
-}
-.call-log-subtitle.is-alert {
-  color:var(--danger);
-  font-weight:700;
 }
 .call-status-pill {
   height:16px;
@@ -2253,110 +2225,54 @@ body.camera-capture-open { overflow: hidden; }
   border:2px solid var(--surface);
 }
 
-/* Load older messages */
-.load-older-wrap {
-  align-self: stretch;
-  position: sticky;
-  top: 8px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 16px;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-6px);
-  transition: opacity 0.25s ease, transform 0.25s ease;
+/* Load older */
+.messages-load-older,
+.load-older-btn {
+  align-self:center;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  height:34px;
+  min-width:184px;
+  max-width:calc(100% - 26px);
+  margin:2px auto 10px;
+  padding:0 16px;
+  border-radius:999px;
+  border:1.5px solid rgba(0,201,122,0.28);
+  background:linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%);
+  color:var(--mint-2);
+  font-family:var(--font-body);
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  box-shadow:0 6px 18px rgba(10,16,28,0.08);
+  backdrop-filter:blur(8px);
+  position:sticky;
+  top:8px;
+  z-index:2;
+  transition:background .15s, border-color .15s, transform .12s, box-shadow .15s, opacity .15s;
 }
-.load-older-wrap.visible {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
+.messages-load-older:hover:not(:disabled),
+.load-older-btn:hover:not(:disabled) {
+  background:var(--mint-dim);
+  border-color:rgba(0,201,122,0.42);
+  box-shadow:0 10px 24px rgba(0,201,122,0.12);
 }
-.load-older-wrap.loading .lom-ring-outer {
-  animation-duration: 0.8s;
+.messages-load-older:active:not(:disabled),
+.load-older-btn:active:not(:disabled) { transform:translateY(1px); }
+.messages-load-older:focus-visible,
+.load-older-btn:focus-visible {
+  outline:none;
+  box-shadow:0 0 0 3px rgba(0,201,122,0.22), 0 8px 20px rgba(10,16,28,0.12);
 }
-.load-older-wrap.loading .lom-ring-inner {
-  animation-duration: 0.5s;
-}
-.load-older-wrap.loading .lom-text {
-  color: var(--mint-2);
-}
-
-.lom-line {
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-  border-radius: 999px;
-}
-
-.lom-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-  font-family: var(--font-body);
-}
-.lom-trigger:hover .lom-text { color: var(--mint-2); }
-.lom-trigger:hover .lom-ring-outer { animation-duration: 1s; }
-.lom-trigger:focus-visible {
-  outline: none;
-  border-radius: 10px;
-  box-shadow: 0 0 0 3px rgba(0, 201, 122, 0.22);
-}
-.lom-trigger:disabled {
-  cursor: wait;
-}
-
-.lom-icon {
-  width: 22px;
-  height: 22px;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.lom-icon svg {
-  position: absolute;
-  inset: 0;
-  width: 22px;
-  height: 22px;
-  overflow: visible;
-}
-.lom-ring-outer {
-  transform-origin: 11px 11px;
-  animation: lomSpin 1.8s linear infinite;
-}
-.lom-ring-inner {
-  transform-origin: 11px 11px;
-  animation: lomSpin 1.1s linear infinite reverse;
-}
-.lom-dot {
-  transform-origin: 11px 11px;
-  animation: lomDot 1s ease-in-out infinite;
-}
-@keyframes lomSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-@keyframes lomDot {
-  0%, 100% { opacity: 0.3; transform: scale(0.5); }
-  50% { opacity: 1; transform: scale(1); }
-}
-
-.lom-text {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text3);
-  white-space: nowrap;
-  letter-spacing: 0.01em;
-  transition: color 0.15s;
-  user-select: none;
+.messages-load-older:disabled,
+.load-older-btn:disabled {
+  opacity:0.68;
+  cursor:not-allowed;
 }
 
 /* Typing + speaking indicators */
@@ -3774,10 +3690,6 @@ body.info-open .info-scrim { opacity:1; pointer-events:auto; }
   text-overflow:ellipsis;
 }
 .call-log-item-subtitle { font-size:11.5px; color:var(--text3); }
-.call-log-item-subtitle.is-alert {
-  color:var(--danger);
-  font-weight:700;
-}
 .call-log-item-time {
   font-size:11px;
   color:var(--text4);

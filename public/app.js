@@ -253,9 +253,8 @@ let messageWindowStart = 0;
 let messageWindowEnd = 0;
 let historyRenderWarningShown = false;
 let loadOlderBtn = null;
-const MAX_VISIBLE_MESSAGES = 100;
-const MESSAGE_WINDOW_PAGE = 100;
-const LOAD_OLDER_SHOW_TOP_THRESHOLD = 80;
+const MAX_VISIBLE_MESSAGES = 200;
+const MESSAGE_WINDOW_PAGE = 80;
 const PENDING_RETRY_BASE_MS = 2500;
 const PENDING_RETRY_MAX_MS = 20000;
 const PENDING_RETRY_TICK_MS = 1500;
@@ -271,10 +270,6 @@ const pendingQueueByTempId = new Map();
 const pendingByTempId = new Map();
 let messageDrafts = new Map();
 let loadedDraftOwnerKey = "";
-let messageDraftPersistTimer = null;
-const MESSAGE_DRAFT_PERSIST_DELAY_MS = 400;
-let messageSearchDebounceTimer = null;
-const MESSAGE_SEARCH_DEBOUNCE_MS = 120;
 let networkStateLabel = "";
 let networkStateMode = "";
 window._novynProfile = myProfile;
@@ -303,8 +298,6 @@ const DELETED_MESSAGE_TEXT = "This message was deleted.";
 const CALL_LOG_PREFIX = "__call_log__:";
 const CALL_HISTORY_KEY = "novyn-call-history";
 const MAX_CALL_HISTORY = 200;
-const BAD_CALL_STATUSES = new Set(["cancelled", "declined", "missed", "busy", "unavailable", "blocked"]);
-const MISSED_CALL_FILTER_STATUSES = new Set(["missed", "declined", "busy", "unavailable", "cancelled"]);
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Utilities Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
@@ -499,9 +492,8 @@ function getScheduledMessagesForChat(target = activeFriend, kind = activeChatKin
 }
 
 function readCookie(name) {
-  const key = String(name || "").trim();
-  if (!key || typeof document === "undefined") return "";
-  const needle = `${key}=`;
+  const needle = `${String(name || "").trim()}=`;
+  if (!needle) return "";
   const parts = String(document.cookie || "").split(";");
   for (const part of parts) {
     const item = part.trim();
@@ -722,24 +714,6 @@ function persistMessageDrafts() {
   }
 }
 
-function schedulePersistMessageDrafts() {
-  if (messageDraftPersistTimer) {
-    clearTimeout(messageDraftPersistTimer);
-  }
-  messageDraftPersistTimer = setTimeout(() => {
-    messageDraftPersistTimer = null;
-    persistMessageDrafts();
-  }, MESSAGE_DRAFT_PERSIST_DELAY_MS);
-}
-
-function flushPersistMessageDrafts() {
-  if (messageDraftPersistTimer) {
-    clearTimeout(messageDraftPersistTimer);
-    messageDraftPersistTimer = null;
-  }
-  persistMessageDrafts();
-}
-
 function getMessageDraft(friendUsername) {
   const friendKey = normalizeName(friendUsername);
   if (!friendKey) return "";
@@ -758,14 +732,14 @@ function setMessageDraft(friendUsername, value) {
 
   if (!nextTrimmed) {
     if (messageDrafts.delete(friendKey)) {
-      schedulePersistMessageDrafts();
+      persistMessageDrafts();
     }
     return;
   }
 
   if (prev === nextValue) return;
   messageDrafts.set(friendKey, nextValue);
-  schedulePersistMessageDrafts();
+  persistMessageDrafts();
 }
 
 function removeMessageDraft(friendUsername) {
@@ -1720,10 +1694,6 @@ function createCallHistorySeparator(tagName, iso) {
   return separator;
 }
 
-function isBadCallStatus(status) {
-  return BAD_CALL_STATUSES.has(normalizeName(status));
-}
-
 function renderCallHistory() {
   if (!callHistoryList) return;
   callHistoryList.innerHTML = "";
@@ -1737,7 +1707,8 @@ function renderCallHistory() {
     const fromMe = normalizeName(message.from) === normalizeName(me);
     const display = getCallLogDisplay(log, fromMe);
     if (callFilter === "missed") {
-      if (!MISSED_CALL_FILTER_STATUSES.has(normalizeName(log.status))) return false;
+      const missedStatuses = ["missed", "declined", "busy", "unavailable", "cancelled"];
+      if (!missedStatuses.includes(log.status)) return false;
     }
     if (callFilter === "video") {
       if (log.mediaType && log.mediaType !== "video") return false;
@@ -1781,7 +1752,7 @@ function renderCallHistory() {
     const fromMe = normalizeName(message.from) === normalizeName(me);
     const display = getCallLogDisplay(log, fromMe);
     const timeText = formatFriendTime(timestamp);
-    const isBadStatus = isBadCallStatus(display.status);
+    const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(display.status);
     const isNeutralStatus = display.status === "ended";
     const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
     const targetKind = normalizeChatKind(friend?.kind || "friend");
@@ -1802,8 +1773,10 @@ function renderCallHistory() {
     const subtitle = document.createElement("div");
     subtitle.className = "call-log-item-subtitle";
     subtitle.textContent = display.subtitle;
-    if (isBadStatus) subtitle.classList.add("is-alert");
-    content.append(title, subtitle);
+    const status = document.createElement("div");
+    status.className = `call-status-pill ${statusClass}`;
+    status.textContent = display.statusLabel || "Call";
+    content.append(title, subtitle, status);
 
     const time = document.createElement("div");
     time.className = "call-log-item-time";
@@ -1861,18 +1834,6 @@ function setActiveChatTarget(friendName, chatKind = activeChatKind) {
     to: target,
     toType: kind,
   });
-}
-
-function requestHistoryForChat(targetName = activeFriend, targetKind = activeChatKind) {
-  if (!socketAvailable || !isDashboardPage) return;
-  const to = String(targetName || "").trim();
-  if (!to) return;
-  const kind = normalizeChatKind(targetKind);
-  socket.emit("get_history", { to, toType: kind });
-  if (kind === "group") {
-    const groupId = resolveGroupChatId(to, "group");
-    if (groupId) requestGroupInfo(groupId, { kind: "group", force: true });
-  }
 }
 
 function getFriendSearchBlob(friend) {
@@ -2525,11 +2486,6 @@ function isNearBottom() {
   );
 }
 
-function isNearTop() {
-  if (!messagesEl) return false;
-  return messagesEl.scrollTop <= LOAD_OLDER_SHOW_TOP_THRESHOLD;
-}
-
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Network state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function getFailedPendingTempIds() {
@@ -3157,14 +3113,16 @@ function syncCallLogPanel() {
       const subtitle = document.createElement("div");
       subtitle.className = "call-log-item-subtitle";
       subtitle.textContent = display.subtitle;
-      const isBadStatus = isBadCallStatus(display.status);
+      const status = document.createElement("div");
+      const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(display.status);
       const isNeutralStatus = display.status === "ended";
       const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
       const mediaClass = log.mediaType === "video" ? "video" : "voice";
       item.className = `call-log-item ${display.direction === "incoming" ? "incoming" : "outgoing"} status-${statusClass} ${mediaClass}`;
       icon.innerHTML = `${getCallMediaIconSvg(log.mediaType)}${getCallDirectionBadgeSvg(display.direction, statusClass)}`;
-      if (isBadStatus) subtitle.classList.add("is-alert");
-      content.append(title, subtitle);
+      status.className = `call-status-pill ${statusClass}`;
+      status.textContent = display.statusLabel || "Call";
+      content.append(title, subtitle, status);
 
       const time = document.createElement("div");
       time.className = "call-log-item-time";
@@ -3525,7 +3483,6 @@ function openMessageSearchPanel() {
 
 function closeMessageSearchPanel() {
   searchPanelOpen = false;
-  cancelScheduledMessageSearch();
   if (globalSearchState.timer) {
     clearTimeout(globalSearchState.timer);
     globalSearchState.timer = null;
@@ -3661,22 +3618,7 @@ function updateSearchNavButtons() {
   if (messageSearchNext) messageSearchNext.disabled = !chatMode || !hasHits;
 }
 
-function cancelScheduledMessageSearch() {
-  if (!messageSearchDebounceTimer) return;
-  clearTimeout(messageSearchDebounceTimer);
-  messageSearchDebounceTimer = null;
-}
-
-function scheduleApplyMessageSearch() {
-  cancelScheduledMessageSearch();
-  messageSearchDebounceTimer = setTimeout(() => {
-    messageSearchDebounceTimer = null;
-    applyMessageSearch();
-  }, MESSAGE_SEARCH_DEBOUNCE_MS);
-}
-
 function applyMessageSearch() {
-  cancelScheduledMessageSearch();
   const query = getSearchQuery();
   const scope = getSearchScope();
   const messageNodes = Array.from(messagesEl.querySelectorAll("article.message"));
@@ -5079,7 +5021,7 @@ function buildMessageElement(message, skipAnimation = false) {
       body.dataset.rawText = attachment.name || attachmentUrl || message.text || "";
     } else if (callLog) {
       const log = getCallLogDisplay(callLog, mine);
-      const isBadStatus = isBadCallStatus(log.status);
+      const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(log.status);
       const isNeutralStatus = log.status === "ended";
       const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
       const mediaClass = callLog.mediaType === "video" ? "video" : "voice";
@@ -5100,8 +5042,10 @@ function buildMessageElement(message, skipAnimation = false) {
       subtitle.textContent = log.subtitle;
       const subRow = document.createElement("div");
       subRow.className = "call-log-subrow";
-      if (isBadStatus) subtitle.classList.add("is-alert");
-      subRow.append(subtitle);
+      const status = document.createElement("div");
+      status.className = `call-status-pill ${statusClass}`;
+      status.textContent = log.statusLabel || "Call";
+      subRow.append(subtitle, status);
       content.append(title, subRow);
 
       const time = document.createElement("div");
@@ -5261,43 +5205,7 @@ function ensureLoadOlderButton() {
     loadOlderBtn = document.createElement("button");
     loadOlderBtn.type = "button";
     loadOlderBtn.className = "messages-load-older hidden";
-    loadOlderBtn.innerHTML = `
-      <span class="load-older-line" aria-hidden="true"></span>
-      <span class="load-older-content">
-        <span class="load-older-icon" aria-hidden="true">
-          <svg viewBox="0 0 22 22" fill="none" focusable="false">
-            <g class="load-older-ring-outer">
-              <circle
-                cx="11"
-                cy="11"
-                r="9"
-                stroke="var(--mint-2)"
-                stroke-width="1.5"
-                stroke-dasharray="9 24"
-                stroke-linecap="round"
-              ></circle>
-            </g>
-            <g class="load-older-ring-inner">
-              <circle
-                cx="11"
-                cy="11"
-                r="5"
-                stroke="var(--mint-2)"
-                stroke-width="1.2"
-                stroke-dasharray="5 17"
-                stroke-linecap="round"
-                opacity="0.45"
-              ></circle>
-            </g>
-            <g class="load-older-dot">
-              <circle cx="11" cy="11" r="2.2" fill="var(--mint-2)"></circle>
-            </g>
-          </svg>
-        </span>
-        <span class="load-older-text">Load older messages</span>
-      </span>
-      <span class="load-older-line" aria-hidden="true"></span>
-    `;
+    loadOlderBtn.textContent = "Load older messages";
     loadOlderBtn.setAttribute("aria-label", "Load older messages");
     loadOlderBtn.addEventListener("click", loadOlderMessages);
   }
@@ -5307,50 +5215,27 @@ function ensureLoadOlderButton() {
   return loadOlderBtn;
 }
 
-function setLoadOlderButtonText(text, btn = loadOlderBtn) {
-  if (!btn) return;
-  const labelEl = btn.querySelector(".load-older-text");
-  if (labelEl) {
-    labelEl.textContent = text;
-  } else {
-    btn.textContent = text;
-  }
-}
-
 function updateLoadOlderButton() {
   const btn = ensureLoadOlderButton();
   if (!btn) return;
   const remaining = Math.max(0, Number(messageWindowStart) || 0);
   if (remaining <= 0) {
     btn.classList.add("hidden");
-    btn.classList.remove("is-loading");
     btn.disabled = false;
     btn.removeAttribute("aria-busy");
-    btn.removeAttribute("title");
-    btn.setAttribute("aria-label", "Load older messages");
     btn.dataset.remaining = "0";
-    setLoadOlderButtonText("Load older messages", btn);
     return;
   }
+  const chunk = Math.min(MESSAGE_WINDOW_PAGE, remaining);
+  const chunkLabel = chunk === 1 ? "message" : "messages";
   const remainingLabel = remaining === 1 ? "1 older message left" : `${remaining} older messages left`;
-  setLoadOlderButtonText("Load older messages", btn);
+  btn.textContent = `Load ${chunk} older ${chunkLabel}`;
   btn.title = remainingLabel;
-  btn.setAttribute("aria-label", `Load older messages. ${remainingLabel}.`);
-  btn.classList.remove("is-loading");
+  btn.setAttribute("aria-label", `${btn.textContent}. ${remainingLabel}.`);
+  btn.classList.remove("hidden");
   btn.disabled = false;
   btn.removeAttribute("aria-busy");
   btn.dataset.remaining = String(remaining);
-  syncLoadOlderButtonVisibility(btn);
-}
-
-function syncLoadOlderButtonVisibility(btn = loadOlderBtn) {
-  if (!btn) return;
-  const remaining = Math.max(0, Number(btn.dataset.remaining) || 0);
-  if (remaining <= 0) {
-    btn.classList.add("hidden");
-    return;
-  }
-  btn.classList.toggle("hidden", !isNearTop());
 }
 
 function setMessageWindowToLatest() {
@@ -5399,7 +5284,6 @@ function renderMessageWindow(options = {}) {
     const delta = nextHeight - prevScrollHeight;
     messagesEl.scrollTop = prevScrollTop + delta;
   }
-  syncLoadOlderButtonVisibility();
 }
 
 function loadOlderMessages() {
@@ -5407,9 +5291,8 @@ function loadOlderMessages() {
   const btn = ensureLoadOlderButton();
   if (btn) {
     btn.disabled = true;
-    btn.classList.add("is-loading");
     btn.setAttribute("aria-busy", "true");
-    setLoadOlderButtonText("Loading older messages...", btn);
+    btn.textContent = "Loading older messages...";
   }
   messageWindowStart = Math.max(0, messageWindowStart - MESSAGE_WINDOW_PAGE);
   messageWindowEnd = Math.min(conversationMessages.length, messageWindowStart + MAX_VISIBLE_MESSAGES);
@@ -5425,7 +5308,6 @@ function showLatestMessages() {
   renderMessageWindow();
   scrollToBottom(true);
   scrollState.pinnedToBottom = true;
-  syncLoadOlderButtonVisibility();
 }
 
 function updateStats() {
@@ -5530,7 +5412,6 @@ function renderMessages(messages) {
     scrollToBottom(true);
     scrollState.pinnedToBottom = true;
   }
-  syncLoadOlderButtonVisibility();
   if (window._novynFAB) window._novynFAB.reset();
   applyMessageSearch();
   syncPinnedMessageBar();
@@ -6265,7 +6146,8 @@ function setActiveFriend(username, kind = "friend") {
   syncActiveConversationAccess();
   applyActiveMessageDraft();
   renderMessagesEmptyState("Loading conversation...");
-  requestHistoryForChat(username, nextKind);
+  socket.emit("get_history", { to: username, toType: nextKind });
+  if (nextKind === "group") requestGroupInfo(resolveGroupChatId(username, "group"), { kind: "group", force: true });
   requestScheduledMessagesForActiveChat();
   renderFriends();
 
@@ -6765,7 +6647,6 @@ document.addEventListener("visibilitychange", () => {
     setActiveChatTarget("");
   } else if (activeFriend) {
     setActiveChatTarget(activeFriend);
-    requestHistoryForChat(activeFriend, activeChatKind);
   }
 });
 
@@ -9124,7 +9005,7 @@ messageInput.addEventListener("input", () => {
 });
 
 if (messageSearchInput) {
-  messageSearchInput.addEventListener("input", scheduleApplyMessageSearch);
+  messageSearchInput.addEventListener("input", applyMessageSearch);
   messageSearchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -10129,7 +10010,10 @@ socket.on("connect", () => {
   void ensureDashboardSession(true);
   flushPendingQueue(true);
   requestScheduledMessagesForActiveChat();
-  requestHistoryForChat();
+  if (normalizeChatKind(activeChatKind) === "group" && activeFriend) {
+    const groupId = resolveGroupChatId(activeFriend, "group");
+    if (groupId) requestGroupInfo(groupId, { kind: "group", force: true });
+  }
 });
 
 socket.on("disconnect", () => {
@@ -10242,14 +10126,12 @@ syncMessageSearchUi();
 if (messagesEl) {
   messagesEl.addEventListener("scroll", () => {
     scrollState.pinnedToBottom = isNearBottom();
-    syncLoadOlderButtonVisibility();
   }, { passive: true });
 }
 if (messagesEl && typeof ResizeObserver !== "undefined") {
   const messagesResizeObserver = new ResizeObserver(() => {
     if (!activeFriend) return;
     if (scrollState.pinnedToBottom) scrollToBottom(true);
-    syncLoadOlderButtonVisibility();
   });
   messagesResizeObserver.observe(messagesEl);
 }
@@ -10257,12 +10139,7 @@ window.addEventListener("resize", () => {
   syncViewportLayoutMetrics();
   if (!activeFriend) return;
   if (scrollState.pinnedToBottom) scrollToBottom(true);
-  syncLoadOlderButtonVisibility();
 }, { passive: true });
-window.addEventListener("beforeunload", () => {
-  flushPersistMessageDrafts();
-  cancelScheduledMessageSearch();
-});
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", syncViewportLayoutMetrics, { passive: true });
   window.visualViewport.addEventListener("scroll", syncViewportLayoutMetrics, { passive: true });

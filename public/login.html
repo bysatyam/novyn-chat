@@ -15,26 +15,14 @@
 
   <!-- Background -->
   <div class="brand" aria-hidden="true"></div>
-  <canvas id="bgScene" class="aurora-canvas" aria-hidden="true"></canvas>
 
   <div class="auth-shell">
     <section class="hero-pane" aria-label="Novyn highlights">
       <div class="hero-inner">
         <div class="hero-brand">
           <span class="hero-mark">
-            <svg class="login-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <g class="portal-ring-bg">
-                <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/>
-              </g>
-              <g class="portal-outer">
-                <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/>
-              </g>
-              <g class="portal-inner">
-                <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/>
-              </g>
-              <g class="portal-dot">
-                <circle cx="24" cy="24" r="3" fill="currentColor"/>
-              </g>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
           </span>
           <div>
@@ -112,19 +100,8 @@
       <!-- Logo -->
       <div class="card-logo">
         <div class="card-logo-icon">
-          <svg class="login-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <g class="portal-ring-bg">
-              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/>
-            </g>
-            <g class="portal-outer">
-              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/>
-            </g>
-            <g class="portal-inner">
-              <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/>
-            </g>
-            <g class="portal-dot">
-              <circle cx="24" cy="24" r="3" fill="currentColor"/>
-            </g>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
         </div>
         <span class="card-logo-name">Novyn</span>
@@ -311,10 +288,23 @@
     </div>
   </div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
-<script src="visuals.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="auth-session.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    var tabs   = document.getElementById('authTabs');
+    var btnSI  = document.getElementById('tabSignIn');
+    var btnSU  = document.getElementById('tabSignUp');
+    window.go = function(t) {
+      var su = t === 'su';
+      document.getElementById('f-track').classList.toggle('slid', su);
+      document.getElementById('h-track').classList.toggle('slid', su);
+      tabs.classList.toggle('on-signup', su);
+      btnSI.classList.toggle('active', !su);
+      btnSU.classList.toggle('active', su);
+    };
+  });
+</script>
 <script src="login.js"></script>
 </body>
 </html>
