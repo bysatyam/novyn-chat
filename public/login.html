@@ -15,6 +15,7 @@
 
   <!-- Background -->
   <div class="brand" aria-hidden="true"></div>
+  <canvas id="bgScene" class="aurora-canvas" aria-hidden="true"></canvas>
 
   <div class="auth-shell">
     <section class="hero-pane" aria-label="Novyn highlights">
@@ -310,23 +311,10 @@
     </div>
   </div>
 
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
+<script src="visuals.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="auth-session.js"></script>
-<script>
-  document.addEventListener('DOMContentLoaded', function() {
-    var tabs   = document.getElementById('authTabs');
-    var btnSI  = document.getElementById('tabSignIn');
-    var btnSU  = document.getElementById('tabSignUp');
-    window.go = function(t) {
-      var su = t === 'su';
-      document.getElementById('f-track').classList.toggle('slid', su);
-      document.getElementById('h-track').classList.toggle('slid', su);
-      tabs.classList.toggle('on-signup', su);
-      btnSI.classList.toggle('active', !su);
-      btnSU.classList.toggle('active', su);
-    };
-  });
-</script>
 <script src="login.js"></script>
 </body>
 </html>

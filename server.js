@@ -12,10 +12,17 @@ const { cloudinary, hasCloudinaryConfig } = require("./cloudinary");
 
 const app = express();
 const server = http.createServer(app);
+app.disable("x-powered-by");
 app.use(express.json({ limit: "64kb" }));
 app.use("/api/auth", createIpRateLimiter("auth-api", 80, 15 * 60 * 1000));
 app.use("/upload-voice", createIpRateLimiter("voice-upload", 40, 15 * 60 * 1000));
 app.use("/upload-file", createIpRateLimiter("file-upload", 40, 15 * 60 * 1000));
+app.use((req, res, next) => {
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
 app.use((req, res, next) => {
   ensureCsrfCookie(req, res);
   next();
@@ -114,7 +121,6 @@ function resolveUploadExtension(mime, originalName, fallbackExt = ".bin") {
     "image/png": ".png",
     "image/gif": ".gif",
     "image/webp": ".webp",
-    "image/svg+xml": ".svg",
     "application/pdf": ".pdf",
     "text/plain": ".txt",
     "text/csv": ".csv",
@@ -330,11 +336,18 @@ app.post(
   }
 );
 
-const io = new Server(server, {
-  cors: {
-    origin: process.env.ALLOWED_ORIGIN ? process.env.ALLOWED_ORIGIN.split(",") : "*",
-  },
-});
+const socketCorsOrigins = String(process.env.ALLOWED_ORIGIN || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const io = new Server(server, socketCorsOrigins.length
+  ? {
+      cors: {
+        origin: socketCorsOrigins,
+        credentials: true,
+      },
+    }
+  : {});
 
 app.use((req, res, next) => {
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -395,7 +408,15 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-app.get("/api/stats", (req, res) => {
+app.get("/api/stats", createIpRateLimiter("stats-api", 60, 60 * 1000), (req, res) => {
+  const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {
+    allowRefreshFallback: true,
+  });
+  const user = auth.userKey ? users.get(auth.userKey) : null;
+  if (!user || !user.isRegistered) {
+    res.status(401).json({ message: "Sign in required." });
+    return;
+  }
   const totalUsers = Array.from(users.values()).filter((user) => user?.isRegistered).length;
   const onlineCount = onlineUsers.size;
   const now = Date.now();
@@ -437,7 +458,7 @@ const CHAT_RETENTION_DAYS = Math.max(
     ? Math.floor(Number(process.env.CHAT_RETENTION_DAYS))
     : 30
 );
-const MIN_PASSWORD_LENGTH = 4;
+const MIN_PASSWORD_LENGTH = 8;
 const PASSWORD_ITERATIONS = 120000;
 const PASSWORD_KEY_LENGTH = 64;
 const PASSWORD_DIGEST = "sha512";
@@ -469,7 +490,6 @@ const ALLOWED_FILE_MIME = new Set([
   "image/png",
   "image/gif",
   "image/webp",
-  "image/svg+xml",
   "application/pdf",
   "text/plain",
   "text/csv",

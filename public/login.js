@@ -3,9 +3,17 @@
   function go(t) {
     if (t === cur) return;
     cur = t;
-    const su = t === 'su';
-    document.getElementById('f-track').classList.toggle('slid', su);
-    document.getElementById('h-track').classList.toggle('slid', su);
+    const su = t === "su";
+    const fieldTrack = document.getElementById("f-track");
+    const headingTrack = document.getElementById("h-track");
+    const tabs = document.getElementById("authTabs");
+    const btnSI = document.getElementById("tabSignIn");
+    const btnSU = document.getElementById("tabSignUp");
+    if (fieldTrack) fieldTrack.classList.toggle("slid", su);
+    if (headingTrack) headingTrack.classList.toggle("slid", su);
+    if (tabs) tabs.classList.toggle("on-signup", su);
+    if (btnSI) btnSI.classList.toggle("active", !su);
+    if (btnSU) btnSU.classList.toggle("active", su);
   }
 
   function togglePw(id, btn) {
@@ -207,8 +215,9 @@
   }
 
   function readCookie(name) {
-    const needle = `${String(name || "").trim()}=`;
-    if (!needle) return "";
+    const key = String(name || "").trim();
+    if (!key) return "";
+    const needle = `${key}=`;
     const parts = String(document.cookie || "").split(";");
     for (const part of parts) {
       const item = part.trim();
@@ -294,7 +303,7 @@
         setMessage(result?.data?.message || "Authentication failed.", "error");
         return;
       }
-      setMessage("Signed in. Redirecting...", "success");
+      setMessage(isSignup ? "Account created. Redirecting..." : "Signed in. Redirecting...", "success");
       redirectToDashboard();
     } catch (_) {
       setMessage("Connection issue. Try again.", "error");
@@ -479,8 +488,30 @@
     }
   }
 
+  let statsPollTimer = null;
+  function startStatsPolling() {
+    if (statsPollTimer) return;
+    statsPollTimer = setInterval(() => {
+      if (document.hidden) return;
+      loadStats();
+    }, 15000);
+  }
+  function stopStatsPolling() {
+    if (!statsPollTimer) return;
+    clearInterval(statsPollTimer);
+    statsPollTimer = null;
+  }
+
   loadStats();
-  setInterval(loadStats, 15000);
+  startStatsPolling();
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopStatsPolling();
+      return;
+    }
+    loadStats();
+    startStatsPolling();
+  });
 
   if (socket) {
     socket.on("password_reset_sent", (data) => {
