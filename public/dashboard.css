@@ -1862,6 +1862,10 @@ body.dark .message.me .audio-time { color:var(--mint-2); }
   overflow:hidden;
   text-overflow:ellipsis;
 }
+.call-log-subtitle.is-alert {
+  color:var(--danger);
+  font-weight:700;
+}
 .call-status-pill {
   height:16px;
   padding:0 7px;
@@ -3690,6 +3694,10 @@ body.info-open .info-scrim { opacity:1; pointer-events:auto; }
   text-overflow:ellipsis;
 }
 .call-log-item-subtitle { font-size:11.5px; color:var(--text3); }
+.call-log-item-subtitle.is-alert {
+  color:var(--danger);
+  font-weight:700;
+}
 .call-log-item-time {
   font-size:11px;
   color:var(--text4);

@@ -298,6 +298,8 @@ const DELETED_MESSAGE_TEXT = "This message was deleted.";
 const CALL_LOG_PREFIX = "__call_log__:";
 const CALL_HISTORY_KEY = "novyn-call-history";
 const MAX_CALL_HISTORY = 200;
+const BAD_CALL_STATUSES = new Set(["cancelled", "declined", "missed", "busy", "unavailable", "blocked"]);
+const MISSED_CALL_FILTER_STATUSES = new Set(["missed", "declined", "busy", "unavailable", "cancelled"]);
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Utilities Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
@@ -1694,6 +1696,10 @@ function createCallHistorySeparator(tagName, iso) {
   return separator;
 }
 
+function isBadCallStatus(status) {
+  return BAD_CALL_STATUSES.has(normalizeName(status));
+}
+
 function renderCallHistory() {
   if (!callHistoryList) return;
   callHistoryList.innerHTML = "";
@@ -1707,8 +1713,7 @@ function renderCallHistory() {
     const fromMe = normalizeName(message.from) === normalizeName(me);
     const display = getCallLogDisplay(log, fromMe);
     if (callFilter === "missed") {
-      const missedStatuses = ["missed", "declined", "busy", "unavailable", "cancelled"];
-      if (!missedStatuses.includes(log.status)) return false;
+      if (!MISSED_CALL_FILTER_STATUSES.has(normalizeName(log.status))) return false;
     }
     if (callFilter === "video") {
       if (log.mediaType && log.mediaType !== "video") return false;
@@ -1752,7 +1757,7 @@ function renderCallHistory() {
     const fromMe = normalizeName(message.from) === normalizeName(me);
     const display = getCallLogDisplay(log, fromMe);
     const timeText = formatFriendTime(timestamp);
-    const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(display.status);
+    const isBadStatus = isBadCallStatus(display.status);
     const isNeutralStatus = display.status === "ended";
     const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
     const targetKind = normalizeChatKind(friend?.kind || "friend");
@@ -1773,10 +1778,8 @@ function renderCallHistory() {
     const subtitle = document.createElement("div");
     subtitle.className = "call-log-item-subtitle";
     subtitle.textContent = display.subtitle;
-    const status = document.createElement("div");
-    status.className = `call-status-pill ${statusClass}`;
-    status.textContent = display.statusLabel || "Call";
-    content.append(title, subtitle, status);
+    if (isBadStatus) subtitle.classList.add("is-alert");
+    content.append(title, subtitle);
 
     const time = document.createElement("div");
     time.className = "call-log-item-time";
@@ -3113,16 +3116,14 @@ function syncCallLogPanel() {
       const subtitle = document.createElement("div");
       subtitle.className = "call-log-item-subtitle";
       subtitle.textContent = display.subtitle;
-      const status = document.createElement("div");
-      const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(display.status);
+      const isBadStatus = isBadCallStatus(display.status);
       const isNeutralStatus = display.status === "ended";
       const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
       const mediaClass = log.mediaType === "video" ? "video" : "voice";
       item.className = `call-log-item ${display.direction === "incoming" ? "incoming" : "outgoing"} status-${statusClass} ${mediaClass}`;
       icon.innerHTML = `${getCallMediaIconSvg(log.mediaType)}${getCallDirectionBadgeSvg(display.direction, statusClass)}`;
-      status.className = `call-status-pill ${statusClass}`;
-      status.textContent = display.statusLabel || "Call";
-      content.append(title, subtitle, status);
+      if (isBadStatus) subtitle.classList.add("is-alert");
+      content.append(title, subtitle);
 
       const time = document.createElement("div");
       time.className = "call-log-item-time";
@@ -5021,7 +5022,7 @@ function buildMessageElement(message, skipAnimation = false) {
       body.dataset.rawText = attachment.name || attachmentUrl || message.text || "";
     } else if (callLog) {
       const log = getCallLogDisplay(callLog, mine);
-      const isBadStatus = ["cancelled", "declined", "missed", "busy", "unavailable", "blocked"].includes(log.status);
+      const isBadStatus = isBadCallStatus(log.status);
       const isNeutralStatus = log.status === "ended";
       const statusClass = isNeutralStatus ? "neutral" : (isBadStatus ? "bad" : "good");
       const mediaClass = callLog.mediaType === "video" ? "video" : "voice";
@@ -5042,10 +5043,8 @@ function buildMessageElement(message, skipAnimation = false) {
       subtitle.textContent = log.subtitle;
       const subRow = document.createElement("div");
       subRow.className = "call-log-subrow";
-      const status = document.createElement("div");
-      status.className = `call-status-pill ${statusClass}`;
-      status.textContent = log.statusLabel || "Call";
-      subRow.append(subtitle, status);
+      if (isBadStatus) subtitle.classList.add("is-alert");
+      subRow.append(subtitle);
       content.append(title, subRow);
 
       const time = document.createElement("div");
@@ -5232,10 +5231,20 @@ function updateLoadOlderButton() {
   btn.textContent = `Load ${chunk} older ${chunkLabel}`;
   btn.title = remainingLabel;
   btn.setAttribute("aria-label", `${btn.textContent}. ${remainingLabel}.`);
-  btn.classList.remove("hidden");
   btn.disabled = false;
   btn.removeAttribute("aria-busy");
   btn.dataset.remaining = String(remaining);
+  syncLoadOlderButtonVisibility(btn);
+}
+
+function syncLoadOlderButtonVisibility(btn = loadOlderBtn) {
+  if (!btn) return;
+  const remaining = Math.max(0, Number(btn.dataset.remaining) || 0);
+  if (remaining <= 0) {
+    btn.classList.add("hidden");
+    return;
+  }
+  btn.classList.toggle("hidden", isNearBottom());
 }
 
 function setMessageWindowToLatest() {
@@ -5284,6 +5293,7 @@ function renderMessageWindow(options = {}) {
     const delta = nextHeight - prevScrollHeight;
     messagesEl.scrollTop = prevScrollTop + delta;
   }
+  syncLoadOlderButtonVisibility();
 }
 
 function loadOlderMessages() {
@@ -5308,6 +5318,7 @@ function showLatestMessages() {
   renderMessageWindow();
   scrollToBottom(true);
   scrollState.pinnedToBottom = true;
+  syncLoadOlderButtonVisibility();
 }
 
 function updateStats() {
@@ -5412,6 +5423,7 @@ function renderMessages(messages) {
     scrollToBottom(true);
     scrollState.pinnedToBottom = true;
   }
+  syncLoadOlderButtonVisibility();
   if (window._novynFAB) window._novynFAB.reset();
   applyMessageSearch();
   syncPinnedMessageBar();
@@ -10126,12 +10138,14 @@ syncMessageSearchUi();
 if (messagesEl) {
   messagesEl.addEventListener("scroll", () => {
     scrollState.pinnedToBottom = isNearBottom();
+    syncLoadOlderButtonVisibility();
   }, { passive: true });
 }
 if (messagesEl && typeof ResizeObserver !== "undefined") {
   const messagesResizeObserver = new ResizeObserver(() => {
     if (!activeFriend) return;
     if (scrollState.pinnedToBottom) scrollToBottom(true);
+    syncLoadOlderButtonVisibility();
   });
   messagesResizeObserver.observe(messagesEl);
 }
@@ -10139,6 +10153,7 @@ window.addEventListener("resize", () => {
   syncViewportLayoutMetrics();
   if (!activeFriend) return;
   if (scrollState.pinnedToBottom) scrollToBottom(true);
+  syncLoadOlderButtonVisibility();
 }, { passive: true });
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", syncViewportLayoutMetrics, { passive: true });
