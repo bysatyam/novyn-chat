@@ -679,10 +679,22 @@ function attachmentNameFromUrl(url, fallback = "Attachment") {
 }
 
 function normalizeAttachmentPayload(rawAttachment, fallbackUrl = "") {
-  if (!rawAttachment) return null;
+  const fallbackNormalized = normalizeAttachmentUrl(fallbackUrl || "");
+  if (!rawAttachment) {
+    if (!fallbackNormalized || !isLikelyAttachmentUrl(fallbackNormalized)) return null;
+    const fallbackKind = inferAttachmentKind(fallbackNormalized);
+    const fallbackName = fallbackKind === "image" ? "Image attachment" : "Attachment";
+    return {
+      url: fallbackNormalized,
+      name: attachmentNameFromUrl(fallbackNormalized, fallbackName),
+      mime: "",
+      size: 0,
+      kind: fallbackKind,
+    };
+  }
   const payload = typeof rawAttachment === "string" ? { url: rawAttachment } : rawAttachment;
   if (!payload || typeof payload !== "object") return null;
-  const url = normalizeAttachmentUrl(payload.url || fallbackUrl || "");
+  const url = normalizeAttachmentUrl(payload.url || fallbackNormalized || "");
   if (!url) return null;
   const mime = normalizeMojibakeText(payload.mime || "").trim().toLowerCase();
   const explicitName = normalizeMojibakeText(payload.name || "").trim().slice(0, 120);

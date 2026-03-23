@@ -77,9 +77,29 @@ function signUploadToken(filename) {
 
 function withUploadToken(rawUrl) {
   const text = toDisplayName(rawUrl);
-  if (!text || !text.startsWith("/uploads/")) return text;
+  if (!text) return text;
+
   const [base, hash] = text.split("#");
-  const [pathOnly, queryString = ""] = String(base || "").split("?");
+  const baseText = String(base || "");
+  let prefix = "";
+  let pathWithQuery = baseText;
+
+  if (/^https?:\/\//i.test(baseText)) {
+    try {
+      const parsed = new URL(baseText);
+      if (!String(parsed.pathname || "").startsWith("/uploads/")) return text;
+      prefix = parsed.origin;
+      pathWithQuery = `${parsed.pathname || ""}${parsed.search || ""}`;
+    } catch (_) {
+      return text;
+    }
+  } else if (baseText.startsWith("uploads/")) {
+    pathWithQuery = `/${baseText}`;
+  } else if (!baseText.startsWith("/uploads/")) {
+    return text;
+  }
+
+  const [pathOnly, queryString = ""] = String(pathWithQuery || "").split("?");
   const filename = path.basename(pathOnly || "");
   if (!filename) return text;
   const token = signUploadToken(filename);
@@ -87,7 +107,7 @@ function withUploadToken(rawUrl) {
   params.set("token", token);
   const serialized = params.toString();
   const nextBase = serialized ? `${pathOnly}?${serialized}` : pathOnly;
-  return `${nextBase}${hash ? `#${hash}` : ""}`;
+  return `${prefix}${nextBase}${hash ? `#${hash}` : ""}`;
 }
 
 function sanitizeAttachmentName(name) {
@@ -164,7 +184,9 @@ function sanitizeMessageAttachment(rawAttachment, fallbackUrl = "") {
   const mime = toDisplayName(attachment.mime).toLowerCase().slice(0, 120);
   const fallbackName = path.basename(String(url).split("?")[0] || "file");
   const name = sanitizeAttachmentName(attachment.name || fallbackName || "file");
-  const kind = String(attachment.kind || "").toLowerCase() === "image" || mime.startsWith("image/")
+  const kind = String(attachment.kind || "").toLowerCase() === "image"
+    || mime.startsWith("image/")
+    || /\.(?:png|jpe?g|gif|webp|bmp|svg)(?:[?#].*)?$/i.test(String(url || ""))
     ? "image"
     : "file";
   const numericSize = Number(attachment.size);
@@ -316,10 +338,10 @@ app.post(
     const size = Math.max(0, Number(req.file.size) || 0);
 
     try {
-      if (hasCloudinaryConfig && kind === "image") {
+      if (hasCloudinaryConfig) {
         const result = await cloudinary.uploader.upload(req.file.path, {
-          resource_type: "image",
-          folder: "novyn_files",
+          resource_type: "auto",
+          folder: kind === "image" ? "novyn_images" : "novyn_files",
         });
         fs.unlink(req.file.path, () => {});
         res.json({
