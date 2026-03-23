@@ -33,6 +33,7 @@ const profileStatMedia  = document.getElementById("profileStatMedia") || documen
 const profileStatLinks  = document.getElementById("profileStatLinks") || document.getElementById("statLinks");
 const profileStatFiles  = document.getElementById("profileStatFiles") || document.getElementById("statFiles");
 const removeFriendBtn   = document.getElementById("removeFriendBtn");
+const clearChatBtn      = document.getElementById("clearChatBtn");
 const messagesEl        = document.getElementById("messages");
 const meAvatar          = document.getElementById("meAvatar");
 const infoPanel         = document.getElementById("infoPanel");
@@ -137,6 +138,7 @@ const settingsProfileHandle = document.getElementById("settingsProfileHandle");
 const createGroupBtn   = document.getElementById("createGroupBtn");
 const chatQuickMenuBtn = document.getElementById("chatQuickMenuBtn");
 const chatQuickMenu    = document.getElementById("chatQuickMenu");
+const chatQuickClearItem = chatQuickMenu ? chatQuickMenu.querySelector('[data-quick-action="clear-chat"]') : null;
 const chatCategoryButtons = Array.from(document.querySelectorAll(".chat-category-btn"));
 const chatFilterCountAll = document.getElementById("chatFilterCountAll");
 const chatFilterCountGroups = document.getElementById("chatFilterCountGroups");
@@ -6137,19 +6139,24 @@ function renderGroupMemberList(groupInfo) {
 }
 
 function syncGroupInfoSection() {
+  const hasActive = Boolean(activeFriend);
   const activeEntry = getActiveChatEntry();
   const isGroup = normalizeChatKind(activeEntry?.kind || activeChatKind) === "group";
   setInfoPanelMode(isGroup ? "group" : "contact");
 
   if (!infoAddMembersBtn) {
     if (isGroup) requestGroupInfo(resolveGroupChatId(activeFriend, "group"), { kind: "group" });
+    syncClearChatActions({ hasActive, activeEntry, isGroup });
     return;
   }
 
   infoAddMembersBtn.classList.toggle("hidden", !isGroup);
   infoAddMembersBtn.disabled = !isGroup;
 
-  if (!isGroup) return;
+  if (!isGroup) {
+    syncClearChatActions({ hasActive, activeEntry, isGroup });
+    return;
+  }
 
   const groupId = resolveGroupChatId(activeFriend, "group");
   const groupInfo = getGroupInfo(groupId, "group");
@@ -6165,6 +6172,7 @@ function syncGroupInfoSection() {
       if (groupMemberList) {
         groupMemberList.innerHTML = '<div class="group-member-empty">Unable to load members.</div>';
       }
+      syncClearChatActions({ hasActive, activeEntry, isGroup });
       return;
     }
     if (groupMembersMeta) groupMembersMeta.textContent = "...";
@@ -6172,9 +6180,11 @@ function syncGroupInfoSection() {
       groupMemberList.innerHTML = '<div class="group-member-empty">Loading members...</div>';
     }
     requestGroupInfo(groupId, { kind: "group" });
+    syncClearChatActions({ hasActive, activeEntry, isGroup });
     return;
   }
   renderGroupMemberList(groupInfo);
+  syncClearChatActions({ hasActive, activeEntry, isGroup });
 }
 
 function syncInfoPanel() {
@@ -6216,13 +6226,11 @@ function syncInfoPanel() {
           ? "Blocked you"
           : friend.online
             ? "Online"
-            : "Offline";
+            : formatLastSeen(friend.lastSeenAt);
       setInfoPanelStatus(statusText, friend.online && !safety.blocked ? "online" : "offline");
       infoPanelStatus.title = safety.blocked
         ? (safety.blockedByMe ? "You blocked this user." : "This user blocked you.")
-        : friend.online
-          ? "Online now"
-          : formatLastSeen(friend.lastSeenAt);
+        : statusText;
     }
     syncGroupInfoSection();
     maybeResetInfoPanelScroll();
@@ -6339,28 +6347,118 @@ function renderActiveFriendPresence() {
 }
 
 function syncRemoveFriendButton() {
-  if (!removeFriendBtn) return;
   const hasActive = Boolean(activeFriend);
   const activeEntry = hasActive ? getActiveChatEntry() : null;
   const isGroup = normalizeChatKind(activeEntry?.kind || activeChatKind) === "group";
-  removeFriendBtn.classList.toggle("hidden", !hasActive);
-  removeFriendBtn.disabled = !hasActive;
-  if (hasActive) {
-    if (isGroup) {
-      const label = getFriendDisplayName(activeEntry || { username: activeFriend });
-      removeFriendBtn.textContent = "Leave";
-      removeFriendBtn.title = `Leave ${label}`;
-      removeFriendBtn.setAttribute("aria-label", `Leave ${label}`);
+  if (removeFriendBtn) {
+    removeFriendBtn.classList.toggle("hidden", !hasActive);
+    removeFriendBtn.disabled = !hasActive;
+    if (hasActive) {
+      if (isGroup) {
+        const label = getFriendDisplayName(activeEntry || { username: activeFriend });
+        removeFriendBtn.textContent = "Leave";
+        removeFriendBtn.title = `Leave ${label}`;
+        removeFriendBtn.setAttribute("aria-label", `Leave ${label}`);
+      } else {
+        removeFriendBtn.textContent = "Remove";
+        removeFriendBtn.title = `Unfriend @${activeFriend}`;
+        removeFriendBtn.setAttribute("aria-label", `Unfriend ${activeFriend}`);
+      }
     } else {
       removeFriendBtn.textContent = "Remove";
-      removeFriendBtn.title = `Unfriend @${activeFriend}`;
-      removeFriendBtn.setAttribute("aria-label", `Unfriend ${activeFriend}`);
+      removeFriendBtn.title = "Unfriend";
+      removeFriendBtn.setAttribute("aria-label", "Unfriend");
     }
-  } else {
-    removeFriendBtn.textContent = "Remove";
-    removeFriendBtn.title = "Unfriend";
-    removeFriendBtn.setAttribute("aria-label", "Unfriend");
   }
+  syncClearChatActions({ hasActive, activeEntry, isGroup });
+}
+
+function syncClearChatActions(options = {}) {
+  const hasActive = options.hasActive !== undefined ? Boolean(options.hasActive) : Boolean(activeFriend);
+  const activeEntry = options.activeEntry !== undefined
+    ? options.activeEntry
+    : (hasActive ? getActiveChatEntry() : null);
+  const isGroup = options.isGroup !== undefined
+    ? Boolean(options.isGroup)
+    : normalizeChatKind(activeEntry?.kind || activeChatKind) === "group";
+  const target = hasActive
+    ? (isGroup
+      ? resolveGroupChatId(activeEntry?.username || activeFriend, "group")
+      : (activeEntry?.username || activeFriend))
+    : "";
+  const label = hasActive
+    ? getFriendDisplayName(activeEntry || { username: activeFriend })
+    : "chat";
+  const groupId = isGroup ? resolveGroupChatId(activeEntry?.username || activeFriend, "group") : "";
+  const groupInfo = isGroup && groupId ? getGroupInfo(groupId, "group") : null;
+  const meRole = groupInfo?.me?.role || "member";
+  const canClearGroup = !isGroup || meRole === "owner" || meRole === "admin";
+  if (isGroup && groupId && !groupInfo) {
+    requestGroupInfo(groupId, { kind: "group" });
+  }
+
+  if (clearChatBtn) {
+    clearChatBtn.classList.toggle("hidden", !hasActive);
+    clearChatBtn.disabled = !hasActive || !canClearGroup;
+    clearChatBtn.textContent = "Clear chat";
+    clearChatBtn.title = !hasActive
+      ? "Clear chat history"
+      : (!canClearGroup
+        ? "Only group admins can clear chat history"
+        : (isGroup ? `Clear "${label}" history` : `Clear history with @${target || activeFriend}`));
+    clearChatBtn.setAttribute("aria-label", clearChatBtn.title || "Clear chat history");
+  }
+
+  if (chatQuickClearItem) {
+    chatQuickClearItem.classList.toggle("hidden", !hasActive);
+    chatQuickClearItem.disabled = !hasActive || !canClearGroup;
+    chatQuickClearItem.textContent = isGroup ? "Clear this group chat" : "Clear this chat";
+    chatQuickClearItem.title = !hasActive
+      ? "Select a chat first"
+      : (!canClearGroup ? "Only group admins can clear group chat" : `Clear messages in ${label}`);
+  }
+}
+
+async function requestClearActiveChat() {
+  if (!activeFriend) {
+    showToast("Select a chat first.", "info");
+    return;
+  }
+  const activeEntry = getActiveChatEntry();
+  const chatKind = normalizeChatKind(activeEntry?.kind || activeChatKind);
+  const target = chatKind === "group"
+    ? resolveGroupChatId(activeEntry?.username || activeFriend, "group")
+    : (activeEntry?.username || activeFriend);
+  if (!target) return;
+  if (chatKind === "group") {
+    const groupInfo = getGroupInfo(target, "group");
+    if (!groupInfo) {
+      requestGroupInfo(target, { kind: "group", force: true });
+      showToast("Loading group permissions. Try again.", "info");
+      return;
+    }
+    const meRole = groupInfo?.me?.role || "member";
+    if (!(meRole === "owner" || meRole === "admin")) {
+      showToast("Only group admins can clear group chat.", "error");
+      return;
+    }
+  }
+
+  const label = getFriendDisplayName(activeEntry || { username: activeFriend });
+  const title = chatKind === "group"
+    ? `Clear "${label}" chat history?`
+    : `Clear chat with @${target}?`;
+  const description = chatKind === "group"
+    ? "This removes all messages in this group chat for everyone."
+    : `This removes all messages in your chat with @${target}.`;
+  const confirmed = await appDialog.openConfirm({
+    title,
+    description,
+    confirmText: "Clear chat",
+    danger: true,
+  });
+  if (!confirmed) return;
+  socket.emit("clear_chat", { to: target, toType: chatKind });
 }
 
 function clearActiveFriendSelection() {
@@ -6867,6 +6965,7 @@ if (chatQuickMenuBtn && chatQuickMenu) {
     if (!(target instanceof Element)) return;
     const item = target.closest(".chat-quick-item");
     if (!item) return;
+    if (item instanceof HTMLButtonElement && item.disabled) return;
     const action = String(item.dataset.quickAction || "").trim();
     closeChatQuickMenu();
     if (action === "profile") {
@@ -6875,6 +6974,10 @@ if (chatQuickMenuBtn && chatQuickMenu) {
     }
     if (action === "discover") {
       switchRail("discover");
+      return;
+    }
+    if (action === "clear-chat") {
+      void requestClearActiveChat();
       return;
     }
     if (["all", "groups", "blocked", "unread"].includes(action)) {
@@ -7072,6 +7175,12 @@ if (removeFriendBtn) {
       return;
     }
     showUnfriendModal(activeFriend);
+  });
+}
+
+if (clearChatBtn) {
+  clearChatBtn.addEventListener("click", () => {
+    void requestClearActiveChat();
   });
 }
 
@@ -9779,6 +9888,50 @@ socket.on("block_updated", (data) => {
 socket.on("report_submitted", (data) => {
   const username = String(data?.username || "").trim();
   showToast(username ? `Report submitted for @${username}.` : "Report submitted. Thanks for helping keep chat safe.", "success");
+});
+
+socket.on("chat_cleared", (data) => {
+  const payloadKind = normalizeChatKind(data?.toType || data?.kind || "friend");
+  const payloadTarget = normalizeMojibakeText(data?.to || data?.with || "").trim();
+  if (!payloadTarget) return;
+
+  friends = friends.map((friend) => (
+    isSameChatTarget(friend?.username, friend?.kind || "friend", payloadTarget, payloadKind)
+      ? {
+          ...friend,
+          unreadCount: 0,
+          lastMessage: "",
+          lastTimestamp: "",
+          lastFrom: "",
+        }
+      : friend
+  ));
+
+  const isActiveTarget = Boolean(
+    activeFriend && isSameChatTarget(payloadTarget, payloadKind, activeFriend, activeChatKind)
+  );
+  if (isActiveTarget) {
+    pendingUnreadJump = { friendKey: "", count: 0 };
+    conversationMessages = [];
+    clearReply();
+    resetMessageSearch();
+    renderMessages([]);
+  }
+
+  renderFriends();
+  syncRemoveFriendButton();
+
+  const actor = String(data?.by || "").trim();
+  const actorIsMe = actor && normalizeName(actor) === normalizeName(me);
+  const chatEntry = getChatEntry(payloadTarget, payloadKind);
+  const chatLabel = getFriendDisplayName(chatEntry || { username: payloadTarget, displayName: payloadTarget });
+  if (!actorIsMe && actor) {
+    showToast(`${actor} cleared messages in ${chatLabel}.`, "info");
+    return;
+  }
+  if (isActiveTarget) {
+    showToast(payloadKind === "group" ? `Cleared chat history for ${chatLabel}.` : "Cleared chat history.", "success");
+  }
 });
 
 socket.on("friend_request_received", (data) => {

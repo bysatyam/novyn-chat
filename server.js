@@ -4639,6 +4639,74 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("clear_chat", (rawTarget) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    if (!allowSocketAction(socket, "clear_chat", 60, 60 * 60 * 1000)) {
+      socket.emit("error_message", { message: "Clear chat rate limit reached. Try again later." });
+      return;
+    }
+
+    let targetName = rawTarget;
+    let targetType = "friend";
+    if (rawTarget && typeof rawTarget === "object") {
+      targetName = rawTarget.to || rawTarget.username || rawTarget.groupId || "";
+      targetType = rawTarget.kind || rawTarget.type || rawTarget.toType || "friend";
+    }
+
+    const resolved = resolveChatTargetForUser(userKey, targetName, targetType, { inferGroup: true });
+    if (!resolved.ok) {
+      socket.emit("error_message", { message: resolved.message || "Unable to clear this chat." });
+      return;
+    }
+    if (resolved.type === "group") {
+      const role = getGroupMemberRole(resolved.group, userKey);
+      if (role !== "owner" && role !== "admin") {
+        socket.emit("error_message", { message: "Only group admins can clear group chat." });
+        return;
+      }
+    }
+
+    conversations.delete(resolved.conversationKey);
+
+    const affectedUsers = new Set();
+    if (resolved.type === "group") {
+      const groupId = resolved.group.id;
+      for (const memberKey of resolved.group.members) {
+        const normalizedMemberKey = normalizeName(memberKey);
+        const member = users.get(normalizedMemberKey);
+        if (!member) continue;
+        setUnreadCount(member, groupId, 0);
+        affectedUsers.add(normalizedMemberKey);
+      }
+    } else {
+      const me = users.get(userKey);
+      const friend = users.get(resolved.targetKey);
+      if (me) setUnreadCount(me, resolved.targetKey, 0);
+      if (friend) setUnreadCount(friend, userKey, 0);
+      affectedUsers.add(userKey);
+      affectedUsers.add(resolved.targetKey);
+    }
+
+    const payload = {
+      to: resolved.targetKey,
+      with: resolved.targetKey,
+      toType: resolved.type,
+      kind: resolved.type,
+      by: resolved.me?.username || userKey,
+    };
+
+    for (const targetKey of affectedUsers) {
+      emitFriendList(targetKey);
+      const targetSocketId = onlineUsers.get(targetKey);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("chat_cleared", payload);
+      }
+    }
+
+    schedulePersist();
+  });
+
   socket.on("set_active_chat", (rawTarget) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;

@@ -159,7 +159,7 @@
       "displayName": "",
       "bio": "",
       "createdAt": "",
-      "lastSeenAt": "2026-03-23T12:43:20.736Z"
+      "lastSeenAt": ""
     },
     {
       "key": "teat",
@@ -197,7 +197,7 @@
       "unread": [
         [
           "test11",
-          1
+          0
         ],
         [
           "grp_test11sgroup_bdf5d7",
@@ -216,7 +216,7 @@
       "displayName": "lolll",
       "bio": "huhlhlhlhl",
       "createdAt": "",
-      "lastSeenAt": ""
+      "lastSeenAt": "2026-03-23T13:37:50.889Z"
     },
     {
       "key": "bunnyjii",
@@ -280,7 +280,7 @@
         ],
         [
           "grp_test11sgroup_bdf5d7",
-          0
+          1
         ]
       ],
       "blockedUsers": [],
@@ -2613,8 +2613,8 @@
           "groupId": "",
           "text": "/uploads/voice-1774230414939-f305af.webm?token=10d4aa732c3d5cd1f30a6efd8949d992566716b642616b37c5b5d194d5fc8c1f",
           "timestamp": "2026-03-23T01:46:54.984Z",
-          "deliveredAt": null,
-          "seenAt": null,
+          "deliveredAt": "2026-03-23T13:27:25.431Z",
+          "seenAt": "2026-03-23T13:33:15.353Z",
           "deletedAt": null,
           "editedAt": null,
           "pinnedAt": null,
@@ -2627,16 +2627,16 @@
       "key": "__group__:grp_test11sgroup_bdf5d7",
       "messages": [
         {
-          "id": "1774186964447-3ua9cb",
+          "id": "1774273023116-c7vgwj",
           "from": "test11",
           "to": "@test11's group",
           "fromKey": "test11",
           "toKey": "grp_test11sgroup_bdf5d7",
           "toType": "group",
           "groupId": "grp_test11sgroup_bdf5d7",
-          "text": "hii",
-          "timestamp": "2026-03-22T13:42:44.446Z",
-          "deliveredAt": "2026-03-22T13:42:44.446Z",
+          "text": "hellp",
+          "timestamp": "2026-03-23T13:37:03.116Z",
+          "deliveredAt": "2026-03-23T13:37:03.116Z",
           "seenAt": null,
           "deletedAt": null,
           "editedAt": null,
@@ -2645,147 +2645,9 @@
           "reactions": {},
           "seenBy": [
             "test11",
-            "test2",
-            "testing"
-          ]
-        },
-        {
-          "id": "1774186992126-c9uxhk",
-          "from": "test2",
-          "to": "@test11's group",
-          "fromKey": "test2",
-          "toKey": "grp_test11sgroup_bdf5d7",
-          "toType": "group",
-          "groupId": "grp_test11sgroup_bdf5d7",
-          "text": "hello",
-          "timestamp": "2026-03-22T13:43:12.126Z",
-          "deliveredAt": "2026-03-22T13:43:12.126Z",
-          "seenAt": null,
-          "deletedAt": null,
-          "editedAt": null,
-          "pinnedAt": null,
-          "pinnedBy": "",
-          "reactions": {},
-          "seenBy": [
-            "test2",
-            "test11",
-            "testing"
-          ]
-        },
-        {
-          "id": "1774197260964-4418uj",
-          "from": "test11",
-          "to": "@test11's group",
-          "fromKey": "test11",
-          "toKey": "grp_test11sgroup_bdf5d7",
-          "toType": "group",
-          "groupId": "grp_test11sgroup_bdf5d7",
-          "text": "heyy",
-          "timestamp": "2026-03-22T16:34:20.964Z",
-          "deliveredAt": "2026-03-22T16:34:20.964Z",
-          "seenAt": null,
-          "deletedAt": null,
-          "editedAt": null,
-          "pinnedAt": null,
-          "pinnedBy": "",
-          "reactions": {},
-          "seenBy": [
-            "test11",
-            "testing",
             "test2"
-          ]
-        },
-        {
-          "id": "1774197283638-rc21jr",
-          "from": "test2",
-          "to": "@test11's group",
-          "fromKey": "test2",
-          "toKey": "grp_test11sgroup_bdf5d7",
-          "toType": "group",
-          "groupId": "grp_test11sgroup_bdf5d7",
-          "text": "yes",
-          "timestamp": "2026-03-22T16:34:43.638Z",
-          "deliveredAt": "2026-03-22T16:34:43.638Z",
-          "seenAt": null,
-          "deletedAt": null,
-          "editedAt": null,
-          "pinnedAt": null,
-          "pinnedBy": "",
-          "reactions": {},
-          "seenBy": [
-            "test2",
-            "testing",
-            "test11"
-          ]
-        },
-        {
-          "id": "1774197292578-ur4p4m",
-          "from": "testing",
-          "to": "@test11's group",
-          "fromKey": "testing",
-          "toKey": "grp_test11sgroup_bdf5d7",
-          "toType": "group",
-          "groupId": "grp_test11sgroup_bdf5d7",
-          "text": "hello",
-          "timestamp": "2026-03-22T16:34:52.578Z",
-          "deliveredAt": "2026-03-22T16:34:52.578Z",
-          "seenAt": null,
-          "deletedAt": null,
-          "editedAt": null,
-          "pinnedAt": null,
-          "pinnedBy": "",
-          "reactions": {},
-          "seenBy": [
-            "testing",
-            "test2",
-            "test11"
-          ]
-        },
-        {
-          "id": "1774199503440-ep3o9p",
-          "from": "test2",
-          "to": "@test11's group",
-          "fromKey": "test2",
-          "toKey": "grp_test11sgroup_bdf5d7",
-          "toType": "group",
-          "groupId": "grp_test11sgroup_bdf5d7",
-          "text": "oiii",
-          "timestamp": "2026-03-22T17:11:43.378Z",
-          "deliveredAt": "2026-03-22T17:11:43.378Z",
-          "seenAt": null,
-          "deletedAt": null,
-          "editedAt": null,
-          "pinnedAt": null,
-          "pinnedBy": "",
-          "reactions": {},
-          "seenBy": [
-            "test2",
-            "test11",
-            "testing"
-          ]
-        },
-        {
-          "id": "1774199514485-tvo04b",
-          "from": "test2",
-          "to": "@test11's group",
-          "fromKey": "test2",
-          "toKey": "grp_test11sgroup_bdf5d7",
-          "toType": "group",
-          "groupId": "grp_test11sgroup_bdf5d7",
-          "text": "avengers assembles",
-          "timestamp": "2026-03-22T17:11:54.485Z",
-          "deliveredAt": "2026-03-22T17:11:54.485Z",
-          "seenAt": null,
-          "deletedAt": null,
-          "editedAt": null,
-          "pinnedAt": null,
-          "pinnedBy": "",
-          "reactions": {},
-          "seenBy": [
-            "test2",
-            "test11",
-            "testing"
-          ]
+          ],
+          "clientTempId": "tmp-mn38cigt-w18xuu"
         }
       ]
     }
@@ -2804,7 +2666,7 @@
         "testing"
       ],
       "createdAt": "2026-03-22T13:42:11.676Z",
-      "updatedAt": "2026-03-22T17:11:54.485Z"
+      "updatedAt": "2026-03-23T13:37:34.891Z"
     }
   ],
   "scheduledMessages": []

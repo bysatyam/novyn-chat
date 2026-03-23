@@ -546,6 +546,13 @@ body.friend-selected .sidebar {
   background:var(--mint-dim);
   color:var(--mint-2);
 }
+.chat-quick-item-danger {
+  color:var(--danger);
+}
+.chat-quick-item-danger:hover {
+  background:rgba(240,82,79,0.08);
+  color:var(--danger);
+}
 
 /* Search bar */
 .search-bar {
@@ -3344,24 +3351,26 @@ body.info-open .info-scrim { opacity:1; pointer-events:auto; }
 .profile-handle { grid-area:handle; font-size:12.5px; color:var(--text3); margin:0; }
 .profile-status-badge {
   grid-area:status;
-  display:inline-flex; align-items:center; gap:6px;
-  font-size:11px; font-weight:600;
-  color:var(--text2);
-  background:var(--surface2);
-  border:1px solid var(--border);
-  border-radius:var(--rp);
-  padding:4px 10px; margin:4px 0 0;
+  display:block;
+  font-size:12px;
+  font-weight:500;
+  color:var(--text3);
+  background:transparent;
+  border:none;
+  border-radius:0;
+  padding:0;
+  margin:6px 0 0;
 }
 .profile-status-badge::before {
-  content:''; width:6px; height:6px; border-radius:50%;
-  background:var(--text3);
+  content:none;
 }
 .profile-status-badge.online {
-  color:var(--mint-2);
-  background:var(--mint-dim);
-  border-color:rgba(0,201,122,0.22);
+  color:var(--online);
 }
-.profile-status-badge.online::before { background:var(--mint-2); }
+.profile-status-badge.offline,
+.profile-status-badge.me {
+  color:var(--text3);
+}
 .profile-actions {
   grid-area:actions;
   display:grid;
@@ -3371,7 +3380,19 @@ body.info-open .info-scrim { opacity:1; pointer-events:auto; }
   transform:none;
   z-index:2;
 }
-#removeFriendBtn.profile-action-btn,
+#removeFriendBtn.profile-action-btn {
+  grid-column:1 / span 2;
+}
+#clearChatBtn.profile-action-btn {
+  grid-column:3 / span 1;
+  border-color:rgba(240,82,79,0.3);
+  color:var(--danger);
+}
+#clearChatBtn.profile-action-btn:hover {
+  border-color:rgba(240,82,79,0.45);
+  background:rgba(240,82,79,0.08);
+  color:var(--danger);
+}
 #infoReportBtn.profile-action-btn {
   grid-column:1 / -1;
 }
