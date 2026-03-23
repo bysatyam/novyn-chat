@@ -2477,6 +2477,18 @@ function scrollToBottom(skipAnimation = false) {
   });
 }
 
+function pinConversationToBottom(forceLatest = false) {
+  if (!messagesEl) return;
+  if (forceLatest || hasNewerMessages()) {
+    showLatestMessages();
+    return;
+  }
+  scrollState.pinnedToBottom = true;
+  scrollToBottom(true);
+  requestAnimationFrame(() => scrollToBottom(true));
+  setTimeout(() => scrollToBottom(true), 90);
+}
+
 /**
  * Returns true when the user is already near the bottom of the message list.
  * We only auto-scroll when they're within 120px of the bottom Ã¢â‚¬â€ if they've
@@ -2556,6 +2568,168 @@ function showToast(message, type = "info") {
     toast.classList.add("hidden");
   }, 2800);
 }
+
+const appDialog = (() => {
+  const modal = document.createElement("div");
+  modal.id = "appDialogModal";
+  modal.className = "confirm-modal";
+  modal.style.display = "none";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "Dialog");
+  modal.innerHTML = `
+    <div class="confirm-modal-backdrop"></div>
+    <div class="confirm-modal-card settings-modal-card app-dialog-card">
+      <div class="confirm-modal-icon app-dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+          <path d="M12 3v10"/><circle cx="12" cy="17" r="1.1"/><path d="M4.6 19.1 11 4.2a1.1 1.1 0 0 1 2 0l6.4 14.9A1.1 1.1 0 0 1 18.4 21H5.6a1.1 1.1 0 0 1-1-1.9z"/>
+        </svg>
+      </div>
+      <h3 id="appDialogTitle">Confirm action</h3>
+      <p class="confirm-modal-desc" id="appDialogDesc"></p>
+      <div class="app-dialog-form hidden" id="appDialogForm">
+        <label class="app-dialog-label" id="appDialogLabel" for="appDialogInput">Value</label>
+        <textarea id="appDialogInput" class="app-dialog-input" rows="4" maxlength="400" spellcheck="false"></textarea>
+      </div>
+      <div class="confirm-modal-btns">
+        <button type="button" class="confirm-modal-cancel" id="appDialogCancel">Cancel</button>
+        <button type="button" class="settings-confirm" id="appDialogConfirm">Confirm</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const titleEl = modal.querySelector("#appDialogTitle");
+  const descEl = modal.querySelector("#appDialogDesc");
+  const formEl = modal.querySelector("#appDialogForm");
+  const labelEl = modal.querySelector("#appDialogLabel");
+  const inputEl = modal.querySelector("#appDialogInput");
+  const cancelBtn = modal.querySelector("#appDialogCancel");
+  const confirmBtn = modal.querySelector("#appDialogConfirm");
+  const backdrop = modal.querySelector(".confirm-modal-backdrop");
+  const iconEl = modal.querySelector(".app-dialog-icon");
+
+  let resolver = null;
+  let focusReturn = null;
+  let trapCleanup = null;
+  let mode = "confirm";
+
+  function close(result) {
+    if (modal.style.display === "none") return;
+    modal.style.display = "none";
+    document.body.classList.remove("app-dialog-open");
+    if (trapCleanup) {
+      trapCleanup();
+      trapCleanup = null;
+    }
+    const resolve = resolver;
+    resolver = null;
+    if (focusReturn && typeof focusReturn.focus === "function") {
+      focusReturn.focus();
+    }
+    focusReturn = null;
+    if (resolve) resolve(result);
+  }
+
+  function openConfirm(options = {}) {
+    mode = "confirm";
+    if (titleEl) titleEl.textContent = String(options.title || "Confirm action");
+    if (descEl) descEl.textContent = String(options.description || "");
+    if (formEl) formEl.classList.add("hidden");
+    if (confirmBtn) {
+      confirmBtn.textContent = String(options.confirmText || "Confirm");
+      confirmBtn.classList.toggle("danger", Boolean(options.danger));
+    }
+    if (cancelBtn) cancelBtn.textContent = String(options.cancelText || "Cancel");
+    if (iconEl) iconEl.classList.toggle("danger", Boolean(options.danger));
+
+    focusReturn = document.activeElement;
+    modal.style.display = "flex";
+    document.body.classList.add("app-dialog-open");
+    if (trapCleanup) trapCleanup();
+    trapCleanup = trapModalFocus(modal);
+    requestAnimationFrame(() => {
+      if (confirmBtn) confirmBtn.focus();
+    });
+
+    return new Promise((resolve) => {
+      resolver = resolve;
+    });
+  }
+
+  function openPrompt(options = {}) {
+    mode = "prompt";
+    const multiline = options.multiline !== false;
+    if (titleEl) titleEl.textContent = String(options.title || "Enter value");
+    if (descEl) descEl.textContent = String(options.description || "");
+    if (labelEl) labelEl.textContent = String(options.label || "Value");
+    if (formEl) formEl.classList.remove("hidden");
+    if (inputEl) {
+      inputEl.value = String(options.defaultValue || "");
+      inputEl.placeholder = String(options.placeholder || "");
+      inputEl.maxLength = Number.isFinite(Number(options.maxLength))
+        ? Math.max(1, Math.floor(Number(options.maxLength)))
+        : 400;
+      inputEl.rows = multiline ? 4 : 1;
+      inputEl.classList.toggle("single-line", !multiline);
+    }
+    if (confirmBtn) {
+      confirmBtn.textContent = String(options.confirmText || "Submit");
+      confirmBtn.classList.toggle("danger", Boolean(options.danger));
+    }
+    if (cancelBtn) cancelBtn.textContent = String(options.cancelText || "Cancel");
+    if (iconEl) iconEl.classList.toggle("danger", Boolean(options.danger));
+
+    focusReturn = document.activeElement;
+    modal.style.display = "flex";
+    document.body.classList.add("app-dialog-open");
+    if (trapCleanup) trapCleanup();
+    trapCleanup = trapModalFocus(modal);
+    requestAnimationFrame(() => {
+      if (inputEl) {
+        inputEl.focus();
+        const len = inputEl.value.length;
+        inputEl.setSelectionRange(len, len);
+      }
+    });
+
+    return new Promise((resolve) => {
+      resolver = resolve;
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => close(null));
+  }
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", () => {
+      if (mode === "prompt") {
+        close(inputEl ? inputEl.value : "");
+        return;
+      }
+      close(true);
+    });
+  }
+  if (backdrop) {
+    backdrop.addEventListener("click", () => close(null));
+  }
+  modal.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close(null);
+      return;
+    }
+    if (event.key === "Enter" && mode === "prompt" && inputEl && inputEl.classList.contains("single-line")) {
+      event.preventDefault();
+      close(inputEl.value);
+    }
+  });
+
+  return {
+    openConfirm,
+    openPrompt,
+  };
+})();
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Username suggestions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
@@ -2666,6 +2840,39 @@ function getAudioDuration(audio) {
     }
   }
   return 0;
+}
+
+const VOICE_MIME_CANDIDATES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/aac",
+  "audio/ogg;codecs=opus",
+  "audio/ogg",
+  "audio/mpeg",
+];
+const VOICE_EXTENSION_BY_MIME = {
+  "audio/webm": ".webm",
+  "audio/wav": ".wav",
+  "audio/mpeg": ".mp3",
+  "audio/ogg": ".ogg",
+  "audio/mp4": ".m4a",
+  "audio/aac": ".aac",
+};
+
+function getSupportedVoiceMimeType() {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return "";
+  }
+  for (const candidate of VOICE_MIME_CANDIDATES) {
+    if (MediaRecorder.isTypeSupported(candidate)) return candidate;
+  }
+  return "";
+}
+
+function getVoiceFileExtension(mimeType = "") {
+  const normalized = String(mimeType || "").toLowerCase().split(";")[0].trim();
+  return VOICE_EXTENSION_BY_MIME[normalized] || ".webm";
 }
 
 const WAVE_BAR_COUNT = 28;
@@ -4954,8 +5161,8 @@ function buildMessageElement(message, skipAnimation = false) {
     const trimmedText = String(message.text || "").trim();
     const attachmentUrl = attachment?.url || "";
     const isAudio = !attachment && (
-      /^\/uploads\/.+\.(webm|wav|mp3|ogg)(\?.*)?$/i.test(trimmedText) ||
-      /^https?:\/\/.+\.(webm|wav|mp3|ogg)(\?.*)?$/i.test(trimmedText)
+      /^\/uploads\/.+\.(webm|wav|mp3|ogg|m4a|aac)(\?.*)?$/i.test(trimmedText) ||
+      /^https?:\/\/.+\.(webm|wav|mp3|ogg|m4a|aac)(\?.*)?$/i.test(trimmedText)
     );
     if (attachment) {
       if (attachment.kind === "image") {
@@ -4965,6 +5172,13 @@ function buildMessageElement(message, skipAnimation = false) {
         img.alt = attachment.name || "Image attachment";
         img.loading = "lazy";
         img.decoding = "async";
+        const keepPinnedAfterImageLoad = () => {
+          if (mine || scrollState.pinnedToBottom || isNearBottom()) {
+            pinConversationToBottom();
+          }
+        };
+        img.addEventListener("load", keepPinnedAfterImageLoad, { once: true });
+        img.addEventListener("error", keepPinnedAfterImageLoad, { once: true });
         img.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -5120,7 +5334,13 @@ function buildMessageElement(message, skipAnimation = false) {
             window._novynAudio.pause();
           }
           window._novynAudio = audio;
-          audio.play();
+          const playPromise = audio.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {
+              syncUI();
+              showToast("Unable to play this voice note.", "error");
+            });
+          }
         } else {
           audio.pause();
         }
@@ -5893,8 +6113,13 @@ function renderGroupMemberList(groupInfo) {
         removeBtn.type = "button";
         removeBtn.className = "group-member-action-btn remove";
         removeBtn.textContent = "Remove";
-        removeBtn.addEventListener("click", () => {
-          const confirmed = window.confirm(`Remove @${member.username} from this group?`);
+        removeBtn.addEventListener("click", async () => {
+          const confirmed = await appDialog.openConfirm({
+            title: `Remove @${member.username}?`,
+            description: "This member will lose access to the group until added again.",
+            confirmText: "Remove",
+            danger: true,
+          });
           if (!confirmed) return;
           socket.emit("remove_group_member", {
             groupId: groupInfo.id,
@@ -6489,14 +6714,23 @@ if (friendInput) {
   });
 }
 
-function openCreateGroupPrompt() {
+async function openCreateGroupPrompt() {
   const candidateFriends = friends.filter((entry) => normalizeChatKind(entry?.kind || "friend") === "friend");
   if (!candidateFriends.length) {
     showToast("Add at least one friend before creating a group.", "info");
     return;
   }
   const defaultName = `${getMyDisplayName()}'s group`;
-  const groupNameInput = window.prompt("Group name:", defaultName);
+  const groupNameInput = await appDialog.openPrompt({
+    title: "Create group",
+    description: "Choose a name for your new group chat.",
+    label: "Group name",
+    defaultValue: defaultName,
+    placeholder: "Group name",
+    confirmText: "Continue",
+    multiline: false,
+    maxLength: 48,
+  });
   if (groupNameInput === null) return;
   const groupName = String(groupNameInput || "").trim().slice(0, 48);
   if (!groupName) {
@@ -6505,10 +6739,16 @@ function openCreateGroupPrompt() {
   }
 
   const suggestedMembers = candidateFriends.slice(0, 5).map((entry) => entry.username).join(", ");
-  const membersInput = window.prompt(
-    "Add friends by username (comma-separated):",
-    suggestedMembers
-  );
+  const membersInput = await appDialog.openPrompt({
+    title: "Add members",
+    description: "Enter usernames separated by commas.",
+    label: "Usernames",
+    defaultValue: suggestedMembers,
+    placeholder: "alice, bob, charlie",
+    confirmText: "Create group",
+    multiline: true,
+    maxLength: 220,
+  });
   if (membersInput === null) return;
   const allowed = new Set(candidateFriends.map((entry) => normalizeName(entry.username)));
   const members = Array.from(
@@ -6530,7 +6770,7 @@ function openCreateGroupPrompt() {
   });
 }
 
-function openAddGroupMembersPrompt() {
+async function openAddGroupMembersPrompt() {
   if (!activeFriend || normalizeChatKind(activeChatKind) !== "group") {
     showToast("Open a group chat first.", "error");
     return;
@@ -6563,10 +6803,16 @@ function openAddGroupMembersPrompt() {
   }
 
   const suggestedMembers = candidateFriends.slice(0, 6).map((entry) => entry.username).join(", ");
-  const membersInput = window.prompt(
-    "Add friends by username (comma-separated):",
-    suggestedMembers
-  );
+  const membersInput = await appDialog.openPrompt({
+    title: "Add members",
+    description: "Enter usernames separated by commas.",
+    label: "Usernames",
+    defaultValue: suggestedMembers,
+    placeholder: "alice, bob, charlie",
+    confirmText: "Send invites",
+    multiline: true,
+    maxLength: 260,
+  });
   if (membersInput === null) return;
   const allowed = new Set(candidateFriends.map((entry) => normalizeName(entry.username)));
   const members = Array.from(
@@ -6809,13 +7055,18 @@ document.addEventListener("keydown", (e) => {
 });
 
 if (removeFriendBtn) {
-  removeFriendBtn.addEventListener("click", () => {
+  removeFriendBtn.addEventListener("click", async () => {
     if (!activeFriend) return;
     const activeEntry = getActiveChatEntry();
     const isGroup = normalizeChatKind(activeEntry?.kind || activeChatKind) === "group";
     if (isGroup) {
       const label = getFriendDisplayName(activeEntry || { username: activeFriend });
-      const confirmed = window.confirm(`Leave "${label}"?`);
+      const confirmed = await appDialog.openConfirm({
+        title: `Leave "${label}"?`,
+        description: "You can be re-added to this group later by an admin.",
+        confirmText: "Leave group",
+        danger: true,
+      });
       if (!confirmed) return;
       socket.emit("leave_group", { groupId: activeFriend });
       return;
@@ -7103,6 +7354,9 @@ async function uploadAttachmentFromPicker(file) {
 
   const targetFriend = activeFriend;
   const targetKind = normalizeChatKind(activeChatKind);
+  if (hasNewerMessages()) {
+    showLatestMessages();
+  }
   const tempId = createClientTempId();
   attachmentUploadState.pendingTempId = tempId;
   attachmentUploadState.target = targetFriend;
@@ -7113,6 +7367,7 @@ async function uploadAttachmentFromPicker(file) {
     { to: targetFriend, toType: targetKind, text: pendingLabel, clientTempId: tempId },
     { queue: false, updateFriends: false }
   );
+  pinConversationToBottom();
 
   try {
     const attachment = await uploadAttachmentFile(file);
@@ -7133,6 +7388,7 @@ async function uploadAttachmentFromPicker(file) {
     } else {
       sendMessagePayload({ to: targetFriend, toType: targetKind, text: attachment.url, attachment });
     }
+    pinConversationToBottom();
     showToast(attachment.kind === "image" ? "Image sent." : "File sent.", "success");
   } catch (error) {
     console.error(error);
@@ -7154,7 +7410,7 @@ async function uploadAttachmentFromPicker(file) {
   }
 }
 
-async function uploadVoiceBlob(blob) {
+async function uploadVoiceBlob(blob, options = {}) {
   if (!blob || !activeFriend) return;
   const safety = getFriendSafety(activeFriend, activeChatKind);
   if (safety.blocked) {
@@ -7163,6 +7419,9 @@ async function uploadVoiceBlob(blob) {
   }
   const targetFriend = activeFriend;
   const targetKind = normalizeChatKind(activeChatKind);
+  if (hasNewerMessages()) {
+    showLatestMessages();
+  }
   voiceState.uploading = true;
   if (voiceStatus) {
     voiceStatus.classList.remove("hidden");
@@ -7177,11 +7436,18 @@ async function uploadVoiceBlob(blob) {
   if (targetFriend) {
     const tempId = createClientTempId();
     voiceState.pendingTempId = tempId;
-  queuePendingMessage({ to: targetFriend, toType: targetKind, text: "Uploading voice message...", clientTempId: tempId }, { queue: false, updateFriends: false });
+    queuePendingMessage(
+      { to: targetFriend, toType: targetKind, text: "Uploading voice message...", clientTempId: tempId },
+      { queue: false, updateFriends: false }
+    );
   }
   try {
     const formData = new FormData();
-    formData.append("voice", blob, `voice-${Date.now()}.webm`);
+    const sourceMime = String(options.mimeType || blob.type || "").toLowerCase().trim();
+    const uploadMime = sourceMime || "audio/webm";
+    const ext = getVoiceFileExtension(uploadMime);
+    const voicePayload = blob.type ? blob : new Blob([blob], { type: uploadMime });
+    formData.append("voice", voicePayload, `voice-${Date.now()}${ext}`);
     const data = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/upload-voice");
@@ -7226,6 +7492,7 @@ async function uploadVoiceBlob(blob) {
     } else {
       sendMessagePayload({ to: targetFriend, toType: targetKind, text: data.url });
     }
+    pinConversationToBottom();
     showToast("Voice message sent", "success");
   } catch (err) {
     console.error(err);
@@ -7297,7 +7564,10 @@ async function startVoiceRecording() {
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
+    const preferredMimeType = getSupportedVoiceMimeType();
+    const recorder = preferredMimeType
+      ? new MediaRecorder(stream, { mimeType: preferredMimeType })
+      : new MediaRecorder(stream);
 
     voiceState.stream = stream;
     voiceState.recorder = recorder;
@@ -7313,14 +7583,21 @@ async function startVoiceRecording() {
       if (evt?.data?.size > 0) voiceState.chunks.push(evt.data);
     };
     recorder.onstop = async () => {
-      const blob = new Blob(voiceState.chunks, { type: "audio/webm" });
+      const recordedMime = String(
+        recorder.mimeType || preferredMimeType || voiceState.chunks?.[0]?.type || "audio/webm"
+      ).toLowerCase();
+      const blob = new Blob(voiceState.chunks, { type: recordedMime });
       const cancelled = voiceState.cancelNext;
       resetVoiceState();
       if (cancelled) {
         showToast("Recording discarded", "info");
         return;
       }
-      await uploadVoiceBlob(blob);
+      if (!blob.size) {
+        showToast("Recording is empty. Try again.", "error");
+        return;
+      }
+      await uploadVoiceBlob(blob, { mimeType: recordedMime });
     };
 
     recorder.start();
@@ -8420,6 +8697,9 @@ function updatePendingMessageText(tempId, text) {
     row.replaceWith(newRow);
   }
   applyMessageSearch();
+  if (normalizeName(msg.from) === normalizeName(me)) {
+    pinConversationToBottom();
+  }
 }
 
 function updatePendingMessageAttachment(tempId, attachment, fallbackText = "") {
@@ -8436,6 +8716,9 @@ function updatePendingMessageAttachment(tempId, attachment, fallbackText = "") {
     row.replaceWith(newRow);
   }
   applyMessageSearch();
+  if (normalizeName(msg.from) === normalizeName(me)) {
+    pinConversationToBottom();
+  }
 }
 
 function removePendingMessage(tempId) {
@@ -9011,14 +9294,29 @@ if (infoBlockBtn) {
   });
 }
 if (infoReportBtn) {
-  infoReportBtn.addEventListener("click", () => {
+  infoReportBtn.addEventListener("click", async () => {
     if (!activeFriend) return;
-    const reason = window.prompt(`Report @${activeFriend} for:`, "Spam or harassment");
+    const reason = await appDialog.openPrompt({
+      title: `Report @${activeFriend}`,
+      description: "Tell us what happened. Your report helps keep chat safe.",
+      label: "Reason",
+      defaultValue: "Spam or harassment",
+      placeholder: "Describe the issue",
+      confirmText: "Submit report",
+      danger: true,
+      multiline: true,
+      maxLength: 320,
+    });
     if (reason === null) return;
+    const trimmedReason = String(reason || "").trim();
+    if (!trimmedReason) {
+      showToast("Please enter a reason.", "error");
+      return;
+    }
     socket.emit("report_user", {
       username: activeFriend,
       category: "other",
-      reason: String(reason || "").trim(),
+      reason: trimmedReason,
     });
   });
 }
@@ -9828,6 +10126,7 @@ socket.on("private_message", (message) => {
     notifyIncomingMessage(message);
   }
 
+  const nearBottomBeforeMessage = isNearBottom();
   const wasAtLatest = !hasNewerMessages();
   conversationMessages.push({
     ...message,
@@ -9841,6 +10140,10 @@ socket.on("private_message", (message) => {
       setMessageWindowToLatest();
       renderMessageWindow();
     }
+  } else if (nearBottomBeforeMessage) {
+    showLatestMessages();
+  } else {
+    syncLoadOlderButtonVisibility();
   }
   // Only bump the unread FAB counter for incoming messages, not our own
   if (normalizeName(message.from) !== normalizeName(me)) {

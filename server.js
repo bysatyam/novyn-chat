@@ -78,14 +78,16 @@ function signUploadToken(filename) {
 function withUploadToken(rawUrl) {
   const text = toDisplayName(rawUrl);
   if (!text || !text.startsWith("/uploads/")) return text;
-  if (text.includes("token=")) return text;
   const [base, hash] = text.split("#");
-  const pathOnly = base.split("?")[0];
+  const [pathOnly, queryString = ""] = String(base || "").split("?");
   const filename = path.basename(pathOnly || "");
   if (!filename) return text;
   const token = signUploadToken(filename);
-  const joiner = base.includes("?") ? "&" : "?";
-  return `${base}${joiner}token=${token}${hash ? `#${hash}` : ""}`;
+  const params = new URLSearchParams(queryString || "");
+  params.set("token", token);
+  const serialized = params.toString();
+  const nextBase = serialized ? `${pathOnly}?${serialized}` : pathOnly;
+  return `${nextBase}${hash ? `#${hash}` : ""}`;
 }
 
 function sanitizeAttachmentName(name) {
@@ -5908,4 +5910,3 @@ bootstrap().catch((err) => {
   console.error("Failed to start server:", err);
   process.exit(1);
 });
-

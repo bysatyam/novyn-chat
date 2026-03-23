@@ -1671,6 +1671,12 @@ html.preclear-search #sidebarSearchInput { visibility:hidden; }
   box-shadow:none;
   color:var(--text);
 }
+.message.me .message-body.message-audio {
+  border:none;
+  background:transparent;
+  box-shadow:none;
+  color:var(--text);
+}
 .message.me .message-body.message-audio ~ .message-meta { color:var(--text3); }
 .audio-card {
   display:flex;
@@ -1691,9 +1697,9 @@ html.preclear-search #sidebarSearchInput { visibility:hidden; }
   box-shadow:0 4px 18px rgba(0,201,122,0.1);
 }
 body.dark .message.me .audio-card {
-  background:rgba(60,255,160,0.07);
-  border-color:rgba(60,255,160,0.18);
-  box-shadow:0 4px 18px rgba(60,255,160,0.08);
+  background:rgba(16,27,25,0.92);
+  border-color:rgba(119,157,145,0.35);
+  box-shadow:0 8px 22px rgba(0,0,0,0.36);
 }
 .audio-play {
   width:36px;
@@ -1744,7 +1750,7 @@ body.dark .wv-bar.pending { background:var(--surface3); }
 .message.me .wv-bar.played  { background:var(--mint-2); }
 .message.me .wv-bar.pending { background:rgba(0,201,122,0.22); }
 body.dark .message.me .wv-bar.played  { background:var(--mint); }
-body.dark .message.me .wv-bar.pending { background:rgba(60,255,160,0.18); }
+body.dark .message.me .wv-bar.pending { background:rgba(165,211,196,0.2); }
 .audio-time {
   font-family:var(--font-mono);
   font-size:10.5px;
@@ -1754,7 +1760,7 @@ body.dark .message.me .wv-bar.pending { background:rgba(60,255,160,0.18); }
   letter-spacing:-0.01em;
 }
 .message.me .audio-time { color:var(--mint-3); }
-body.dark .message.me .audio-time { color:var(--mint-2); }
+body.dark .message.me .audio-time { color:var(--text2); }
 .audio-el { display:none; }
 .audio-track { display:none; }
 
@@ -3266,6 +3272,10 @@ button.settings-row.danger:hover { background:rgba(240,82,79,0.06); }
 .settings-form input { width:100%; height:40px; background:var(--surface2); border:1.5px solid var(--border); border-radius:10px; padding:0 12px; color:var(--text); font-family:var(--font-body); font-size:13.5px; outline:none; transition:border-color .2s; }
 .settings-form input:focus { border-color:var(--mint); }
 .settings-confirm { padding:8px 20px; border-radius:10px; border:none; background:var(--mint-grad); color:#fff; font-family:var(--font-body); font-size:13.5px; font-weight:600; box-shadow:0 4px 12px var(--mint-glow); }
+.settings-confirm.danger {
+  background:var(--danger);
+  box-shadow:0 4px 12px rgba(240,82,79,0.32);
+}
 
 /* ═══════════════════════════════════════════
    INFO PANEL
@@ -4269,6 +4279,7 @@ body.info-open .info-scrim { opacity:1; pointer-events:auto; }
    CONFIRM MODAL
 ═══════════════════════════════════════════ */
 .confirm-modal { position:fixed; inset:0; z-index:600; display:flex; align-items:center; justify-content:center; }
+.app-dialog-open { overflow:hidden; }
 .confirm-modal-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.3); backdrop-filter:blur(6px); }
 .confirm-modal-card { position:relative; z-index:1; width:min(340px,92vw); background:var(--surface); border:1.5px solid var(--border); border-radius:22px; box-shadow:0 20px 56px rgba(0,0,0,0.15); padding:24px; text-align:center; }
 .settings-modal-card { text-align:left; }
@@ -4280,6 +4291,48 @@ body.info-open .info-scrim { opacity:1; pointer-events:auto; }
 .confirm-modal-cancel { flex:1; height:42px; border-radius:11px; border:1.5px solid var(--border); background:var(--surface2); color:var(--text2); font-family:var(--font-body); font-size:13.5px; font-weight:500; }
 .confirm-modal-cancel:hover { background:var(--surface3); }
 .confirm-modal-confirm { flex:1; height:42px; border-radius:11px; border:none; background:var(--danger); color:#fff; font-family:var(--font-body); font-size:13.5px; font-weight:600; box-shadow:0 4px 12px rgba(240,82,79,0.3); }
+.app-dialog-card { width:min(430px,94vw); }
+.app-dialog-icon.danger {
+  background:rgba(240,82,79,0.14);
+  color:var(--danger);
+}
+.app-dialog-form {
+  margin-top:8px;
+  margin-bottom:6px;
+}
+.app-dialog-form.hidden { display:none; }
+.app-dialog-label {
+  display:block;
+  margin-bottom:7px;
+  font-size:11.5px;
+  font-weight:600;
+  color:var(--text2);
+  letter-spacing:0.03em;
+}
+.app-dialog-input {
+  width:100%;
+  min-height:96px;
+  resize:vertical;
+  border:1.5px solid var(--border);
+  border-radius:12px;
+  background:var(--surface2);
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:13.5px;
+  line-height:1.45;
+  padding:10px 12px;
+  outline:none;
+}
+.app-dialog-input:focus {
+  border-color:var(--mint);
+  background:var(--surface);
+}
+.app-dialog-input.single-line {
+  min-height:40px;
+  max-height:40px;
+  resize:none;
+  line-height:1.3;
+}
 
 /* Thread and pinned message dialogs */
 .thread-modal,
