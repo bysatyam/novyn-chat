@@ -5248,85 +5248,38 @@ function buildMessageElement(message, skipAnimation = false) {
   } else {
     const trimmedText = String(message.text || "").trim();
     const attachmentUrl = attachment?.url || "";
-    const isAudio = !attachment && (
+    const audioPattern = /\.(webm|wav|mp3|ogg|m4a|aac)(\?.*)?$/i;
+    const isAudioAttachment = Boolean(attachment) && (
+      /^audio\//i.test(String(attachment?.mime || ""))
+      || audioPattern.test(attachmentUrl || trimmedText)
+    );
+    const isAudio = isAudioAttachment || (!attachment && (
       /^\/uploads\/.+\.(webm|wav|mp3|ogg|m4a|aac)(\?.*)?$/i.test(trimmedText) ||
       /^https?:\/\/.+\.(webm|wav|mp3|ogg|m4a|aac)(\?.*)?$/i.test(trimmedText)
-    );
-    if (attachment) {
-      if (attachment.kind === "image") {
-        const img = document.createElement("img");
-        img.className = "msg-img";
-        img.src = attachmentUrl || trimmedText;
-        img.alt = attachment.name || "Image attachment";
-        img.loading = "lazy";
-        img.decoding = "async";
-        const keepPinnedAfterImageLoad = () => {
-          if (mine || scrollState.pinnedToBottom || isNearBottom()) {
-            pinConversationToBottom();
-          }
-        };
-        img.addEventListener("load", keepPinnedAfterImageLoad, { once: true });
-        img.addEventListener("error", keepPinnedAfterImageLoad, { once: true });
-        img.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          imageViewer.open({
-            src: attachmentUrl || trimmedText,
-            fileName: attachment.name || "Image attachment",
-          });
-        });
-        body.appendChild(img);
-      } else {
-        const fileBubble = document.createElement("div");
-        fileBubble.className = "file-bubble";
-
-        const fileIcon = document.createElement("div");
-        fileIcon.className = "file-icon";
-        fileIcon.textContent = "FILE";
-
-        const fileMeta = document.createElement("div");
-        fileMeta.className = "file-meta";
-
-        const fileName = document.createElement("div");
-        fileName.className = "file-name";
-        fileName.textContent = attachment.name || "Attachment";
-
-        const fileSize = document.createElement("div");
-        fileSize.className = "file-size";
-        const sizeLabel = formatFileSize(attachment.size);
-        const typeLabel = attachment.mime || "File";
-        fileSize.textContent = sizeLabel ? `${typeLabel} - ${sizeLabel}` : typeLabel;
-
-        const fileUrl = attachmentUrl || trimmedText;
-        const downloadUrl = buildAttachmentDownloadUrl(fileUrl, attachment.name || "file");
-
-        const fileDownload = document.createElement("a");
-        fileDownload.className = "file-download-link";
-        fileDownload.href = downloadUrl;
-        fileDownload.textContent = "Download";
-        if (attachment.name) {
-          fileDownload.setAttribute("download", attachment.name);
+    ));
+    if (attachment && attachment.kind === "image") {
+      const img = document.createElement("img");
+      img.className = "msg-img";
+      img.src = attachmentUrl || trimmedText;
+      img.alt = attachment.name || "Image attachment";
+      img.loading = "lazy";
+      img.decoding = "async";
+      const keepPinnedAfterImageLoad = () => {
+        if (mine || scrollState.pinnedToBottom || isNearBottom()) {
+          pinConversationToBottom();
         }
-        fileDownload.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          triggerAttachmentDownload(downloadUrl, attachment.name || "file");
+      };
+      img.addEventListener("load", keepPinnedAfterImageLoad, { once: true });
+      img.addEventListener("error", keepPinnedAfterImageLoad, { once: true });
+      img.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        imageViewer.open({
+          src: attachmentUrl || trimmedText,
+          fileName: attachment.name || "Image attachment",
         });
-
-        fileMeta.append(fileName, fileSize, fileDownload);
-        fileBubble.append(fileIcon, fileMeta);
-        fileBubble.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          fileViewer.open({
-            src: fileUrl,
-            fileName: attachment.name || "Attachment",
-            mime: attachment.mime || "",
-            size: attachment.size || 0,
-          });
-        });
-        body.appendChild(fileBubble);
-      }
+      });
+      body.appendChild(img);
       body.dataset.rawText = attachment.name || attachmentUrl || message.text || "";
     } else if (callLog) {
       const log = getCallLogDisplay(callLog, mine);
@@ -5364,6 +5317,7 @@ function buildMessageElement(message, skipAnimation = false) {
 
       card.append(icon, content, right);
       body.appendChild(card);
+      body.dataset.rawText = message.text || "";
     } else if (isAudio) {
       body.classList.add("message-audio");
       const audioCard = document.createElement("div");
@@ -5390,7 +5344,7 @@ function buildMessageElement(message, skipAnimation = false) {
       const audio = document.createElement("audio");
       audio.className = "audio-el";
       audio.preload = "metadata";
-      audio.src = trimmedText;
+      audio.src = attachmentUrl || trimmedText;
       audio.setAttribute("playsinline", "");
 
       const syncUI = () => {
@@ -5446,6 +5400,58 @@ function buildMessageElement(message, skipAnimation = false) {
       audioCard.append(playBtn, waveform, time, audio);
       body.appendChild(audioCard);
       try { audio.load(); } catch (_) {}
+      body.dataset.rawText = attachment?.name || attachmentUrl || message.text || "";
+    } else if (attachment) {
+      const fileBubble = document.createElement("div");
+      fileBubble.className = "file-bubble";
+
+      const fileIcon = document.createElement("div");
+      fileIcon.className = "file-icon";
+      fileIcon.textContent = "FILE";
+
+      const fileMeta = document.createElement("div");
+      fileMeta.className = "file-meta";
+
+      const fileName = document.createElement("div");
+      fileName.className = "file-name";
+      fileName.textContent = attachment.name || "Attachment";
+
+      const fileSize = document.createElement("div");
+      fileSize.className = "file-size";
+      const sizeLabel = formatFileSize(attachment.size);
+      const typeLabel = attachment.mime || "File";
+      fileSize.textContent = sizeLabel ? `${typeLabel} - ${sizeLabel}` : typeLabel;
+
+      const fileUrl = attachmentUrl || trimmedText;
+      const downloadUrl = buildAttachmentDownloadUrl(fileUrl, attachment.name || "file");
+
+      const fileDownload = document.createElement("a");
+      fileDownload.className = "file-download-link";
+      fileDownload.href = downloadUrl;
+      fileDownload.textContent = "Download";
+      if (attachment.name) {
+        fileDownload.setAttribute("download", attachment.name);
+      }
+      fileDownload.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerAttachmentDownload(downloadUrl, attachment.name || "file");
+      });
+
+      fileMeta.append(fileName, fileSize, fileDownload);
+      fileBubble.append(fileIcon, fileMeta);
+      fileBubble.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fileViewer.open({
+          src: fileUrl,
+          fileName: attachment.name || "Attachment",
+          mime: attachment.mime || "",
+          size: attachment.size || 0,
+        });
+      });
+      body.appendChild(fileBubble);
+      body.dataset.rawText = attachment.name || attachmentUrl || message.text || "";
     } else {
       appendMessageTextWithLinks(body, message.text);
       body.dataset.rawText = message.text;
