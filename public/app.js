@@ -304,6 +304,8 @@ const CALL_HISTORY_KEY = "novyn-call-history";
 const MAX_CALL_HISTORY = 200;
 const BAD_CALL_STATUSES = new Set(["cancelled", "declined", "missed", "busy", "unavailable", "blocked"]);
 const MISSED_CALL_FILTER_STATUSES = new Set(["missed", "declined", "busy", "unavailable", "cancelled"]);
+const ATTACHMENT_EXT_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp|svg|mp4|mov|webm|mp3|wav|ogg|m4a|aac|pdf|txt|csv|zip|rar|7z|docx?|pptx?|xlsx?)(?:[?#].*)?$/i;
+const IMAGE_ATTACHMENT_EXT_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp|svg)(?:[?#].*)?$/i;
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Utilities Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
@@ -654,18 +656,41 @@ function normalizeAttachmentUrl(rawUrl) {
   return value;
 }
 
+function isLikelyAttachmentUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) return false;
+  if (/^(?:\.?\/)?uploads\//i.test(value)) return true;
+  return ATTACHMENT_EXT_PATTERN.test(value);
+}
+
+function inferAttachmentKind(url, mime = "", explicitKind = "") {
+  if (String(explicitKind || "").trim().toLowerCase() === "image") return "image";
+  if (String(mime || "").trim().toLowerCase().startsWith("image/")) return "image";
+  return IMAGE_ATTACHMENT_EXT_PATTERN.test(String(url || "").trim()) ? "image" : "file";
+}
+
+function attachmentNameFromUrl(url, fallback = "Attachment") {
+  const value = String(url || "").trim();
+  if (!value) return fallback;
+  const clean = value.split("#")[0].split("?")[0];
+  const parts = clean.split("/");
+  const last = normalizeMojibakeText(parts[parts.length - 1] || "").trim();
+  return (last || fallback).slice(0, 120);
+}
+
 function normalizeAttachmentPayload(rawAttachment, fallbackUrl = "") {
-  if (!rawAttachment || typeof rawAttachment !== "object") return null;
-  const url = normalizeAttachmentUrl(rawAttachment.url || fallbackUrl || "");
+  if (!rawAttachment) return null;
+  const payload = typeof rawAttachment === "string" ? { url: rawAttachment } : rawAttachment;
+  if (!payload || typeof payload !== "object") return null;
+  const url = normalizeAttachmentUrl(payload.url || fallbackUrl || "");
   if (!url) return null;
-  const mime = normalizeMojibakeText(rawAttachment.mime || "").trim().toLowerCase();
-  const name = normalizeMojibakeText(rawAttachment.name || "").trim().slice(0, 120);
-  const kind = String(rawAttachment.kind || "").trim().toLowerCase() === "image"
-    || mime.startsWith("image/")
-    ? "image"
-    : "file";
-  const size = Number.isFinite(Number(rawAttachment.size))
-    ? Math.max(0, Math.floor(Number(rawAttachment.size)))
+  const mime = normalizeMojibakeText(payload.mime || "").trim().toLowerCase();
+  const explicitName = normalizeMojibakeText(payload.name || "").trim().slice(0, 120);
+  const kind = inferAttachmentKind(url, mime, payload.kind);
+  const fallbackName = kind === "image" ? "Image attachment" : "Attachment";
+  const name = explicitName || attachmentNameFromUrl(url, fallbackName);
+  const size = Number.isFinite(Number(payload.size))
+    ? Math.max(0, Math.floor(Number(payload.size)))
     : 0;
   return {
     url,
@@ -3209,11 +3234,22 @@ function syncProfilePanelStats() {
 }
 
 function extractFirstUrlFromText(value) {
-  const text = String(value || "");
-  const match = text.match(/(?:https?:\/\/|www\.)[^\s<]+/i);
-  if (!match || !match[0]) return "";
-  const candidate = match[0];
-  return /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const webMatch = text.match(/(?:https?:\/\/|www\.)[^\s<]+/i);
+  if (webMatch && webMatch[0]) {
+    const candidate = webMatch[0];
+    return /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
+  }
+  const uploadMatch = text.match(/(?:^|\s)(\.?\/?uploads\/[^\s<]+)/i);
+  if (uploadMatch && uploadMatch[1]) {
+    return normalizeAttachmentUrl(uploadMatch[1]);
+  }
+  const bareFileMatch = text.match(/(?:^|\s)([a-z0-9][a-z0-9._-]*\.(?:png|jpe?g|gif|webp|bmp|svg|mp4|mov|webm|mp3|wav|ogg|m4a|aac|pdf|txt|csv|zip|rar|7z|docx?|pptx?|xlsx?)(?:[?#][^\s<]*)?)/i);
+  if (bareFileMatch && bareFileMatch[1]) {
+    return normalizeAttachmentUrl(bareFileMatch[1]);
+  }
+  return "";
 }
 
 function syncInfoMediaGrid() {
@@ -3249,11 +3285,30 @@ function syncInfoMediaGrid() {
     }
     const url = extractFirstUrlFromText(text);
     if (url) {
-      items.push({
-        type: "link",
-        url,
-        name: url,
-      });
+      if (isLikelyAttachmentUrl(url)) {
+        const legacyAttachment = normalizeAttachmentPayload({ url }, url);
+        if (legacyAttachment?.kind === "image") {
+          items.push({
+            type: "image",
+            url: legacyAttachment.url,
+            name: legacyAttachment.name || "Image attachment",
+          });
+        } else if (legacyAttachment) {
+          items.push({
+            type: "file",
+            url: legacyAttachment.url,
+            name: legacyAttachment.name || "Attachment",
+            mime: legacyAttachment.mime || "",
+            size: legacyAttachment.size || 0,
+          });
+        }
+      } else {
+        items.push({
+          type: "link",
+          url,
+          name: url,
+        });
+      }
     }
     if (items.length >= INFO_MEDIA_PREVIEW_LIMIT) break;
   }

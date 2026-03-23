@@ -136,9 +136,11 @@ function resolveUploadExtension(mime, originalName, fallbackExt = ".bin") {
 }
 
 function sanitizeMessageAttachment(rawAttachment, fallbackUrl = "") {
-  if (!rawAttachment || typeof rawAttachment !== "object") return null;
+  if (!rawAttachment) return null;
+  const attachment = typeof rawAttachment === "string" ? { url: rawAttachment } : rawAttachment;
+  if (!attachment || typeof attachment !== "object") return null;
 
-  const rawUrl = toDisplayName(rawAttachment.url || fallbackUrl);
+  const rawUrl = toDisplayName(attachment.url || fallbackUrl);
   let normalizedUrl = rawUrl;
   if (
     normalizedUrl
@@ -159,13 +161,13 @@ function sanitizeMessageAttachment(rawAttachment, fallbackUrl = "") {
   const url = withUploadToken(normalizedUrl);
   if (!url) return null;
 
-  const mime = toDisplayName(rawAttachment.mime).toLowerCase().slice(0, 120);
+  const mime = toDisplayName(attachment.mime).toLowerCase().slice(0, 120);
   const fallbackName = path.basename(String(url).split("?")[0] || "file");
-  const name = sanitizeAttachmentName(rawAttachment.name || fallbackName || "file");
-  const kind = String(rawAttachment.kind || "").toLowerCase() === "image" || mime.startsWith("image/")
+  const name = sanitizeAttachmentName(attachment.name || fallbackName || "file");
+  const kind = String(attachment.kind || "").toLowerCase() === "image" || mime.startsWith("image/")
     ? "image"
     : "file";
-  const numericSize = Number(rawAttachment.size);
+  const numericSize = Number(attachment.size);
   const size = Number.isFinite(numericSize) ? Math.max(0, Math.floor(numericSize)) : 0;
 
   return {
