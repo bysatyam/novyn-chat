@@ -203,17 +203,17 @@ window.addEventListener("pageshow", () => {
   renderCallHistory();
   renderDiscover();
 }, { passive: true });
-window.addEventListener("beforeunload", () => {
-  persistMessageDrafts({ immediate: true });
-}, { capture: true });
 
-setTimeout(() => {
-  if (!sidebarSearch || !sidebarSearch.value) return;
-  sidebarSearch.value = "";
-  sidebarSearch.setAttribute("value", "");
-  friendSearchQuery = "";
-  renderFriends();
-}, 250);
+let _clearAttempts = 0;
+const _clearSearch = setInterval(() => {
+  if (sidebarSearch && sidebarSearch.value) {
+    sidebarSearch.value = "";
+    sidebarSearch.setAttribute("value", "");
+    friendSearchQuery = "";
+    renderFriends();
+  }
+  if (++_clearAttempts >= 10) clearInterval(_clearSearch);
+}, 50);
 const sidebarBrandHTML = sidebarBrand ? sidebarBrand.innerHTML : "";
 const searchState = {
   hits: [],
@@ -253,13 +253,9 @@ let messageWindowStart = 0;
 let messageWindowEnd = 0;
 let historyRenderWarningShown = false;
 let loadOlderBtn = null;
-let loadOlderWrap = null;
-let loadOlderText = null;
-let loadOlderInFlight = false;
-const MAX_VISIBLE_MESSAGES = 200;
-const MAX_EXPANDED_VISIBLE_MESSAGES = 1200;
-const MESSAGE_WINDOW_PAGE = 80;
-const LOAD_OLDER_REVEAL_TOP_PX = 80;
+const MAX_VISIBLE_MESSAGES = 100;
+const MESSAGE_WINDOW_PAGE = 100;
+const LOAD_OLDER_SHOW_TOP_THRESHOLD = 80;
 const PENDING_RETRY_BASE_MS = 2500;
 const PENDING_RETRY_MAX_MS = 20000;
 const PENDING_RETRY_TICK_MS = 1500;
@@ -269,9 +265,6 @@ const COMPOSER_MAX_MESSAGE_LENGTH = Number.isFinite(Number(messageInput?.maxLeng
   ? Math.floor(Number(messageInput.maxLength))
   : 1000;
 const MESSAGE_DRAFT_MAX_LENGTH = COMPOSER_MAX_MESSAGE_LENGTH;
-const MESSAGE_DRAFT_PERSIST_DELAY_MS = 400;
-const MESSAGE_SEARCH_DEBOUNCE_MS = 120;
-const FRIENDS_RENDER_THROTTLE_MS = 80;
 const ATTACHMENT_MAX_SIZE_BYTES = 15 * 1024 * 1024;
 const pendingQueue = [];
 const pendingQueueByTempId = new Map();
@@ -279,9 +272,9 @@ const pendingByTempId = new Map();
 let messageDrafts = new Map();
 let loadedDraftOwnerKey = "";
 let messageDraftPersistTimer = null;
-let renderFriendsTimer = null;
-let renderFriendsQueued = false;
-let renderFriendsLastAt = 0;
+const MESSAGE_DRAFT_PERSIST_DELAY_MS = 400;
+let messageSearchDebounceTimer = null;
+const MESSAGE_SEARCH_DEBOUNCE_MS = 120;
 let networkStateLabel = "";
 let networkStateMode = "";
 window._novynProfile = myProfile;
@@ -507,7 +500,7 @@ function getScheduledMessagesForChat(target = activeFriend, kind = activeChatKin
 
 function readCookie(name) {
   const key = String(name || "").trim();
-  if (!key) return "";
+  if (!key || typeof document === "undefined") return "";
   const needle = `${key}=`;
   const parts = String(document.cookie || "").split(";");
   for (const part of parts) {
@@ -679,9 +672,6 @@ function getMessageDraftStorageKey(ownerKey = getMessageDraftOwnerKey()) {
 
 function ensureMessageDraftsLoaded(force = false) {
   const ownerKey = getMessageDraftOwnerKey();
-  if (loadedDraftOwnerKey && loadedDraftOwnerKey !== ownerKey) {
-    persistMessageDrafts({ immediate: true });
-  }
   if (!ownerKey) {
     loadedDraftOwnerKey = "";
     messageDrafts = new Map();
@@ -712,7 +702,7 @@ function ensureMessageDraftsLoaded(force = false) {
   }
 }
 
-function persistMessageDraftsNow() {
+function persistMessageDrafts() {
   if (!loadedDraftOwnerKey) return;
   const storageKey = getMessageDraftStorageKey(loadedDraftOwnerKey);
   if (!storageKey) return;
@@ -732,23 +722,22 @@ function persistMessageDraftsNow() {
   }
 }
 
-function persistMessageDrafts(options = {}) {
-  const immediate = Boolean(options?.immediate);
-  if (immediate) {
-    if (messageDraftPersistTimer) {
-      clearTimeout(messageDraftPersistTimer);
-      messageDraftPersistTimer = null;
-    }
-    persistMessageDraftsNow();
-    return;
-  }
+function schedulePersistMessageDrafts() {
   if (messageDraftPersistTimer) {
     clearTimeout(messageDraftPersistTimer);
   }
   messageDraftPersistTimer = setTimeout(() => {
     messageDraftPersistTimer = null;
-    persistMessageDraftsNow();
+    persistMessageDrafts();
   }, MESSAGE_DRAFT_PERSIST_DELAY_MS);
+}
+
+function flushPersistMessageDrafts() {
+  if (messageDraftPersistTimer) {
+    clearTimeout(messageDraftPersistTimer);
+    messageDraftPersistTimer = null;
+  }
+  persistMessageDrafts();
 }
 
 function getMessageDraft(friendUsername) {
@@ -769,14 +758,14 @@ function setMessageDraft(friendUsername, value) {
 
   if (!nextTrimmed) {
     if (messageDrafts.delete(friendKey)) {
-      persistMessageDrafts();
+      schedulePersistMessageDrafts();
     }
     return;
   }
 
   if (prev === nextValue) return;
   messageDrafts.set(friendKey, nextValue);
-  persistMessageDrafts();
+  schedulePersistMessageDrafts();
 }
 
 function removeMessageDraft(friendUsername) {
@@ -894,29 +883,6 @@ function triggerAttachmentDownload(downloadUrl, fileName = "file") {
   document.body.appendChild(link);
   link.click();
   link.remove();
-}
-
-function attachImageLoadFallback(imgEl, fileUrl, fileName = "image") {
-  if (!imgEl) return;
-  imgEl.addEventListener("error", () => {
-    if (imgEl.dataset.loadError === "1") return;
-    imgEl.dataset.loadError = "1";
-    const safeName = String(fileName || "image").trim() || "image";
-    const downloadUrl = buildAttachmentDownloadUrl(fileUrl, safeName);
-    const fallback = document.createElement("a");
-    fallback.className = "file-download-link";
-    fallback.href = downloadUrl || String(fileUrl || "").trim() || "#";
-    fallback.textContent = "Image unavailable - Download";
-    fallback.title = safeName;
-    fallback.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (downloadUrl) {
-        triggerAttachmentDownload(downloadUrl, safeName);
-      }
-    });
-    imgEl.replaceWith(fallback);
-  }, { once: true });
 }
 
 function buildCapturedPhotoFilename() {
@@ -1897,6 +1863,18 @@ function setActiveChatTarget(friendName, chatKind = activeChatKind) {
   });
 }
 
+function requestHistoryForChat(targetName = activeFriend, targetKind = activeChatKind) {
+  if (!socketAvailable || !isDashboardPage) return;
+  const to = String(targetName || "").trim();
+  if (!to) return;
+  const kind = normalizeChatKind(targetKind);
+  socket.emit("get_history", { to, toType: kind });
+  if (kind === "group") {
+    const groupId = resolveGroupChatId(to, "group");
+    if (groupId) requestGroupInfo(groupId, { kind: "group", force: true });
+  }
+}
+
 function getFriendSearchBlob(friend) {
   const displayName = getFriendDisplayName(friend);
   const bio = cleanDisplayName(friend?.bio);
@@ -2547,6 +2525,11 @@ function isNearBottom() {
   );
 }
 
+function isNearTop() {
+  if (!messagesEl) return false;
+  return messagesEl.scrollTop <= LOAD_OLDER_SHOW_TOP_THRESHOLD;
+}
+
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Network state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function getFailedPendingTempIds() {
@@ -3101,7 +3084,6 @@ function syncInfoMediaGrid() {
       img.alt = item.name;
       img.loading = "lazy";
       img.decoding = "async";
-      attachImageLoadFallback(img, item.url, item.name || "image");
       btn.appendChild(img);
       btn.addEventListener("click", () => {
         imageViewer.open({
@@ -3543,6 +3525,7 @@ function openMessageSearchPanel() {
 
 function closeMessageSearchPanel() {
   searchPanelOpen = false;
+  cancelScheduledMessageSearch();
   if (globalSearchState.timer) {
     clearTimeout(globalSearchState.timer);
     globalSearchState.timer = null;
@@ -3678,18 +3661,22 @@ function updateSearchNavButtons() {
   if (messageSearchNext) messageSearchNext.disabled = !chatMode || !hasHits;
 }
 
-function debounce(fn, waitMs = 0) {
-  let timer = null;
-  return (...args) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = null;
-      fn(...args);
-    }, waitMs);
-  };
+function cancelScheduledMessageSearch() {
+  if (!messageSearchDebounceTimer) return;
+  clearTimeout(messageSearchDebounceTimer);
+  messageSearchDebounceTimer = null;
+}
+
+function scheduleApplyMessageSearch() {
+  cancelScheduledMessageSearch();
+  messageSearchDebounceTimer = setTimeout(() => {
+    messageSearchDebounceTimer = null;
+    applyMessageSearch();
+  }, MESSAGE_SEARCH_DEBOUNCE_MS);
 }
 
 function applyMessageSearch() {
+  cancelScheduledMessageSearch();
   const query = getSearchQuery();
   const scope = getSearchScope();
   const messageNodes = Array.from(messagesEl.querySelectorAll("article.message"));
@@ -4750,9 +4737,6 @@ function renderMessagesEmptyState(text) {
   messageWindowStart = 0;
   messageWindowEnd = 0;
   loadOlderBtn = null;
-  loadOlderWrap = null;
-  loadOlderText = null;
-  loadOlderInFlight = false;
   hideTypingIndicator();
 
   const hint = text || EMPTY_CONVERSATION_HINT;
@@ -5032,7 +5016,6 @@ function buildMessageElement(message, skipAnimation = false) {
         img.alt = attachment.name || "Image attachment";
         img.loading = "lazy";
         img.decoding = "async";
-        attachImageLoadFallback(img, attachmentUrl || trimmedText, attachment.name || "image");
         img.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -5274,119 +5257,100 @@ function appendMessage(message, skipAnimation = false, withSeparator = true, ski
 
 function ensureLoadOlderButton() {
   if (!messagesEl) return null;
-  if (!loadOlderWrap || !loadOlderBtn || !loadOlderText) {
-    loadOlderWrap = document.createElement("div");
-    loadOlderWrap.className = "load-older-wrap";
-    loadOlderWrap.setAttribute("aria-live", "polite");
-
-    const leftLine = document.createElement("div");
-    leftLine.className = "lom-line";
-
+  if (!loadOlderBtn) {
     loadOlderBtn = document.createElement("button");
     loadOlderBtn.type = "button";
-    loadOlderBtn.className = "lom-trigger";
-    loadOlderBtn.setAttribute("aria-label", "Load older messages");
-
-    const icon = document.createElement("div");
-    icon.className = "lom-icon";
-    icon.setAttribute("aria-hidden", "true");
-    icon.innerHTML = `
-      <svg viewBox="0 0 22 22" fill="none">
-        <g class="lom-ring-outer">
-          <circle cx="11" cy="11" r="9"
-                  stroke="var(--mint-2)"
-                  stroke-width="1.5"
-                  stroke-dasharray="9 24"
-                  stroke-linecap="round"/>
-        </g>
-        <g class="lom-ring-inner">
-          <circle cx="11" cy="11" r="5"
-                  stroke="var(--mint-2)"
-                  stroke-width="1.2"
-                  stroke-dasharray="5 17"
-                  stroke-linecap="round"
-                  opacity="0.45"/>
-        </g>
-        <g class="lom-dot">
-          <circle cx="11" cy="11" r="2.2" fill="var(--mint-2)"/>
-        </g>
-      </svg>
+    loadOlderBtn.className = "messages-load-older hidden";
+    loadOlderBtn.innerHTML = `
+      <span class="load-older-line" aria-hidden="true"></span>
+      <span class="load-older-content">
+        <span class="load-older-icon" aria-hidden="true">
+          <svg viewBox="0 0 22 22" fill="none" focusable="false">
+            <g class="load-older-ring-outer">
+              <circle
+                cx="11"
+                cy="11"
+                r="9"
+                stroke="var(--mint-2)"
+                stroke-width="1.5"
+                stroke-dasharray="9 24"
+                stroke-linecap="round"
+              ></circle>
+            </g>
+            <g class="load-older-ring-inner">
+              <circle
+                cx="11"
+                cy="11"
+                r="5"
+                stroke="var(--mint-2)"
+                stroke-width="1.2"
+                stroke-dasharray="5 17"
+                stroke-linecap="round"
+                opacity="0.45"
+              ></circle>
+            </g>
+            <g class="load-older-dot">
+              <circle cx="11" cy="11" r="2.2" fill="var(--mint-2)"></circle>
+            </g>
+          </svg>
+        </span>
+        <span class="load-older-text">Load older messages</span>
+      </span>
+      <span class="load-older-line" aria-hidden="true"></span>
     `;
-
-    loadOlderText = document.createElement("span");
-    loadOlderText.className = "lom-text";
-    loadOlderText.textContent = "Load older messages";
-
-    loadOlderBtn.append(icon, loadOlderText);
-    loadOlderBtn.addEventListener("click", () => loadOlderMessages());
-
-    const rightLine = document.createElement("div");
-    rightLine.className = "lom-line";
-
-    loadOlderWrap.append(leftLine, loadOlderBtn, rightLine);
+    loadOlderBtn.setAttribute("aria-label", "Load older messages");
+    loadOlderBtn.addEventListener("click", loadOlderMessages);
   }
-  if (!loadOlderWrap.parentNode) {
-    messagesEl.prepend(loadOlderWrap);
+  if (!loadOlderBtn.parentNode) {
+    messagesEl.prepend(loadOlderBtn);
   }
   return loadOlderBtn;
 }
 
+function setLoadOlderButtonText(text, btn = loadOlderBtn) {
+  if (!btn) return;
+  const labelEl = btn.querySelector(".load-older-text");
+  if (labelEl) {
+    labelEl.textContent = text;
+  } else {
+    btn.textContent = text;
+  }
+}
+
 function updateLoadOlderButton() {
   const btn = ensureLoadOlderButton();
-  if (!btn || !loadOlderWrap) return;
-  const label = loadOlderText || btn.querySelector(".lom-text");
+  if (!btn) return;
   const remaining = Math.max(0, Number(messageWindowStart) || 0);
   if (remaining <= 0) {
-    loadOlderWrap.classList.add("hidden");
-    loadOlderWrap.classList.remove("visible", "loading");
+    btn.classList.add("hidden");
+    btn.classList.remove("is-loading");
     btn.disabled = false;
     btn.removeAttribute("aria-busy");
+    btn.removeAttribute("title");
+    btn.setAttribute("aria-label", "Load older messages");
     btn.dataset.remaining = "0";
-    if (label) label.textContent = "Load older messages";
+    setLoadOlderButtonText("Load older messages", btn);
     return;
   }
-  const chunk = Math.min(MESSAGE_WINDOW_PAGE, remaining);
-  const chunkLabel = chunk === 1 ? "message" : "messages";
-  const triggerLabel = `Load ${chunk} older ${chunkLabel}`;
   const remainingLabel = remaining === 1 ? "1 older message left" : `${remaining} older messages left`;
-  if (!loadOlderInFlight && label) {
-    label.textContent = triggerLabel;
-  }
+  setLoadOlderButtonText("Load older messages", btn);
   btn.title = remainingLabel;
-  btn.setAttribute("aria-label", `${triggerLabel}. ${remainingLabel}.`);
+  btn.setAttribute("aria-label", `Load older messages. ${remainingLabel}.`);
+  btn.classList.remove("is-loading");
   btn.disabled = false;
   btn.removeAttribute("aria-busy");
   btn.dataset.remaining = String(remaining);
-  loadOlderWrap.classList.remove("hidden");
-  if (!loadOlderInFlight) {
-    loadOlderWrap.classList.remove("loading");
-  }
   syncLoadOlderButtonVisibility(btn);
 }
 
-function syncLoadOlderButtonVisibility(btn = loadOlderBtn, options = {}) {
-  if (!btn || !loadOlderWrap || !messagesEl) return;
+function syncLoadOlderButtonVisibility(btn = loadOlderBtn) {
+  if (!btn) return;
   const remaining = Math.max(0, Number(btn.dataset.remaining) || 0);
   if (remaining <= 0) {
-    loadOlderWrap.classList.remove("visible", "loading");
-    loadOlderWrap.classList.add("hidden");
+    btn.classList.add("hidden");
     return;
   }
-  loadOlderWrap.classList.remove("hidden");
-  const nearTop = messagesEl.scrollTop <= LOAD_OLDER_REVEAL_TOP_PX;
-  loadOlderWrap.classList.toggle("visible", nearTop);
-  if (!nearTop && !loadOlderInFlight) {
-    loadOlderWrap.classList.remove("loading");
-  }
-  const allowAutoTrigger = Boolean(options?.allowAutoTrigger);
-  if (
-    allowAutoTrigger
-    && nearTop
-    && messagesEl.scrollTop <= 0
-    && !loadOlderInFlight
-  ) {
-    loadOlderMessages({ auto: true });
-  }
+  btn.classList.toggle("hidden", !isNearTop());
 }
 
 function setMessageWindowToLatest() {
@@ -5397,9 +5361,6 @@ function setMessageWindowToLatest() {
 function renderMessageWindow(options = {}) {
   if (!messagesEl) return;
   const preserveScroll = options.preserveScroll;
-  const maxVisible = Number.isFinite(Number(options.maxVisible))
-    ? Math.max(1, Math.floor(Number(options.maxVisible)))
-    : MAX_VISIBLE_MESSAGES;
   const prevScrollTop = preserveScroll ? messagesEl.scrollTop : 0;
   const prevScrollHeight = preserveScroll ? messagesEl.scrollHeight : 0;
   clearMessages();
@@ -5409,8 +5370,8 @@ function renderMessageWindow(options = {}) {
     messageWindowEnd = conversationMessages.length;
   }
   messageWindowEnd = Math.min(conversationMessages.length, messageWindowEnd);
-  if (messageWindowEnd - messageWindowStart > maxVisible) {
-    messageWindowStart = Math.max(0, messageWindowEnd - maxVisible);
+  if (messageWindowEnd - messageWindowStart > MAX_VISIBLE_MESSAGES) {
+    messageWindowStart = Math.max(0, messageWindowEnd - MAX_VISIBLE_MESSAGES);
   }
 
   let hadRenderError = false;
@@ -5441,40 +5402,18 @@ function renderMessageWindow(options = {}) {
   syncLoadOlderButtonVisibility();
 }
 
-function loadOlderMessages(options = {}) {
-  if (messageWindowStart <= 0 || loadOlderInFlight) return;
-  loadOlderInFlight = true;
+function loadOlderMessages() {
+  if (messageWindowStart <= 0) return;
   const btn = ensureLoadOlderButton();
-  const label = loadOlderText || btn?.querySelector(".lom-text");
-  if (loadOlderWrap) {
-    loadOlderWrap.classList.remove("hidden");
-    loadOlderWrap.classList.add("visible", "loading");
-  }
   if (btn) {
     btn.disabled = true;
+    btn.classList.add("is-loading");
     btn.setAttribute("aria-busy", "true");
+    setLoadOlderButtonText("Loading older messages...", btn);
   }
-  if (label) {
-    label.textContent = "Loading...";
-  }
-  try {
-    const prevEnd = Number.isFinite(messageWindowEnd) && messageWindowEnd > 0
-      ? Math.min(conversationMessages.length, messageWindowEnd)
-      : conversationMessages.length;
-    messageWindowStart = Math.max(0, messageWindowStart - MESSAGE_WINDOW_PAGE);
-    messageWindowEnd = prevEnd;
-    renderMessageWindow({
-      preserveScroll: true,
-      maxVisible: MAX_EXPANDED_VISIBLE_MESSAGES,
-    });
-  } finally {
-    loadOlderInFlight = false;
-    if (loadOlderWrap) {
-      loadOlderWrap.classList.remove("loading");
-    }
-    updateLoadOlderButton();
-    syncLoadOlderButtonVisibility(btn);
-  }
+  messageWindowStart = Math.max(0, messageWindowStart - MESSAGE_WINDOW_PAGE);
+  messageWindowEnd = Math.min(conversationMessages.length, messageWindowStart + MAX_VISIBLE_MESSAGES);
+  renderMessageWindow({ preserveScroll: true });
 }
 
 function hasNewerMessages() {
@@ -6326,8 +6265,7 @@ function setActiveFriend(username, kind = "friend") {
   syncActiveConversationAccess();
   applyActiveMessageDraft();
   renderMessagesEmptyState("Loading conversation...");
-  socket.emit("get_history", { to: username, toType: nextKind });
-  if (nextKind === "group") requestGroupInfo(resolveGroupChatId(username, "group"), { kind: "group", force: true });
+  requestHistoryForChat(username, nextKind);
   requestScheduledMessagesForActiveChat();
   renderFriends();
 
@@ -6337,27 +6275,7 @@ function setActiveFriend(username, kind = "friend") {
   }
 }
 
-function renderFriends(options = {}) {
-  const force = Boolean(options?.force);
-  const now = Date.now();
-  if (!force && now - renderFriendsLastAt < FRIENDS_RENDER_THROTTLE_MS) {
-    renderFriendsQueued = true;
-    if (!renderFriendsTimer) {
-      renderFriendsTimer = setTimeout(() => {
-        renderFriendsTimer = null;
-        if (!renderFriendsQueued) return;
-        renderFriendsQueued = false;
-        renderFriends({ force: true });
-      }, FRIENDS_RENDER_THROTTLE_MS);
-    }
-    return;
-  }
-  renderFriendsLastAt = now;
-  renderFriendsQueued = false;
-  if (renderFriendsTimer) {
-    clearTimeout(renderFriendsTimer);
-    renderFriendsTimer = null;
-  }
+function renderFriends() {
   if (!friendList) return;
   friendList.innerHTML = "";
   updateStats();
@@ -6846,14 +6764,8 @@ document.addEventListener("visibilitychange", () => {
     cameraCaptureModal.close();
     setActiveChatTarget("");
   } else if (activeFriend) {
-    setActiveChatTarget(activeFriend, activeChatKind);
-    if (socketAvailable && socket.connected) {
-      socket.emit("get_history", { to: activeFriend, toType: activeChatKind });
-      if (normalizeChatKind(activeChatKind) === "group") {
-        const groupId = resolveGroupChatId(activeFriend, "group");
-        if (groupId) requestGroupInfo(groupId, { kind: "group", force: true });
-      }
-    }
+    setActiveChatTarget(activeFriend);
+    requestHistoryForChat(activeFriend, activeChatKind);
   }
 });
 
@@ -9211,9 +9123,8 @@ messageInput.addEventListener("input", () => {
   messageInput.value.trim() ? markLocalTyping() : stopLocalTyping();
 });
 
-const debouncedApplyMessageSearch = debounce(applyMessageSearch, MESSAGE_SEARCH_DEBOUNCE_MS);
 if (messageSearchInput) {
-  messageSearchInput.addEventListener("input", debouncedApplyMessageSearch);
+  messageSearchInput.addEventListener("input", scheduleApplyMessageSearch);
   messageSearchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -10217,14 +10128,8 @@ socket.on("connect", () => {
   setNetworkState("Connected", "connected");
   void ensureDashboardSession(true);
   flushPendingQueue(true);
-  if (activeFriend) {
-    socket.emit("get_history", { to: activeFriend, toType: activeChatKind });
-  }
   requestScheduledMessagesForActiveChat();
-  if (normalizeChatKind(activeChatKind) === "group" && activeFriend) {
-    const groupId = resolveGroupChatId(activeFriend, "group");
-    if (groupId) requestGroupInfo(groupId, { kind: "group", force: true });
-  }
+  requestHistoryForChat();
 });
 
 socket.on("disconnect", () => {
@@ -10337,7 +10242,7 @@ syncMessageSearchUi();
 if (messagesEl) {
   messagesEl.addEventListener("scroll", () => {
     scrollState.pinnedToBottom = isNearBottom();
-    syncLoadOlderButtonVisibility(loadOlderBtn, { allowAutoTrigger: true });
+    syncLoadOlderButtonVisibility();
   }, { passive: true });
 }
 if (messagesEl && typeof ResizeObserver !== "undefined") {
@@ -10354,6 +10259,10 @@ window.addEventListener("resize", () => {
   if (scrollState.pinnedToBottom) scrollToBottom(true);
   syncLoadOlderButtonVisibility();
 }, { passive: true });
+window.addEventListener("beforeunload", () => {
+  flushPersistMessageDrafts();
+  cancelScheduledMessageSearch();
+});
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", syncViewportLayoutMetrics, { passive: true });
   window.visualViewport.addEventListener("scroll", syncViewportLayoutMetrics, { passive: true });

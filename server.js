@@ -43,16 +43,21 @@ const uploadFile = multer({
     fileSize: 15 * 1024 * 1024,
   },
 });
-const uploadTokenSecret =
-  process.env.UPLOAD_TOKEN_SECRET ||
-  process.env.CLOUDINARY_API_SECRET ||
-  "dev-secret";
+const isProductionEnv = String(process.env.NODE_ENV || "").trim().toLowerCase() === "production";
 
-if (!process.env.UPLOAD_TOKEN_SECRET && !process.env.CLOUDINARY_API_SECRET) {
-  console.warn(
-    "UPLOAD_TOKEN_SECRET is not set. Using an insecure dev secret for upload links."
-  );
+function createEphemeralSecret(label) {
+  const secret = crypto.randomBytes(32).toString("hex");
+  console.warn(`${label} is not set. Generated an ephemeral development secret.`);
+  return secret;
 }
+
+const uploadTokenSecretConfig = String(
+  process.env.UPLOAD_TOKEN_SECRET || process.env.CLOUDINARY_API_SECRET || process.env.AUTH_SECRET || ""
+).trim();
+if (!uploadTokenSecretConfig && isProductionEnv) {
+  throw new Error("UPLOAD_TOKEN_SECRET must be set in production.");
+}
+const uploadTokenSecret = uploadTokenSecretConfig || createEphemeralSecret("UPLOAD_TOKEN_SECRET");
 
 const VAPID_SUBJECT = toDisplayName(process.env.VAPID_SUBJECT) || "mailto:admin@novyn.local";
 const VAPID_PUBLIC_KEY = toDisplayName(process.env.VAPID_PUBLIC_KEY);
@@ -515,10 +520,14 @@ const RTC_TURN_USERNAME = toDisplayName(process.env.RTC_TURN_USERNAME);
 const RTC_TURN_CREDENTIAL = toDisplayName(process.env.RTC_TURN_CREDENTIAL);
 const RTC_TURN_CREDENTIAL_TYPE = toDisplayName(process.env.RTC_TURN_CREDENTIAL_TYPE) || "password";
 const RTC_ICE_SERVERS = resolveRtcIceServers();
-const AUTH_SECRET =
+const authSecretConfig =
   toDisplayName(process.env.AUTH_SECRET) ||
   toDisplayName(process.env.UPLOAD_TOKEN_SECRET) ||
-  "dev-auth-secret";
+  "";
+if (!authSecretConfig && isProductionEnv) {
+  throw new Error("AUTH_SECRET must be set in production.");
+}
+const AUTH_SECRET = authSecretConfig || uploadTokenSecret;
 const AUTH_ACCESS_COOKIE = "novyn_at";
 const AUTH_REFRESH_COOKIE = "novyn_rt";
 const AUTH_CSRF_COOKIE = "novyn_csrf";
@@ -530,8 +539,8 @@ const AUTH_REFRESH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const AUTH_ALIAS_TTL_MS = AUTH_REFRESH_REMEMBER_TTL_MS;
 const AUTH_COOKIE_SECURE = process.env.NODE_ENV === "production";
 
-if (!process.env.AUTH_SECRET && !process.env.UPLOAD_TOKEN_SECRET) {
-  console.warn("AUTH_SECRET is not set. Using an insecure dev secret for auth tokens.");
+if (!process.env.AUTH_SECRET && !process.env.UPLOAD_TOKEN_SECRET && !isProductionEnv) {
+  console.warn("AUTH_SECRET is not set. Reusing development upload-token secret for auth tokens.");
 }
 
 const users = new Map();

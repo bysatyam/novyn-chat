@@ -159,7 +159,7 @@
       "displayName": "",
       "bio": "",
       "createdAt": "",
-      "lastSeenAt": "2026-03-23T05:57:52.001Z"
+      "lastSeenAt": ""
     },
     {
       "key": "teat",
@@ -340,6 +340,28 @@
       "bio": "",
       "createdAt": "",
       "lastSeenAt": "2026-03-15T09:30:09.142Z"
+    },
+    {
+      "key": "smoke1774265846730",
+      "username": "smoke1774265846730",
+      "email": "smoke1774265846730@example.com",
+      "friends": [],
+      "groups": [],
+      "requests": [],
+      "unread": [],
+      "blockedUsers": [],
+      "mutedUsers": [],
+      "pushSubs": [],
+      "isRegistered": true,
+      "passwordSalt": "9c52cfe6ab2c3a54718f74f7db352df3",
+      "passwordHash": "cefc8b556d5637f2651b9eef358008fec235e82d9305c0518f482917cc1067ea4631a9fea79375126f37405221175cd27ac307878e7754d89d886d80e392417c",
+      "avatarId": "",
+      "age": "",
+      "gender": "",
+      "displayName": "Smoke Test",
+      "bio": "",
+      "createdAt": "2026-03-23T11:37:27.151Z",
+      "lastSeenAt": ""
     }
   ],
   "conversations": [
