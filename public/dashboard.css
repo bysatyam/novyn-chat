@@ -2221,7 +2221,7 @@ body.camera-capture-open { overflow: hidden; }
 
 /* Scroll FAB */
 .scroll-btn {
-  position:absolute; bottom:14px; right:14px;
+  position:absolute; bottom:14px; left:14px;
   width:36px; height:36px; border-radius:50%;
   background:var(--surface);
   border:1.5px solid var(--border);

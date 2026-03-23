@@ -900,6 +900,7 @@
     if (!scrollBtn) return;
     var show = !atBottom() || hasNewerWindow();
     scrollBtn.classList.toggle('visible', show);
+    scrollBtn.classList.toggle('hidden', !show);
     if (atBottom() && !hasNewerWindow()) {
       unread = 0;
       if (badge) { badge.textContent = ''; badge.classList.add('hidden'); }

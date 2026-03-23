@@ -5529,8 +5529,17 @@ function setMessageWindowToLatest() {
   messageWindowStart = Math.max(0, messageWindowEnd - MAX_VISIBLE_MESSAGES);
 }
 
+function getCurrentMessageWindowSize() {
+  const rawSize = Number(messageWindowEnd) - Number(messageWindowStart);
+  if (!Number.isFinite(rawSize) || rawSize <= 0) return MAX_VISIBLE_MESSAGES;
+  return Math.max(MAX_VISIBLE_MESSAGES, Math.floor(rawSize));
+}
+
 function renderMessageWindow(options = {}) {
   if (!messagesEl) return;
+  const maxVisible = Number.isFinite(Number(options.maxVisible)) && Number(options.maxVisible) > 0
+    ? Math.floor(Number(options.maxVisible))
+    : MAX_VISIBLE_MESSAGES;
   const preserveScroll = options.preserveScroll;
   const prevScrollTop = preserveScroll ? messagesEl.scrollTop : 0;
   const prevScrollHeight = preserveScroll ? messagesEl.scrollHeight : 0;
@@ -5541,8 +5550,8 @@ function renderMessageWindow(options = {}) {
     messageWindowEnd = conversationMessages.length;
   }
   messageWindowEnd = Math.min(conversationMessages.length, messageWindowEnd);
-  if (messageWindowEnd - messageWindowStart > MAX_VISIBLE_MESSAGES) {
-    messageWindowStart = Math.max(0, messageWindowEnd - MAX_VISIBLE_MESSAGES);
+  if (messageWindowEnd - messageWindowStart > maxVisible) {
+    messageWindowStart = Math.max(0, messageWindowEnd - maxVisible);
   }
 
   let hadRenderError = false;
@@ -5582,9 +5591,10 @@ function loadOlderMessages() {
     btn.setAttribute("aria-busy", "true");
     setLoadOlderButtonText("Loading older messages...", btn);
   }
-  messageWindowStart = Math.max(0, messageWindowStart - MESSAGE_WINDOW_PAGE);
-  messageWindowEnd = Math.min(conversationMessages.length, messageWindowStart + MAX_VISIBLE_MESSAGES);
-  renderMessageWindow({ preserveScroll: true });
+  const expandedWindowSize = getCurrentMessageWindowSize() + MESSAGE_WINDOW_PAGE;
+  messageWindowEnd = conversationMessages.length;
+  messageWindowStart = Math.max(0, messageWindowEnd - expandedWindowSize);
+  renderMessageWindow({ preserveScroll: true, maxVisible: expandedWindowSize });
 }
 
 function hasNewerMessages() {
@@ -8787,9 +8797,10 @@ function queuePendingMessage(payload, options = {}) {
   if (targetIsActiveThread && wasAtLatest) {
     messageWindowEnd = conversationMessages.length;
     appendMessage(message);
-    if (messagesEl && messagesEl.querySelectorAll("article.message").length > MAX_VISIBLE_MESSAGES) {
-      setMessageWindowToLatest();
-      renderMessageWindow();
+    const currentWindowSize = getCurrentMessageWindowSize();
+    if (messagesEl && messagesEl.querySelectorAll("article.message").length > currentWindowSize) {
+      messageWindowStart = Math.max(0, messageWindowEnd - currentWindowSize);
+      renderMessageWindow({ maxVisible: currentWindowSize });
     }
   }
   return tempId;
@@ -10289,9 +10300,10 @@ socket.on("private_message", (message) => {
   if (wasAtLatest) {
     messageWindowEnd = conversationMessages.length;
     appendMessage(conversationMessages[conversationMessages.length - 1]);
-    if (messagesEl && messagesEl.querySelectorAll("article.message").length > MAX_VISIBLE_MESSAGES) {
-      setMessageWindowToLatest();
-      renderMessageWindow();
+    const currentWindowSize = getCurrentMessageWindowSize();
+    if (messagesEl && messagesEl.querySelectorAll("article.message").length > currentWindowSize) {
+      messageWindowStart = Math.max(0, messageWindowEnd - currentWindowSize);
+      renderMessageWindow({ maxVisible: currentWindowSize });
     }
   } else if (nearBottomBeforeMessage) {
     showLatestMessages();
