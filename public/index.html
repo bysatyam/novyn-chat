@@ -136,20 +136,6 @@
           </div>
         </div>
 
-        <!-- Stories -->
-        <div class="section-label label-updates">Updates</div>
-        <div class="stories" id="storiesRow">
-          <div class="story-item">
-            <div class="story-ring add">
-              <div class="story-inner">
-                <div class="me-avatar" id="meAvatar">?</div>
-              </div>
-            </div>
-            <span class="story-label" id="meName">You</span>
-          </div>
-          <div id="storyFriendList" style="display:contents;"></div>
-        </div>
-
         <!-- Section labels -->
         <div class="section-label label-messages messages-head">
           <span>Messages</span>
@@ -206,6 +192,8 @@
         </div>
 
         <!-- Hidden compat -->
+        <span id="meAvatar" style="display:none;">?</span>
+        <span id="meName" style="display:none;">You</span>
         <span id="requestCount" style="display:none;">0</span>
         <span id="friendCount" style="display:none;">0</span>
 
@@ -874,6 +862,33 @@
         <button class="confirm-modal-cancel" id="blockedConfirmCancel">Cancel</button>
         <button class="settings-confirm" id="blockedConfirmOk">Unblock</button>
       </div>
+    </div>
+  </div>
+
+  <div id="statusViewerModal" class="status-viewer-modal hidden" role="dialog" aria-modal="true" aria-label="Status viewer">
+    <div class="status-viewer-backdrop" id="statusViewerBackdrop"></div>
+    <div class="status-viewer-card">
+      <div class="status-viewer-progress-track">
+        <div class="status-viewer-progress-fill" id="statusViewerProgressBar"></div>
+      </div>
+      <div class="status-viewer-header">
+        <div class="status-viewer-meta">
+          <div class="status-viewer-avatar" id="statusViewerAvatar">?</div>
+          <div class="status-viewer-meta-text">
+            <div class="status-viewer-name" id="statusViewerName">Status</div>
+            <div class="status-viewer-time" id="statusViewerTime">Just now</div>
+          </div>
+        </div>
+        <div class="status-viewer-actions">
+          <button type="button" class="status-viewer-action hidden" id="statusViewerEditBtn">Edit</button>
+          <button type="button" class="status-viewer-action" id="statusViewerCloseBtn" aria-label="Close status viewer">Close</button>
+        </div>
+      </div>
+      <div class="status-viewer-body">
+        <p class="status-viewer-text" id="statusViewerText">No status available.</p>
+      </div>
+      <button type="button" class="status-viewer-nav status-viewer-nav-prev" id="statusViewerPrev" aria-label="Previous status"></button>
+      <button type="button" class="status-viewer-nav status-viewer-nav-next" id="statusViewerNext" aria-label="Next status"></button>
     </div>
   </div>
 

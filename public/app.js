@@ -53,6 +53,8 @@ const attachFileInput   = document.getElementById("attachFileInput");
 const cameraBtn         = document.getElementById("cameraBtn");
 const cameraCaptureInput = document.getElementById("cameraCaptureInput");
 const toast             = document.getElementById("toast");
+const storiesRow        = document.getElementById("storiesRow");
+const storyFriendList   = document.getElementById("storyFriendList");
 const typingIndicator   = document.getElementById("typingIndicator");
 const typingAvatar      = document.getElementById("typingAvatar");
 const typingText        = document.getElementById("typingText");
@@ -103,6 +105,17 @@ const infoReportBtn    = document.getElementById("infoReportBtn");
 const infoAddMembersBtn = document.getElementById("infoAddMembersBtn");
 const infoMediaGrid    = document.getElementById("infoMediaGrid");
 const callModal        = document.getElementById("callModal");
+const statusViewerModal = document.getElementById("statusViewerModal");
+const statusViewerBackdrop = document.getElementById("statusViewerBackdrop");
+const statusViewerProgressBar = document.getElementById("statusViewerProgressBar");
+const statusViewerAvatar = document.getElementById("statusViewerAvatar");
+const statusViewerName = document.getElementById("statusViewerName");
+const statusViewerTime = document.getElementById("statusViewerTime");
+const statusViewerText = document.getElementById("statusViewerText");
+const statusViewerCloseBtn = document.getElementById("statusViewerCloseBtn");
+const statusViewerEditBtn = document.getElementById("statusViewerEditBtn");
+const statusViewerPrevBtn = document.getElementById("statusViewerPrev");
+const statusViewerNextBtn = document.getElementById("statusViewerNext");
 const callBadge        = document.getElementById("callBadge");
 const callAvatar       = document.getElementById("callAvatar");
 const callMiniAvatar   = document.getElementById("callMiniAvatar");
@@ -241,6 +254,12 @@ const groupInfoState = {
   byId: new Map(),
   requestedAt: new Map(),
 };
+const statusViewerState = {
+  entries: [],
+  index: -1,
+  startedAt: 0,
+  timerId: null,
+};
 let scheduledPanelExpanded = false;
 let pendingMessageFocus = { friendKey: "", messageId: "", kind: "friend" };
 const friendSuggestState = {
@@ -302,6 +321,10 @@ const DELETED_MESSAGE_TEXT = "This message was deleted.";
 const CALL_LOG_PREFIX = "__call_log__:";
 const CALL_HISTORY_KEY = "novyn-call-history";
 const MAX_CALL_HISTORY = 200;
+const MAX_UPDATES_STRIP_ITEMS = 12;
+const MY_STATUS_STORAGE_PREFIX = "novyn-my-status";
+const STATUS_EXPIRY_MS = 24 * 60 * 60 * 1000;
+const STATUS_SLIDE_MS = 5500;
 const BAD_CALL_STATUSES = new Set(["cancelled", "declined", "missed", "busy", "unavailable", "blocked"]);
 const MISSED_CALL_FILTER_STATUSES = new Set(["missed", "declined", "busy", "unavailable", "cancelled"]);
 const ATTACHMENT_EXT_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp|svg|mp4|mov|webm|mp3|wav|ogg|m4a|aac|pdf|txt|csv|zip|rar|7z|docx?|pptx?|xlsx?)(?:[?#].*)?$/i;
@@ -1483,6 +1506,7 @@ function setSidebarView(nextView, options = {}) {
   const allowed = ["messages", "calls", "contacts", "discover"];
   const view = allowed.includes(nextView) ? nextView : "messages";
   const prevView = sidebarView;
+  closeStatusViewer();
   sidebarView = view;
   document.body.dataset.rail = view;
   navRailButtons.forEach((btn) => {
@@ -3533,6 +3557,8 @@ function hideTypingIndicator() {
 function showSpeakingIndicator(peer) {
   if (!speakingIndicator || !speakingText) return;
   const source = String(arguments[1]?.source || "voice-note").trim() || "voice-note";
+  // Keep this chip dedicated to voice-note activity, never live call audio.
+  if (source === "call") return;
   const displayName = getCallPeerDisplayName(peer || callState.peer);
   speakingText.textContent = displayName ? `${displayName} is speaking...` : "Speaking...";
   if (speakingAvatar) {
@@ -6063,6 +6089,380 @@ function renderRequests() {
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Friends Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
+function getMyStatusStorageKey() {
+  const ownerKey = normalizeName(me || "");
+  if (!ownerKey) return "";
+  return `${MY_STATUS_STORAGE_PREFIX}:${ownerKey}`;
+}
+
+function readMyStatusEntry() {
+  const storageKey = getMyStatusStorageKey();
+  if (!storageKey) return null;
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const text = String(parsed?.text || "").trim();
+    const createdAt = String(parsed?.createdAt || "").trim();
+    if (!text || !createdAt) return null;
+    const stamp = Date.parse(createdAt);
+    if (!Number.isFinite(stamp) || (Date.now() - stamp) > STATUS_EXPIRY_MS) {
+      localStorage.removeItem(storageKey);
+      return null;
+    }
+    return { text, createdAt };
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeMyStatusEntry(text) {
+  const storageKey = getMyStatusStorageKey();
+  if (!storageKey) return false;
+  const content = String(text || "").trim().slice(0, 280);
+  if (!content) return false;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({
+      text: content,
+      createdAt: new Date().toISOString(),
+    }));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function removeMyStatusEntry() {
+  const storageKey = getMyStatusStorageKey();
+  if (!storageKey) return;
+  try {
+    localStorage.removeItem(storageKey);
+  } catch (_) {
+    // Ignore storage write issues.
+  }
+}
+
+function formatStatusTimestamp(iso) {
+  if (!iso) return "Just now";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Just now";
+  const now = new Date();
+  const timeText = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (date.toDateString() === now.toDateString()) {
+    return `Today, ${timeText}`;
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return `Yesterday, ${timeText}`;
+  }
+  const dateText = date.toLocaleDateString([], { month: "short", day: "numeric" });
+  return `${dateText}, ${timeText}`;
+}
+
+function isRecentStatusTimestamp(iso) {
+  const stamp = Date.parse(String(iso || ""));
+  if (!Number.isFinite(stamp)) return false;
+  return (Date.now() - stamp) <= STATUS_EXPIRY_MS;
+}
+
+function getFriendStatusText(friend) {
+  const bio = cleanDisplayName(friend?.bio);
+  if (bio) return bio;
+  const safeLastMessage = normalizeMojibakeText(friend?.lastMessage || "").trim();
+  if (safeLastMessage) {
+    const fromMe = normalizeName(friend?.lastFrom) === normalizeName(me);
+    const callPreview = formatCallLogPreview(safeLastMessage, fromMe);
+    const value = (callPreview || safeLastMessage).trim();
+    if (value) return value.slice(0, 220);
+  }
+  return friend?.online ? "Online now" : getFriendPresenceText(friend);
+}
+
+function friendHasFreshStatus(friend) {
+  if (!friend) return false;
+  if (cleanDisplayName(friend?.bio)) return true;
+  if (friend?.online) return true;
+  if (String(friend?.lastMessage || "").trim()) {
+    if (!friend?.lastTimestamp) return true;
+    return isRecentStatusTimestamp(friend.lastTimestamp);
+  }
+  return isRecentStatusTimestamp(friend?.lastSeenAt);
+}
+
+function buildFriendStatusEntry(friend) {
+  if (!friend) return null;
+  const username = String(friend?.username || "").trim();
+  if (!username) return null;
+  return {
+    isMine: false,
+    key: normalizeName(username),
+    username,
+    displayName: getFriendDisplayName(friend),
+    avatarId: String(friend?.avatarId || ""),
+    text: getFriendStatusText(friend),
+    timestamp: String(friend?.lastTimestamp || friend?.lastSeenAt || new Date().toISOString()),
+    online: Boolean(friend?.online),
+  };
+}
+
+function buildMyStatusEntry() {
+  const status = readMyStatusEntry();
+  if (!status || !status.text || !me) return null;
+  return {
+    isMine: true,
+    key: normalizeName(me),
+    username: me,
+    displayName: getMyDisplayName(),
+    avatarId: String(myProfile?.avatarId || ""),
+    text: status.text,
+    timestamp: status.createdAt,
+    online: true,
+  };
+}
+
+function getFriendActivityTimestamp(friend) {
+  const lastSeenAt = Date.parse(String(friend?.lastSeenAt || ""));
+  const lastMessageAt = Date.parse(String(friend?.lastTimestamp || ""));
+  const lastSeenValue = Number.isFinite(lastSeenAt) ? lastSeenAt : 0;
+  const lastMessageValue = Number.isFinite(lastMessageAt) ? lastMessageAt : 0;
+  return Math.max(lastSeenValue, lastMessageValue);
+}
+
+function getUpdatesFriends() {
+  const query = friendSearchQuery;
+  const directFriends = friends.filter((friend) => normalizeChatKind(friend?.kind || "friend") === "friend");
+  const visibleFriends = directFriends
+    .filter((friend) => !isBlockedFriendEntry(friend))
+    .filter((friend) => friendHasFreshStatus(friend));
+  const filtered = query
+    ? visibleFriends.filter((friend) => getFriendSearchBlob(friend).includes(query))
+    : visibleFriends;
+
+  return filtered
+    .slice()
+    .sort((a, b) => {
+      if (Boolean(a?.online) !== Boolean(b?.online)) {
+        return a?.online ? -1 : 1;
+      }
+      const activityDelta = getFriendActivityTimestamp(b) - getFriendActivityTimestamp(a);
+      if (activityDelta !== 0) return activityDelta;
+      return getFriendDisplayName(a).localeCompare(getFriendDisplayName(b));
+    })
+    .slice(0, MAX_UPDATES_STRIP_ITEMS);
+}
+
+function getStatusPlaybackEntries(options = {}) {
+  const includeMine = Boolean(options.includeMine);
+  const list = getUpdatesFriends()
+    .map((friend) => buildFriendStatusEntry(friend))
+    .filter(Boolean);
+  if (includeMine) {
+    const mine = buildMyStatusEntry();
+    if (mine) list.unshift(mine);
+  }
+  return list;
+}
+
+function getStatusViewerCurrentEntry() {
+  const index = Number(statusViewerState.index);
+  if (!Number.isFinite(index) || index < 0) return null;
+  return statusViewerState.entries[index] || null;
+}
+
+function setStatusViewerProgress(value = 0) {
+  if (!statusViewerProgressBar) return;
+  const ratio = Number.isFinite(Number(value)) ? Math.max(0, Math.min(1, Number(value))) : 0;
+  statusViewerProgressBar.style.width = `${(ratio * 100).toFixed(2)}%`;
+}
+
+function clearStatusViewerTimer() {
+  if (statusViewerState.timerId) {
+    clearInterval(statusViewerState.timerId);
+    statusViewerState.timerId = null;
+  }
+  statusViewerState.startedAt = 0;
+}
+
+function renderStatusViewerEntry() {
+  const entry = getStatusViewerCurrentEntry();
+  if (!entry || !statusViewerModal) {
+    closeStatusViewer();
+    return;
+  }
+  const fallback = String(entry.displayName || entry.username || "?").slice(0, 2).toUpperCase() || "?";
+  if (statusViewerAvatar) {
+    if (entry.avatarId && window._novynAvatarUtils) {
+      window._novynAvatarUtils.applyAvatarToEl(statusViewerAvatar, entry.avatarId, fallback);
+    } else {
+      statusViewerAvatar.style.background = "";
+      statusViewerAvatar.textContent = fallback;
+    }
+  }
+  if (statusViewerName) statusViewerName.textContent = String(entry.displayName || entry.username || "Status");
+  if (statusViewerTime) statusViewerTime.textContent = formatStatusTimestamp(entry.timestamp);
+  if (statusViewerText) statusViewerText.textContent = String(entry.text || "No status available.");
+  if (statusViewerEditBtn) statusViewerEditBtn.classList.toggle("hidden", !entry.isMine);
+  if (statusViewerPrevBtn) statusViewerPrevBtn.disabled = statusViewerState.index <= 0;
+  if (statusViewerNextBtn) statusViewerNextBtn.disabled = statusViewerState.index >= (statusViewerState.entries.length - 1);
+
+  clearStatusViewerTimer();
+  setStatusViewerProgress(0);
+  statusViewerState.startedAt = Date.now();
+  statusViewerState.timerId = setInterval(() => {
+    const elapsed = Date.now() - statusViewerState.startedAt;
+    const ratio = elapsed / STATUS_SLIDE_MS;
+    setStatusViewerProgress(ratio);
+    if (ratio < 1) return;
+    stepStatusViewer(1, { auto: true });
+  }, 90);
+}
+
+function stepStatusViewer(direction, options = {}) {
+  if (!statusViewerState.entries.length) {
+    closeStatusViewer();
+    return;
+  }
+  const nextIndex = statusViewerState.index + (direction < 0 ? -1 : 1);
+  if (nextIndex < 0 || nextIndex >= statusViewerState.entries.length) {
+    if (options.auto) {
+      closeStatusViewer();
+    } else {
+      setStatusViewerProgress(1);
+    }
+    return;
+  }
+  statusViewerState.index = nextIndex;
+  renderStatusViewerEntry();
+}
+
+function closeStatusViewer() {
+  clearStatusViewerTimer();
+  setStatusViewerProgress(0);
+  statusViewerState.entries = [];
+  statusViewerState.index = -1;
+  if (statusViewerModal) statusViewerModal.classList.add("hidden");
+  document.body.classList.remove("status-viewer-open");
+}
+
+function openStatusViewerByUsername(username, options = {}) {
+  const targetKey = normalizeName(username);
+  if (!targetKey || !statusViewerModal) return false;
+  const entries = getStatusPlaybackEntries({ includeMine: Boolean(options.includeMine) });
+  if (!entries.length) {
+    showToast("No statuses yet.", "info");
+    return false;
+  }
+
+  let startIndex = entries.findIndex((entry) => normalizeName(entry.username) === targetKey);
+  if (startIndex < 0) startIndex = 0;
+
+  statusViewerState.entries = entries;
+  statusViewerState.index = startIndex;
+  statusViewerModal.classList.remove("hidden");
+  document.body.classList.add("status-viewer-open");
+  renderStatusViewerEntry();
+  return true;
+}
+
+async function promptForMyStatus(options = {}) {
+  const existing = readMyStatusEntry();
+  const nextValue = await appDialog.openPrompt({
+    title: existing ? "Update your status" : "Post a status",
+    description: "Statuses disappear after 24 hours.",
+    label: "Status text",
+    defaultValue: existing?.text || "",
+    placeholder: "What's on your mind?",
+    confirmText: existing ? "Update" : "Post",
+    maxLength: 280,
+    multiline: true,
+  });
+  if (nextValue === null) return false;
+
+  const text = String(nextValue || "").trim();
+  if (!text) {
+    if (existing) {
+      removeMyStatusEntry();
+      showToast("Status removed.", "success");
+      renderUpdates();
+      closeStatusViewer();
+    } else {
+      showToast("Status not added.", "info");
+    }
+    return false;
+  }
+
+  if (!writeMyStatusEntry(text)) {
+    showToast("Couldn't save status.", "error");
+    return false;
+  }
+
+  showToast(existing ? "Status updated." : "Status posted.", "success");
+  renderUpdates();
+  if (options.openViewer !== false) {
+    openStatusViewerByUsername(me, { includeMine: true });
+  }
+  return true;
+}
+
+function renderUpdates() {
+  if (!storyFriendList) return;
+  storyFriendList.innerHTML = "";
+
+  const meStoryItem = storiesRow ? storiesRow.querySelector(".story-item") : null;
+  const meStatus = buildMyStatusEntry();
+  if (meStoryItem) {
+    const meRing = meStoryItem.querySelector(".story-ring");
+    meStoryItem.dataset.storyAction = "my-status";
+    meStoryItem.setAttribute("role", "button");
+    meStoryItem.tabIndex = 0;
+    meStoryItem.title = meStatus ? `View your status (${formatStatusTimestamp(meStatus.timestamp)})` : "Add a status";
+    meStoryItem.setAttribute("aria-label", meStatus ? "View your status" : "Add your status");
+    if (meRing) {
+      meRing.classList.toggle("add", !meStatus);
+      meRing.classList.remove("muted");
+    }
+  }
+
+  const updates = getUpdatesFriends();
+  updates.forEach((friend) => {
+    const statusEntry = buildFriendStatusEntry(friend);
+    if (!statusEntry) return;
+    const displayName = statusEntry.displayName;
+    const fallback = displayName.slice(0, 2).toUpperCase() || "?";
+    const item = document.createElement("div");
+    item.className = "story-item";
+    item.dataset.storyAction = "status";
+    item.dataset.storyUsername = statusEntry.username;
+    item.setAttribute("role", "button");
+    item.tabIndex = 0;
+    item.title = `${statusEntry.text.slice(0, 70)}${statusEntry.text.length > 70 ? "..." : ""}`;
+    item.setAttribute("aria-label", `View ${displayName}'s status`);
+
+    const ring = document.createElement("div");
+    ring.className = "story-ring";
+    const inner = document.createElement("div");
+    inner.className = "story-inner";
+    const avatar = document.createElement("div");
+    avatar.className = "story-avatar";
+    if (statusEntry.avatarId && window._novynAvatarUtils) {
+      window._novynAvatarUtils.applyAvatarToEl(avatar, statusEntry.avatarId, fallback);
+    } else {
+      avatar.textContent = fallback;
+    }
+    inner.appendChild(avatar);
+    ring.appendChild(inner);
+
+    const label = document.createElement("span");
+    label.className = "story-label";
+    label.textContent = displayName;
+    label.title = `${displayName} - ${formatStatusTimestamp(statusEntry.timestamp)}`;
+
+    item.append(ring, label);
+    storyFriendList.appendChild(item);
+  });
+}
+
 function friendPreview(friend) {
   if (!friend.lastMessage) {
     const bio = cleanDisplayName(friend?.bio);
@@ -6651,6 +7051,7 @@ function setActiveFriend(username, kind = "friend") {
 }
 
 function renderFriends() {
+  renderUpdates();
   if (!friendList) return;
   friendList.innerHTML = "";
   updateStats();
@@ -7163,9 +7564,92 @@ document.addEventListener("visibilitychange", () => {
   if (!isDashboardPage) return;
   if (document.hidden) {
     cameraCaptureModal.close();
+    closeStatusViewer();
     setActiveChatTarget("");
   } else if (activeFriend) {
     setActiveChatTarget(activeFriend);
+  }
+});
+
+if (storiesRow) {
+  const activateStoryItem = async (item) => {
+    if (!item) return;
+    const action = String(item.dataset.storyAction || "").trim();
+    if (action === "my-status") {
+      if (readMyStatusEntry()) {
+        openStatusViewerByUsername(me, { includeMine: true });
+        return;
+      }
+      await promptForMyStatus({ openViewer: true });
+      return;
+    }
+    if (action !== "status") return;
+    const username = String(item.dataset.storyUsername || "").trim();
+    if (!username) return;
+    openStatusViewerByUsername(username);
+  };
+
+  storiesRow.addEventListener("click", (e) => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const item = target.closest(".story-item");
+    if (!item || !storiesRow.contains(item)) return;
+    e.preventDefault();
+    void activateStoryItem(item);
+  });
+
+  storiesRow.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const item = target.closest(".story-item");
+    if (!item || !storiesRow.contains(item)) return;
+    e.preventDefault();
+    void activateStoryItem(item);
+  });
+}
+
+if (statusViewerBackdrop) {
+  statusViewerBackdrop.addEventListener("click", () => closeStatusViewer());
+}
+if (statusViewerCloseBtn) {
+  statusViewerCloseBtn.addEventListener("click", () => closeStatusViewer());
+}
+if (statusViewerPrevBtn) {
+  statusViewerPrevBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    stepStatusViewer(-1);
+  });
+}
+if (statusViewerNextBtn) {
+  statusViewerNextBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    stepStatusViewer(1);
+  });
+}
+if (statusViewerEditBtn) {
+  statusViewerEditBtn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const updated = await promptForMyStatus({ openViewer: false });
+    if (!updated) return;
+    openStatusViewerByUsername(me, { includeMine: true });
+  });
+}
+document.addEventListener("keydown", (e) => {
+  if (!statusViewerModal || statusViewerModal.classList.contains("hidden")) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeStatusViewer();
+    return;
+  }
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    stepStatusViewer(-1);
+    return;
+  }
+  if (e.key === "ArrowRight") {
+    e.preventDefault();
+    stepStatusViewer(1);
   }
 });
 
