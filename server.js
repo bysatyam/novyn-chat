@@ -4486,22 +4486,42 @@ io.on("connection", (socket) => {
     socket.emit("password_reset_success", { message: "Password updated. Please sign in." });
   });
 
-  socket.on("request_email_change_code", async (payload) => {
+  socket.on("request_email_change_code", async (payload, respond) => {
+    const reply = (data) => {
+      if (typeof respond === "function") {
+        try {
+          respond(data);
+        } catch (_) {}
+        return true;
+      }
+      return false;
+    };
+    const fail = (message) => {
+      const packet = { ok: false, message };
+      if (!reply(packet)) {
+        socket.emit("email_change_failed", { message });
+      }
+    };
+    const success = (message, email) => {
+      const packet = { ok: true, message, email: email || "" };
+      if (!reply(packet)) {
+        socket.emit("email_change_code_sent", { message, email: email || "" });
+      }
+    };
+
     const userKey = socket.data.userKey;
     if (!userKey) {
-      socket.emit("email_change_failed", { message: "Sign in again to continue." });
+      fail("Sign in again to continue.");
       return;
     }
     if (!isPasswordResetDeliveryAvailable()) {
-      socket.emit("email_change_failed", {
-        message: "Email verification service is unavailable. Try again later.",
-      });
+      fail("Email verification service is unavailable. Try again later.");
       return;
     }
 
     const user = users.get(userKey);
     if (!user || !user.isRegistered) {
-      socket.emit("email_change_failed", { message: "Sign in again to continue." });
+      fail("Sign in again to continue.");
       return;
     }
 
@@ -4510,27 +4530,27 @@ io.on("connection", (socket) => {
     const currentEmail = normalizeEmail(user.email || "");
 
     if (!nextEmail) {
-      socket.emit("email_change_failed", { message: "Enter your new email address." });
+      fail("Enter your new email address.");
       return;
     }
     if (!isPlausibleEmail(nextEmail)) {
-      socket.emit("email_change_failed", { message: "Enter a valid email address." });
+      fail("Enter a valid email address.");
       return;
     }
     if (nextEmail === currentEmail) {
-      socket.emit("email_change_failed", { message: "That email is already linked to your account." });
+      fail("That email is already linked to your account.");
       return;
     }
 
     const existing = findUserByEmail(nextEmail);
     if (existing && normalizeName(existing.username) !== userKey) {
-      socket.emit("email_change_failed", { message: "Email already linked to another account." });
+      fail("Email already linked to another account.");
       return;
     }
 
     const rate = canIssueEmailChangeCode(userKey);
     if (!rate.allowed) {
-      socket.emit("email_change_failed", { message: rate.message });
+      fail(rate.message);
       return;
     }
 
@@ -4556,28 +4576,45 @@ io.on("connection", (socket) => {
     const dispatched = await dispatchEmailChangeCode(user, nextEmail, token);
     if (!dispatched) {
       dropEmailChangeTokenById(tokenId);
-      socket.emit("email_change_failed", {
-        message: "Email verification service is unavailable. Try again later.",
-      });
+      fail("Email verification service is unavailable. Try again later.");
       return;
     }
 
-    socket.emit("email_change_code_sent", {
-      message: `Verification code sent to ${maskEmailAddress(nextEmail)}.`,
-      email: nextEmail,
-    });
+    success(`Verification code sent to ${maskEmailAddress(nextEmail)}.`, nextEmail);
   });
 
-  socket.on("verify_email_change_code", (payload) => {
+  socket.on("verify_email_change_code", (payload, respond) => {
+    const reply = (data) => {
+      if (typeof respond === "function") {
+        try {
+          respond(data);
+        } catch (_) {}
+        return true;
+      }
+      return false;
+    };
+    const fail = (message) => {
+      const packet = { ok: false, message };
+      if (!reply(packet)) {
+        socket.emit("email_change_failed", { message });
+      }
+    };
+    const success = (message, email) => {
+      const packet = { ok: true, message, email: email || "" };
+      if (!reply(packet)) {
+        socket.emit("email_change_verified", { message, email: email || "" });
+      }
+    };
+
     const userKey = socket.data.userKey;
     if (!userKey) {
-      socket.emit("email_change_failed", { message: "Sign in again to continue." });
+      fail("Sign in again to continue.");
       return;
     }
 
     const user = users.get(userKey);
     if (!user || !user.isRegistered) {
-      socket.emit("email_change_failed", { message: "Sign in again to continue." });
+      fail("Sign in again to continue.");
       return;
     }
 
@@ -4585,40 +4622,38 @@ io.on("connection", (socket) => {
     const nextEmail = normalizeEmail(payload?.email || payload?.newEmail || "");
     const token = toDisplayName(payload?.token || payload?.code || "");
     if (!nextEmail || !token) {
-      socket.emit("email_change_failed", { message: "Email and verification code are required." });
+      fail("Email and verification code are required.");
       return;
     }
 
     const tokenId = emailChangeByUser.get(userKey);
     const entry = tokenId ? emailChangeTokens.get(tokenId) : null;
     if (!entry || entry.userKey !== userKey) {
-      socket.emit("email_change_failed", { message: "Invalid or expired verification code." });
+      fail("Invalid or expired verification code.");
       return;
     }
 
     if (normalizeEmail(entry.pendingEmail || "") !== nextEmail) {
-      socket.emit("email_change_failed", {
-        message: "This code was issued for a different email. Request a new code.",
-      });
+      fail("This code was issued for a different email. Request a new code.");
       return;
     }
 
     if (Date.now() > Number(entry.expiresAt)) {
       dropEmailChangeTokenById(tokenId);
-      socket.emit("email_change_failed", { message: "Verification code expired. Request a new one." });
+      fail("Verification code expired. Request a new one.");
       return;
     }
 
     if (!Number.isFinite(Number(entry.attemptsLeft)) || Number(entry.attemptsLeft) <= 0) {
       dropEmailChangeTokenById(tokenId);
-      socket.emit("email_change_failed", { message: "Too many attempts. Request a new code." });
+      fail("Too many attempts. Request a new code.");
       return;
     }
 
     const existing = findUserByEmail(nextEmail);
     if (existing && normalizeName(existing.username) !== userKey) {
       dropEmailChangeTokenById(tokenId);
-      socket.emit("email_change_failed", { message: "Email already linked to another account." });
+      fail("Email already linked to another account.");
       return;
     }
 
@@ -4627,12 +4662,10 @@ io.on("connection", (socket) => {
       entry.attemptsLeft = Math.max(0, Number(entry.attemptsLeft) - 1);
       if (entry.attemptsLeft <= 0) {
         dropEmailChangeTokenById(tokenId);
-        socket.emit("email_change_failed", { message: "Too many attempts. Request a new code." });
+        fail("Too many attempts. Request a new code.");
         return;
       }
-      socket.emit("email_change_failed", {
-        message: `Invalid verification code. ${entry.attemptsLeft} attempt(s) left.`,
-      });
+      fail(`Invalid verification code. ${entry.attemptsLeft} attempt(s) left.`);
       return;
     }
 
@@ -4648,10 +4681,7 @@ io.on("connection", (socket) => {
       bio: user.bio,
       email: user.email || "",
     });
-    socket.emit("email_change_verified", {
-      message: "Email linked successfully.",
-      email: user.email || "",
-    });
+    success("Email linked successfully.", user.email || "");
   });
 
   socket.on("push_subscribe", (payload) => {

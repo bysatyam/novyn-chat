@@ -1697,6 +1697,9 @@
   var currentAvatarId = '';
   var pendingEmailCodeRequest = false;
   var pendingEmailCodeVerify = false;
+  var EMAIL_CHANGE_RESPONSE_TIMEOUT_MS = 12000;
+  var emailRequestTimeoutId = null;
+  var emailVerifyTimeoutId = null;
 
   function getAvatarById(id) {
     return AVATARS.find(function(a){ return a.id === id; }) || null;
@@ -1740,6 +1743,55 @@
 
   function getLinkedEmail() {
     return normalizeEmail(window._novynProfile && window._novynProfile.email);
+  }
+
+  function isProfileSocketUsable(socket) {
+    return Boolean(
+      socket
+      && typeof socket.emit === 'function'
+      && typeof socket.on === 'function'
+      && (socket.io || typeof socket.connect === 'function' || typeof socket.id === 'string')
+    );
+  }
+
+  function getProfileSocket() {
+    var socket = window._novynSocket;
+    return isProfileSocketUsable(socket) ? socket : null;
+  }
+
+  function clearEmailTimeout(kind) {
+    if ((kind === 'request' || kind === 'all') && emailRequestTimeoutId) {
+      clearTimeout(emailRequestTimeoutId);
+      emailRequestTimeoutId = null;
+    }
+    if ((kind === 'verify' || kind === 'all') && emailVerifyTimeoutId) {
+      clearTimeout(emailVerifyTimeoutId);
+      emailVerifyTimeoutId = null;
+    }
+  }
+
+  function startEmailTimeout(kind) {
+    clearEmailTimeout(kind);
+    var timeoutMessage = 'No response from server. Refresh once and try again.';
+    if (kind === 'request') {
+      emailRequestTimeoutId = setTimeout(function () {
+        emailRequestTimeoutId = null;
+        pendingEmailCodeRequest = false;
+        setEmailBusy(false);
+        setEmailStatus(timeoutMessage, 'error');
+        toast(timeoutMessage, 'error');
+      }, EMAIL_CHANGE_RESPONSE_TIMEOUT_MS);
+      return;
+    }
+    if (kind === 'verify') {
+      emailVerifyTimeoutId = setTimeout(function () {
+        emailVerifyTimeoutId = null;
+        pendingEmailCodeVerify = false;
+        setEmailBusy(false);
+        setEmailStatus(timeoutMessage, 'error');
+        toast(timeoutMessage, 'error');
+      }, EMAIL_CHANGE_RESPONSE_TIMEOUT_MS);
+    }
   }
 
   // Build avatar grid
@@ -1799,6 +1851,7 @@
     if (!modal) return;
     lastProfileFocus = document.activeElement;
     modal.style.display = 'flex';
+    clearEmailTimeout('all');
     if (profileTrapCleanup) profileTrapCleanup();
     profileTrapCleanup = trapProfileFocus();
     var p = window._novynProfile || {};
@@ -1831,6 +1884,7 @@
   function hideModal() {
     if (!modal) return;
     modal.style.display = 'none';
+    clearEmailTimeout('all');
     if (profileTrapCleanup) {
       profileTrapCleanup();
       profileTrapCleanup = null;
@@ -1854,11 +1908,12 @@
   });
 
   function bindProfileSocketHandlers() {
-    var socket = window._novynSocket;
+    var socket = getProfileSocket();
     if (!socket || bindProfileSocketHandlers._bound) return;
     bindProfileSocketHandlers._bound = true;
 
     socket.on('email_change_code_sent', function (data) {
+      clearEmailTimeout('request');
       pendingEmailCodeRequest = false;
       setEmailBusy(false);
       var message = data && data.message ? data.message : 'Verification code sent.';
@@ -1868,6 +1923,7 @@
     });
 
     socket.on('email_change_failed', function (data) {
+      clearEmailTimeout('all');
       pendingEmailCodeRequest = false;
       pendingEmailCodeVerify = false;
       setEmailBusy(false);
@@ -1877,6 +1933,7 @@
     });
 
     socket.on('email_change_verified', function (data) {
+      clearEmailTimeout('verify');
       pendingEmailCodeRequest = false;
       pendingEmailCodeVerify = false;
       setEmailBusy(false);
@@ -1888,19 +1945,32 @@
     });
   }
   bindProfileSocketHandlers();
-  if (!bindProfileSocketHandlers._bound) {
-    var profileSocketBindTimer = setInterval(function () {
-      bindProfileSocketHandlers();
-      if (bindProfileSocketHandlers._bound) {
+  var profileSocketBindTimer = null;
+  function ensureProfileSocketHandlers() {
+    bindProfileSocketHandlers();
+    if (bindProfileSocketHandlers._bound) {
+      if (profileSocketBindTimer) {
         clearInterval(profileSocketBindTimer);
+        profileSocketBindTimer = null;
       }
-    }, 400);
-    setTimeout(function () { clearInterval(profileSocketBindTimer); }, 8000);
+      return;
+    }
+    if (!profileSocketBindTimer) {
+      profileSocketBindTimer = setInterval(function () {
+        bindProfileSocketHandlers();
+        if (bindProfileSocketHandlers._bound) {
+          clearInterval(profileSocketBindTimer);
+          profileSocketBindTimer = null;
+        }
+      }, 600);
+    }
   }
+  ensureProfileSocketHandlers();
 
   emailSendBtn && emailSendBtn.addEventListener('click', function () {
     if (pendingEmailCodeRequest || pendingEmailCodeVerify) return;
-    var socket = window._novynSocket;
+    ensureProfileSocketHandlers();
+    var socket = getProfileSocket();
     if (!socket) {
       setEmailStatus('Realtime connection not available.', 'error');
       toast('Realtime connection not available.', 'error');
@@ -1919,12 +1989,31 @@
     pendingEmailCodeRequest = true;
     setEmailBusy(true);
     setEmailStatus('Sending verification code...', '');
-    socket.emit('request_email_change_code', { email: nextEmail });
+    startEmailTimeout('request');
+    socket.emit('request_email_change_code', { email: nextEmail }, function (response) {
+      if (!response || typeof response !== 'object') return;
+      clearEmailTimeout('request');
+      if (!response.ok) {
+        pendingEmailCodeRequest = false;
+        setEmailBusy(false);
+        var failMsg = response.message || 'Unable to send verification code.';
+        setEmailStatus(failMsg, 'error');
+        toast(failMsg, 'error');
+        return;
+      }
+      pendingEmailCodeRequest = false;
+      setEmailBusy(false);
+      var okMsg = response.message || 'Verification code sent.';
+      setEmailStatus(okMsg, 'success');
+      toast(okMsg, 'success');
+      if (emailCodeInput) emailCodeInput.focus();
+    });
   });
 
   emailVerifyBtn && emailVerifyBtn.addEventListener('click', function () {
     if (pendingEmailCodeRequest || pendingEmailCodeVerify) return;
-    var socket = window._novynSocket;
+    ensureProfileSocketHandlers();
+    var socket = getProfileSocket();
     if (!socket) {
       setEmailStatus('Realtime connection not available.', 'error');
       toast('Realtime connection not available.', 'error');
@@ -1943,7 +2032,27 @@
     pendingEmailCodeVerify = true;
     setEmailBusy(true);
     setEmailStatus('Verifying code...', '');
-    socket.emit('verify_email_change_code', { email: nextEmail, code: code });
+    startEmailTimeout('verify');
+    socket.emit('verify_email_change_code', { email: nextEmail, code: code }, function (response) {
+      if (!response || typeof response !== 'object') return;
+      clearEmailTimeout('verify');
+      if (!response.ok) {
+        pendingEmailCodeVerify = false;
+        setEmailBusy(false);
+        var failMsg = response.message || 'Unable to verify code.';
+        setEmailStatus(failMsg, 'error');
+        toast(failMsg, 'error');
+        return;
+      }
+      pendingEmailCodeVerify = false;
+      setEmailBusy(false);
+      var linkedEmail = normalizeEmail(response.email || nextEmail);
+      if (inputEmail && linkedEmail) inputEmail.value = linkedEmail;
+      if (emailCodeInput) emailCodeInput.value = '';
+      var okMsg = response.message || 'Email linked successfully.';
+      setEmailStatus(okMsg, 'success');
+      toast(okMsg, 'success');
+    });
   });
 
   inputEmail && inputEmail.addEventListener('input', function () {

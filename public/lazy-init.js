@@ -1,4 +1,5 @@
 (function () {
+  var ASSET_VERSION = "20260408a";
   var loaded = Object.create(null);
 
   function loadScript(src) {
@@ -60,7 +61,7 @@
 
   function startLazyBoot() {
     setTimeout(function () {
-      loadScript("chat-extras.js").catch(function () {});
+      loadScript("chat-extras.js?v=" + ASSET_VERSION).catch(function () {});
     }, 0);
 
     runIdle(function () {
@@ -69,7 +70,7 @@
         ? Promise.resolve()
         : loadScript("https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js");
       threeReady
-        .then(function () { return loadScript("visuals.js"); })
+        .then(function () { return loadScript("visuals.js?v=" + ASSET_VERSION); })
         .catch(function () {});
     }, 1800);
   }
