@@ -282,6 +282,7 @@ let messageWindowStart = 0;
 let messageWindowEnd = 0;
 let historyRenderWarningShown = false;
 let loadOlderBtn = null;
+let loadOlderInProgress = false;
 const MAX_VISIBLE_MESSAGES = 100;
 const MESSAGE_WINDOW_PAGE = 100;
 const INFO_MEDIA_PREVIEW_LIMIT = 120;
@@ -5967,9 +5968,9 @@ function buildMessageElement(message, skipAnimation = false) {
       img.loading = "lazy";
       img.decoding = "async";
       const keepPinnedAfterImageLoad = () => {
-        if (mine || scrollState.pinnedToBottom || isNearBottom()) {
-          pinConversationToBottom();
-        }
+        if (isMessageViewportMutationActive()) return;
+        if (!scrollState.pinnedToBottom && !isNearBottom()) return;
+        pinConversationToBottom();
       };
       img.addEventListener("load", keepPinnedAfterImageLoad, { once: true });
       img.addEventListener("error", keepPinnedAfterImageLoad, { once: true });
@@ -6264,7 +6265,11 @@ function ensureLoadOlderButton() {
       <span class="load-older-line" aria-hidden="true"></span>
     `;
     loadOlderBtn.setAttribute("aria-label", "Load older messages");
-    loadOlderBtn.addEventListener("click", loadOlderMessages);
+    loadOlderBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      loadOlderMessages();
+    });
   }
   if (!loadOlderBtn.parentNode) {
     messagesEl.prepend(loadOlderBtn);
@@ -6440,19 +6445,26 @@ function renderMessageWindow(options = {}) {
 }
 
 function loadOlderMessages() {
-  if (messageWindowStart <= 0 || !messagesEl) return;
-  const btn = ensureLoadOlderButton();
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add("is-loading");
-    btn.setAttribute("aria-busy", "true");
-    setLoadOlderButtonText("Loading older messages...", btn);
+  if (loadOlderInProgress || messageWindowStart <= 0 || !messagesEl) return;
+  loadOlderInProgress = true;
+  try {
+    const btn = ensureLoadOlderButton();
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add("is-loading");
+      btn.setAttribute("aria-busy", "true");
+      setLoadOlderButtonText("Loading older messages...", btn);
+    }
+    scrollState.pinnedToBottom = false;
+    const expandedWindowSize = getCurrentMessageWindowSize() + MESSAGE_WINDOW_PAGE;
+    messageWindowEnd = conversationMessages.length;
+    messageWindowStart = Math.max(0, messageWindowEnd - expandedWindowSize);
+    renderMessageWindow({ preserveScroll: true, maxVisible: expandedWindowSize });
+  } finally {
+    requestAnimationFrame(() => {
+      loadOlderInProgress = false;
+    });
   }
-  scrollState.pinnedToBottom = false;
-  const expandedWindowSize = getCurrentMessageWindowSize() + MESSAGE_WINDOW_PAGE;
-  messageWindowEnd = conversationMessages.length;
-  messageWindowStart = Math.max(0, messageWindowEnd - expandedWindowSize);
-  renderMessageWindow({ preserveScroll: true, maxVisible: expandedWindowSize });
 }
 
 function hasNewerMessages() {
