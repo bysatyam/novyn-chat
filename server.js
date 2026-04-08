@@ -544,6 +544,18 @@ const SMTP_USER = toDisplayName(process.env.SMTP_USER);
 const SMTP_PASS = toDisplayName(process.env.SMTP_PASS);
 const SMTP_FROM = toDisplayName(process.env.SMTP_FROM) || SMTP_USER;
 const SMTP_REPLY_TO = toDisplayName(process.env.SMTP_REPLY_TO);
+const SMTP_CONNECTION_TIMEOUT_MS = Number.isFinite(Number(process.env.SMTP_CONNECTION_TIMEOUT_MS))
+  ? Math.max(1000, Math.floor(Number(process.env.SMTP_CONNECTION_TIMEOUT_MS)))
+  : 12000;
+const SMTP_GREETING_TIMEOUT_MS = Number.isFinite(Number(process.env.SMTP_GREETING_TIMEOUT_MS))
+  ? Math.max(1000, Math.floor(Number(process.env.SMTP_GREETING_TIMEOUT_MS)))
+  : 12000;
+const SMTP_SOCKET_TIMEOUT_MS = Number.isFinite(Number(process.env.SMTP_SOCKET_TIMEOUT_MS))
+  ? Math.max(1000, Math.floor(Number(process.env.SMTP_SOCKET_TIMEOUT_MS)))
+  : 15000;
+const SMTP_SEND_TIMEOUT_MS = Number.isFinite(Number(process.env.SMTP_SEND_TIMEOUT_MS))
+  ? Math.max(2000, Math.floor(Number(process.env.SMTP_SEND_TIMEOUT_MS)))
+  : 18000;
 const PASSWORD_RESET_EMAIL_SUBJECT =
   toDisplayName(process.env.PASSWORD_RESET_EMAIL_SUBJECT) || "Your Novyn password reset code";
 const EMAIL_CHANGE_EMAIL_SUBJECT =
@@ -621,6 +633,9 @@ const passwordResetMailer = passwordResetEmailConfigured
       host: SMTP_HOST,
       port: SMTP_PORT,
       secure: SMTP_SECURE,
+      connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+      greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+      socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
       auth: {
         user: SMTP_USER,
         pass: SMTP_PASS,
@@ -1728,13 +1743,19 @@ async function dispatchPasswordResetCode(user, code) {
   ].join("\n");
 
   try {
-    await passwordResetMailer.sendMail({
+    const mailPayload = {
       from: SMTP_FROM,
       to: email,
       subject: PASSWORD_RESET_EMAIL_SUBJECT,
       text,
       ...(SMTP_REPLY_TO ? { replyTo: SMTP_REPLY_TO } : {}),
-    });
+    };
+    await Promise.race([
+      passwordResetMailer.sendMail(mailPayload),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("SMTP send timeout")), SMTP_SEND_TIMEOUT_MS);
+      }),
+    ]);
     return true;
   } catch (err) {
     console.warn(`Failed to send password reset email to ${email}:`, err?.message || err);
@@ -1785,13 +1806,19 @@ async function dispatchEmailChangeCode(user, nextEmail, code) {
   ].join("\n");
 
   try {
-    await passwordResetMailer.sendMail({
+    const mailPayload = {
       from: SMTP_FROM,
       to: email,
       subject: EMAIL_CHANGE_EMAIL_SUBJECT,
       text,
       ...(SMTP_REPLY_TO ? { replyTo: SMTP_REPLY_TO } : {}),
-    });
+    };
+    await Promise.race([
+      passwordResetMailer.sendMail(mailPayload),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("SMTP send timeout")), SMTP_SEND_TIMEOUT_MS);
+      }),
+    ]);
     return true;
   } catch (err) {
     console.warn(`Failed to send email-change code to ${email}:`, err?.message || err);

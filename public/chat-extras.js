@@ -1759,6 +1759,17 @@
     return isProfileSocketUsable(socket) ? socket : null;
   }
 
+  function ensureConnectedProfileSocket(socket) {
+    if (!socket) return false;
+    if (socket.connected === true) return true;
+    if (typeof socket.connect === 'function') {
+      try {
+        socket.connect();
+      } catch (_) {}
+    }
+    return socket.connected === true;
+  }
+
   function clearEmailTimeout(kind) {
     if ((kind === 'request' || kind === 'all') && emailRequestTimeoutId) {
       clearTimeout(emailRequestTimeoutId);
@@ -1976,6 +1987,10 @@
       toast('Realtime connection not available.', 'error');
       return;
     }
+    if (!ensureConnectedProfileSocket(socket)) {
+      setEmailStatus('Connecting to server. Please tap Send code again.', 'error');
+      return;
+    }
     var nextEmail = normalizeEmail(inputEmail ? inputEmail.value : '');
     var linkedEmail = getLinkedEmail();
     if (!nextEmail) {
@@ -2017,6 +2032,10 @@
     if (!socket) {
       setEmailStatus('Realtime connection not available.', 'error');
       toast('Realtime connection not available.', 'error');
+      return;
+    }
+    if (!ensureConnectedProfileSocket(socket)) {
+      setEmailStatus('Connecting to server. Please tap Verify email again.', 'error');
       return;
     }
     var nextEmail = normalizeEmail(inputEmail ? inputEmail.value : '');
