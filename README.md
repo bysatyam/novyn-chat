@@ -22,6 +22,52 @@ Open `http://localhost:3000`.
 
 To test real-time chat, open two browser windows (or different devices) and login with different accounts.
 
+## Android app workflow (Capacitor)
+
+The project now includes a native Android shell in `android/` (Capacitor).
+
+1. Install deps:
+
+```bash
+npm install
+```
+
+2. Sync web + native plugins into Android:
+
+```bash
+npm run android:sync
+```
+
+3. Open Android Studio:
+
+```bash
+npm run android:open
+```
+
+4. Build/run from Android Studio on an emulator or real device.
+
+Useful commands:
+
+- `npm run android:run` - run directly with Capacitor CLI
+- `npm run cap:sync` - sync all platforms
+- `npm run android:add` - add Android platform (one-time)
+
+If `android:sync` shows a Windows/OneDrive `EPERM` delete error, run this fallback copy command after sync:
+
+```bash
+npm run android:copy-web
+```
+
+Mobile UX upgrades included:
+
+- edge-swipe gestures between chat list and active chat on phones
+- swipe-to-reply action on chat messages
+- pull-to-refresh in the message list to fetch latest history
+- haptic feedback on successful swipe gestures (native + fallback vibration)
+- native Android back-button handling through Capacitor App plugin
+- native status bar styling synced with app theme (light/dark)
+- polished Android splash screen theming and launch timing
+
 ## Database setup (MongoDB)
 
 Set these environment variables:

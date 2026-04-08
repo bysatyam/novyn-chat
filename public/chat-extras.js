@@ -63,6 +63,25 @@
     }
   }
 
+  function syncNativeStatusBar(resolvedTheme) {
+    try {
+      var statusBar = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.StatusBar;
+      if (!statusBar) return;
+      var styleValue = statusBar.Style
+        ? (resolvedTheme === 'light' ? statusBar.Style.Dark : statusBar.Style.Light)
+        : (resolvedTheme === 'light' ? 'DARK' : 'LIGHT');
+      if (typeof statusBar.setOverlaysWebView === 'function') {
+        statusBar.setOverlaysWebView({ overlay: false });
+      }
+      if (typeof statusBar.setStyle === 'function') {
+        statusBar.setStyle({ style: styleValue });
+      }
+      if (typeof statusBar.setBackgroundColor === 'function') {
+        statusBar.setBackgroundColor({ color: resolvedTheme === 'light' ? '#F7F9FC' : '#0C0E14' });
+      }
+    } catch (e) {}
+  }
+
   function applyTheme(mode) {
     currentMode = mode;
     var resolved = resolveTheme(mode);
@@ -71,6 +90,7 @@
       btn.setAttribute('aria-pressed', resolved === 'light' ? 'true' : 'false');
     }
     updateMenuState();
+    syncNativeStatusBar(resolved);
   }
 
   var savedTheme = readStoredTheme();
@@ -707,6 +727,18 @@
   var sidebar = document.getElementById('mobileSidebar');
   var chat    = document.getElementById('mobileChat');
   var backBtn = document.getElementById('mobBackBtn');
+  var SWIPE_EDGE_PX = 28;
+  var SWIPE_TRIGGER_PX = 74;
+  var SWIPE_MAX_DRAG_PX = 280;
+  var panelGesture = {
+    active: false,
+    mode: '',
+    startX: 0,
+    startY: 0,
+    dragX: 0,
+    locked: false,
+    horizontal: false
+  };
   function isMobile() { return window.innerWidth <= BP; }
   function isThemeMobile() { return window.innerWidth <= THEME_BP; }
   function isLowPower() {
@@ -731,8 +763,130 @@
     if (history.state && history.state.novynView === view) return;
     history.pushState({ novynView: view }, '');
   }
+  function clearGestureStyles() {
+    document.body.classList.remove('panel-gesture-active');
+    if (sidebar) sidebar.style.removeProperty('transform');
+    if (chat) chat.style.removeProperty('transform');
+  }
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+  function triggerPanelGestureHaptic() {
+    try {
+      var cap = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics;
+      if (cap && typeof cap.impact === 'function') {
+        cap.impact({ style: 'light' });
+        return;
+      }
+    } catch (e) {}
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(8);
+    }
+  }
+  function setGestureTransforms(mode, deltaX) {
+    if (!sidebar || !chat) return;
+    var width = Math.max(window.innerWidth || 0, 1);
+    document.body.classList.add('panel-gesture-active');
+    if (mode === 'to-friends') {
+      var drag = clamp(deltaX, 0, Math.min(width, SWIPE_MAX_DRAG_PX));
+      var progress = clamp(drag / width, 0, 1);
+      var sidebarShift = -100 + (progress * 100);
+      chat.style.setProperty('transform', 'translateX(' + drag + 'px)', 'important');
+      sidebar.style.setProperty('transform', 'translateX(' + sidebarShift + '%)', 'important');
+      return;
+    }
+    if (mode === 'to-chat') {
+      var dragLeft = clamp(deltaX, -Math.min(width, SWIPE_MAX_DRAG_PX), 0);
+      var chatShift = width + dragLeft;
+      var sidebarShiftPx = dragLeft * 0.34;
+      chat.style.setProperty('transform', 'translateX(' + chatShift + 'px)', 'important');
+      sidebar.style.setProperty('transform', 'translateX(' + sidebarShiftPx + 'px)', 'important');
+    }
+  }
+  function resetPanelGesture() {
+    panelGesture.active = false;
+    panelGesture.mode = '';
+    panelGesture.startX = 0;
+    panelGesture.startY = 0;
+    panelGesture.dragX = 0;
+    panelGesture.locked = false;
+    panelGesture.horizontal = false;
+  }
+  function finishPanelGesture(cancelled) {
+    var mode = panelGesture.mode;
+    var dragX = panelGesture.dragX;
+    var shouldOpenFriends = mode === 'to-friends' && dragX >= SWIPE_TRIGGER_PX;
+    var shouldOpenChat = mode === 'to-chat' && Math.abs(dragX) >= SWIPE_TRIGGER_PX;
+    clearGestureStyles();
+    resetPanelGesture();
+    if (cancelled) return;
+    if (shouldOpenFriends) {
+      triggerPanelGestureHaptic();
+      showPanel('friends');
+      return;
+    }
+    if (shouldOpenChat) {
+      triggerPanelGestureHaptic();
+      showPanel('chat');
+    }
+  }
+  function getPanelGestureMode(target, startX) {
+    if (!isMobile()) return '';
+    if (!sidebar || !chat) return '';
+    if (document.body.classList.contains('settings-open')) return '';
+    if (document.body.classList.contains('info-open')) return '';
+    if (document.body.classList.contains('call-open')) return '';
+    if (target && target.closest && target.closest('#scheduleMenu, #messageSearchPanel, .call-modal, .call-mini')) return '';
+    if (document.body.classList.contains('mob-chat-open') && startX <= SWIPE_EDGE_PX) {
+      return 'to-friends';
+    }
+    if (
+      document.body.classList.contains('mob-list-open')
+      && document.body.classList.contains('friend-selected')
+      && startX >= (window.innerWidth - SWIPE_EDGE_PX)
+    ) {
+      return 'to-chat';
+    }
+    return '';
+  }
+  function onPanelTouchStart(e) {
+    if (!e.touches || e.touches.length !== 1) return;
+    var touch = e.touches[0];
+    var mode = getPanelGestureMode(e.target, touch.clientX);
+    if (!mode) return;
+    panelGesture.active = true;
+    panelGesture.mode = mode;
+    panelGesture.startX = touch.clientX;
+    panelGesture.startY = touch.clientY;
+    panelGesture.dragX = 0;
+    panelGesture.locked = false;
+    panelGesture.horizontal = false;
+  }
+  function onPanelTouchMove(e) {
+    if (!panelGesture.active) return;
+    if (!e.touches || e.touches.length !== 1) return;
+    var touch = e.touches[0];
+    var deltaX = touch.clientX - panelGesture.startX;
+    var deltaY = touch.clientY - panelGesture.startY;
+    if (!panelGesture.locked) {
+      if (Math.abs(deltaX) < 6 && Math.abs(deltaY) < 6) return;
+      panelGesture.locked = true;
+      panelGesture.horizontal = Math.abs(deltaX) > (Math.abs(deltaY) * 1.1);
+      if (!panelGesture.horizontal) {
+        finishPanelGesture(true);
+        return;
+      }
+    }
+    if (!panelGesture.horizontal) return;
+    if (panelGesture.mode === 'to-friends' && deltaX < 0) deltaX = 0;
+    if (panelGesture.mode === 'to-chat' && deltaX > 0) deltaX = 0;
+    panelGesture.dragX = deltaX;
+    setGestureTransforms(panelGesture.mode, deltaX);
+    e.preventDefault();
+  }
   function showPanel(panel, opts) {
     if (!sidebar || !chat) return;
+    clearGestureStyles();
     var silent = opts && opts.silent;
     if (panel === 'chat') {
       sidebar.setAttribute('data-mob-hidden', 'true');
@@ -758,6 +912,16 @@
     if (!isMobile()) return;
     if (e.target.closest('.friend-btn')) showPanel('chat');
   });
+  document.addEventListener('touchstart', onPanelTouchStart, { passive: true });
+  document.addEventListener('touchmove', onPanelTouchMove, { passive: false });
+  document.addEventListener('touchend', function () {
+    if (!panelGesture.active) return;
+    finishPanelGesture(false);
+  }, { passive: true });
+  document.addEventListener('touchcancel', function () {
+    if (!panelGesture.active) return;
+    finishPanelGesture(true);
+  }, { passive: true });
   backBtn && backBtn.addEventListener('click', function () {
     if (isMobile()) showPanel('friends');
   });
@@ -792,6 +956,8 @@
   })();
   window.addEventListener('resize', function () {
     if (!isMobile()) {
+      clearGestureStyles();
+      resetPanelGesture();
       if (sidebar) sidebar.removeAttribute('data-mob-hidden');
       if (chat)    chat.removeAttribute('data-mob-hidden');
       document.body.classList.remove('mob-chat-open');
@@ -814,6 +980,182 @@
 })();
 
 /* ── Info panel toggle (chat header) ───────────────────────────── */
+/* Pull to refresh (messages) */
+(function () {
+  var wrap = document.querySelector('.messages-wrap');
+  var messages = document.getElementById('messages');
+  if (!wrap || !messages) return;
+
+  var MAX_PULL_PX = 112;
+  var TRIGGER_PX = 74;
+  var active = false;
+  var refreshing = false;
+  var startX = 0;
+  var startY = 0;
+  var pullOffset = 0;
+  var lockSet = false;
+  var verticalGesture = false;
+
+  var indicator = document.createElement('div');
+  indicator.id = 'pullRefreshIndicator';
+  indicator.className = 'pull-refresh-indicator';
+  indicator.setAttribute('aria-hidden', 'true');
+  indicator.innerHTML = '<span class="pull-refresh-icon" aria-hidden="true"></span><span class="pull-refresh-label">Pull to refresh</span>';
+  wrap.appendChild(indicator);
+  var label = indicator.querySelector('.pull-refresh-label');
+
+  function isMobileView() {
+    if (window._novynPanels && typeof window._novynPanels.isMobile === 'function') {
+      return window._novynPanels.isMobile();
+    }
+    return window.innerWidth <= 768;
+  }
+
+  function setPullOffset(px) {
+    wrap.style.setProperty('--pull-refresh-offset', Math.max(0, Math.round(px)) + 'px');
+  }
+
+  function resetPullVisual() {
+    wrap.classList.remove('pull-refresh-active', 'pull-refresh-ready', 'pull-refresh-refreshing');
+    setPullOffset(0);
+    if (label) label.textContent = 'Pull to refresh';
+  }
+
+  function triggerRefreshHaptic() {
+    try {
+      var capHaptics = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics;
+      if (capHaptics && typeof capHaptics.impact === 'function') {
+        capHaptics.impact({ style: 'medium' });
+        return;
+      }
+    } catch (e) {}
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(12);
+    }
+  }
+
+  function canStartPull(target) {
+    if (!isMobileView()) return false;
+    if (refreshing) return false;
+    if (!document.body.classList.contains('mob-chat-open')) return false;
+    if (!window._novynActiveFriend || !window._novynActiveFriend()) return false;
+    if (messages.scrollTop > 0) return false;
+    if (!(target instanceof Element)) return true;
+    if (target.closest('.message-context-menu, .reaction-picker')) return false;
+    if (target.closest('.image-viewer-modal, .file-viewer-modal, .thread-modal')) return false;
+    return true;
+  }
+
+  function clearPullState() {
+    active = false;
+    startX = 0;
+    startY = 0;
+    pullOffset = 0;
+    lockSet = false;
+    verticalGesture = false;
+  }
+
+  function cancelPull() {
+    clearPullState();
+    if (!refreshing) resetPullVisual();
+  }
+
+  function requestActiveRefresh() {
+    if (refreshing) return;
+    refreshing = true;
+    wrap.classList.remove('pull-refresh-ready');
+    wrap.classList.add('pull-refresh-active', 'pull-refresh-refreshing');
+    setPullOffset(TRIGGER_PX - 8);
+    if (label) label.textContent = 'Refreshing...';
+
+    var requested = false;
+    if (typeof window._novynRequestHistoryRefresh === 'function') {
+      requested = Boolean(window._novynRequestHistoryRefresh());
+    } else if (window._novynSocket && window._novynActiveFriend) {
+      var friend = window._novynActiveFriend();
+      var kind = window._novynActiveChatKind ? window._novynActiveChatKind() : 'friend';
+      if (friend) {
+        window._novynSocket.emit('get_history', { to: friend, toType: kind || 'friend' });
+        requested = true;
+      }
+    }
+    if (!requested) {
+      refreshing = false;
+      resetPullVisual();
+      return;
+    }
+
+    triggerRefreshHaptic();
+    setTimeout(function () {
+      refreshing = false;
+      resetPullVisual();
+    }, 900);
+  }
+
+  wrap.addEventListener('touchstart', function (e) {
+    if (!e.touches || e.touches.length !== 1) return;
+    if (!canStartPull(e.target)) return;
+    var t = e.touches[0];
+    active = true;
+    startX = t.clientX;
+    startY = t.clientY;
+    pullOffset = 0;
+    lockSet = false;
+    verticalGesture = false;
+  }, { passive: true });
+
+  wrap.addEventListener('touchmove', function (e) {
+    if (!active || refreshing) return;
+    if (!e.touches || e.touches.length !== 1) return;
+
+    var t = e.touches[0];
+    var dx = t.clientX - startX;
+    var dy = t.clientY - startY;
+
+    if (!lockSet) {
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      lockSet = true;
+      verticalGesture = Math.abs(dy) > (Math.abs(dx) * 1.05);
+      if (!verticalGesture) {
+        cancelPull();
+        return;
+      }
+    }
+
+    if (!verticalGesture || dy <= 0) {
+      cancelPull();
+      return;
+    }
+    if (messages.scrollTop > 0) {
+      cancelPull();
+      return;
+    }
+
+    e.preventDefault();
+    pullOffset = Math.min(MAX_PULL_PX, dy * 0.52);
+    wrap.classList.add('pull-refresh-active');
+    setPullOffset(pullOffset);
+    var ready = pullOffset >= TRIGGER_PX;
+    wrap.classList.toggle('pull-refresh-ready', ready);
+    if (label) label.textContent = ready ? 'Release to refresh' : 'Pull to refresh';
+  }, { passive: false });
+
+  wrap.addEventListener('touchend', function () {
+    if (!active || refreshing) return;
+    var shouldRefresh = pullOffset >= TRIGGER_PX;
+    clearPullState();
+    if (shouldRefresh) {
+      requestActiveRefresh();
+      return;
+    }
+    resetPullVisual();
+  }, { passive: true });
+
+  wrap.addEventListener('touchcancel', function () {
+    if (!active || refreshing) return;
+    cancelPull();
+  }, { passive: true });
+})();
 (function () {
   var infoPanel = document.getElementById('infoPanel');
   var scrim = document.getElementById('infoScrim');

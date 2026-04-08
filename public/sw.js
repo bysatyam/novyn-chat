@@ -1,4 +1,4 @@
-const CACHE_NAME = "novyn-shell-v39";
+const CACHE_NAME = "novyn-shell-v40";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -6,6 +6,7 @@ const APP_SHELL = [
   "/login.css",
   "/dashboard.css",
   "/app.js",
+  "/lazy-init.js",
   "/chat-extras.js",
   "/login.js",
   "/visuals.js",

@@ -425,13 +425,22 @@ app.use((req, res, next) => {
 app.use(
   express.static(path.join(__dirname, "public"), {
     index: false,
-    etag: false,
-    lastModified: false,
+    etag: true,
+    lastModified: true,
     maxAge: 0,
-    setHeaders: (res) => {
-      res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-      res.set("Pragma", "no-cache");
-      res.set("Expires", "0");
+    setHeaders: (res, filePath) => {
+      const baseName = path.basename(filePath || "").toLowerCase();
+      const extension = path.extname(filePath || "").toLowerCase();
+      const mustRevalidate =
+        extension === ".html"
+        || baseName === "sw.js"
+        || baseName === "manifest.json";
+      if (mustRevalidate) {
+        res.set("Cache-Control", "no-cache, must-revalidate");
+        return;
+      }
+
+      res.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
     },
   })
 );
@@ -622,6 +631,18 @@ function normalizeHandleInput(handle) {
 
 function normalizeChatKind(value) {
   return toDisplayName(value).toLowerCase() === "group" ? "group" : "friend";
+}
+
+function normalizePresenceMode(value, fallback = "online") {
+  const mode = toDisplayName(value).toLowerCase();
+  if (mode === "online" || mode === "away" || mode === "busy" || mode === "offline") {
+    return mode;
+  }
+  const fallbackMode = toDisplayName(fallback).toLowerCase();
+  if (fallbackMode === "online" || fallbackMode === "away" || fallbackMode === "busy" || fallbackMode === "offline") {
+    return fallbackMode;
+  }
+  return "online";
 }
 
 function normalizeGroupId(value) {
@@ -1227,6 +1248,7 @@ function createUserRecord(username) {
     bio: "",
     createdAt: "",
     lastSeenAt: "",
+    presenceMode: "online",
   };
 }
 
@@ -1253,6 +1275,7 @@ function serializeState() {
       bio: toDisplayName(user.bio),
       createdAt: toDisplayName(user.createdAt),
       lastSeenAt: toDisplayName(user.lastSeenAt),
+      presenceMode: normalizePresenceMode(user.presenceMode),
     })),
     conversations: Array.from(conversations.entries()).map(([key, messages]) => ({
       key,
@@ -1372,6 +1395,7 @@ async function persistMongoNow() {
               bio: toDisplayName(entry.bio),
               createdAt: toDisplayName(entry.createdAt),
               lastSeenAt: toDisplayName(entry.lastSeenAt),
+              presenceMode: normalizePresenceMode(entry.presenceMode),
               snapshotId,
               updatedAt,
             },
@@ -1727,6 +1751,7 @@ function applyLoadedState(parsed) {
     user.bio = toDisplayName(entry.bio);
     user.createdAt = toDisplayName(entry.createdAt);
     user.lastSeenAt = toDisplayName(entry.lastSeenAt);
+    user.presenceMode = normalizePresenceMode(entry.presenceMode);
     user.pushSubs = Array.isArray(entry.pushSubs)
       ? entry.pushSubs.filter((sub) => sub && sub.endpoint && sub.keys)
       : [];
@@ -1870,6 +1895,7 @@ function toSerializedUserEntry(doc) {
     bio: toDisplayName(doc?.bio),
     createdAt: toDisplayName(doc?.createdAt),
     lastSeenAt: toDisplayName(doc?.lastSeenAt),
+    presenceMode: normalizePresenceMode(doc?.presenceMode),
   };
 }
 
@@ -2201,6 +2227,24 @@ function getGroupMemberRole(group, memberKey) {
   return "member";
 }
 
+function isSocketOnline(userKey) {
+  return onlineUsers.has(normalizeName(userKey));
+}
+
+function getEffectivePresence(userKey) {
+  const key = normalizeName(userKey);
+  const user = users.get(key);
+  if (!user || !isSocketOnline(key)) {
+    return "offline";
+  }
+  const mode = normalizePresenceMode(user.presenceMode);
+  return mode === "offline" ? "offline" : mode;
+}
+
+function isUserAvailable(userKey) {
+  return getEffectivePresence(userKey) !== "offline";
+}
+
 function buildGroupInfoForViewer(group, viewerKey) {
   const viewer = normalizeName(viewerKey);
   if (!group || !viewer || !isGroupMember(group, viewer)) return null;
@@ -2209,11 +2253,13 @@ function buildGroupInfoForViewer(group, viewerKey) {
     const user = users.get(memberKey);
     const username = user?.username || memberKey;
     const role = getGroupMemberRole(group, memberKey);
+    const presence = getEffectivePresence(memberKey);
     members.push({
       username,
       displayName: user?.displayName || "",
       avatarId: user?.avatarId || "",
-      online: onlineUsers.has(memberKey),
+      online: presence !== "offline",
+      presence,
       lastSeenAt: user?.lastSeenAt || "",
       role,
       isOwner: role === "owner",
@@ -3087,12 +3133,14 @@ function buildFriendList(forUser) {
   const directList = validFriendKeys.map((friendKey) => {
     const friend = users.get(friendKey);
     const summary = getConversationSummary(userKey, friendKey);
+    const presence = getEffectivePresence(friendKey);
 
     return {
       username: friend?.username || friendKey,
       kind: "friend",
       groupId: "",
-      online: onlineUsers.has(friendKey),
+      online: presence !== "offline",
+      presence,
       unreadCount: getUnreadCount(user, friendKey),
       lastMessage: summary.lastMessage,
       lastTimestamp: summary.lastTimestamp,
@@ -3117,7 +3165,7 @@ function buildFriendList(forUser) {
       let onlineCount = 0;
       for (const memberKey of group.members) {
         if (memberKey === userKey) continue;
-        if (onlineUsers.has(memberKey)) onlineCount += 1;
+        if (isUserAvailable(memberKey)) onlineCount += 1;
       }
       return {
         username: group.id,
@@ -3169,17 +3217,30 @@ function buildDiscoverOnlineList(forUser, limit = 20) {
     const user = users.get(onlineKey);
     if (!user || !user.isRegistered) continue;
     if (isBlockedBy(me, onlineKey) || isBlockedBy(user, userKey)) continue;
+    const presence = getEffectivePresence(onlineKey);
+    if (presence === "offline") continue;
     list.push({
       username: user.username || onlineKey,
       displayName: user.displayName || "",
       avatarId: user.avatarId || "",
       bio: user.bio || "",
       lastSeenAt: user.lastSeenAt || "",
+      online: true,
+      presence,
     });
   }
 
   list.sort((a, b) => a.username.localeCompare(b.username));
   return list.slice(0, limit);
+}
+
+function emitDiscoverOnlineToAll(limit = 30) {
+  for (const [userKey, socketId] of onlineUsers.entries()) {
+    if (!socketId) continue;
+    io.to(socketId).emit("discover_online", {
+      users: buildDiscoverOnlineList(userKey, limit),
+    });
+  }
 }
 
 function emitFriendList(username) {
@@ -3223,10 +3284,12 @@ function emitSafetyState(username) {
   });
 }
 
-function emitStatusToFriends(username, isOnline) {
+function emitStatusToFriends(username) {
   const userKey = normalizeName(username);
   const user = users.get(userKey);
   if (!user) return;
+  const presence = getEffectivePresence(userKey);
+  const online = presence !== "offline";
 
   for (const friendKey of user.friends) {
     const friendSocket = onlineUsers.get(friendKey);
@@ -3234,7 +3297,8 @@ function emitStatusToFriends(username, isOnline) {
 
     io.to(friendSocket).emit("user_status", {
       username: user.username,
-      online: isOnline,
+      online,
+      presence,
       lastSeenAt: user.lastSeenAt || null,
     });
   }
@@ -3429,6 +3493,7 @@ function emitGroupListUpdatesForUser(username) {
     if (!group) continue;
     for (const memberKey of group.members) {
       touchedMembers.add(memberKey);
+      emitGroupInfoToMember(memberKey, group);
     }
   }
   for (const memberKey of touchedMembers) {
@@ -3440,6 +3505,7 @@ function buildRegisterSuccessPayload(userKey, user) {
   return {
     username: user.username,
     email: user.email || "",
+    presenceMode: normalizePresenceMode(user.presenceMode),
     friends: buildFriendList(userKey),
     requests: Array.from(user.requests).map((requesterKey) => {
       const requester = users.get(requesterKey);
@@ -3463,7 +3529,14 @@ function buildRegisterSuccessPayload(userKey, user) {
 
 function finalizeSocketAuthentication(socket, user) {
   if (!socket || !user?.username) return false;
-  user.lastSeenAt = "";
+  const presenceMode = normalizePresenceMode(user.presenceMode);
+  if (presenceMode === "offline") {
+    if (!user.lastSeenAt) {
+      user.lastSeenAt = nowIso();
+    }
+  } else {
+    user.lastSeenAt = "";
+  }
   const userKey = normalizeName(user.username);
 
   socket.data.userKey = userKey;
@@ -3485,10 +3558,11 @@ function finalizeSocketAuthentication(socket, user) {
 
   markUndeliveredAsDelivered(userKey);
   socket.emit("register_success", buildRegisterSuccessPayload(userKey, user));
-  emitStatusToFriends(userKey, true);
+  emitStatusToFriends(userKey);
   emitFriendList(userKey);
   emitGroupListUpdatesForUser(userKey);
   emitSafetyState(userKey);
+  emitDiscoverOnlineToAll();
   schedulePersist();
   return true;
 }
@@ -3890,6 +3964,24 @@ app.post("/api/auth/logout", createIpRateLimiter("auth-logout", 120, 15 * 60 * 1
   res.json({ ok: true });
 });
 
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+app.use((req, res) => {
+  if (req.method === "GET" || req.method === "HEAD") {
+    res.status(404);
+    res.set("Cache-Control", "no-cache, must-revalidate");
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    res.sendFile(path.join(__dirname, "404.html"));
+    return;
+  }
+  res.status(404).json({ error: "Not found" });
+});
+
 io.use((socket, next) => {
   const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(socket.handshake?.headers?.cookie), {
     allowRefreshFallback: true,
@@ -4201,6 +4293,55 @@ io.on("connection", (socket) => {
     socket.emit("discover_online", { users: list });
   });
 
+  socket.on("set_presence_mode", (payload, callback) => {
+    const respond = typeof callback === "function" ? callback : () => {};
+    const userKey = socket.data.userKey;
+    if (!userKey) {
+      respond({ ok: false, error: "unauthorized" });
+      return;
+    }
+    if (!allowSocketAction(socket, "set_presence_mode", 40, 60 * 1000)) {
+      respond({ ok: false, error: "rate_limited" });
+      return;
+    }
+
+    const user = users.get(userKey);
+    if (!user) {
+      respond({ ok: false, error: "not_found" });
+      return;
+    }
+
+    const requested = normalizePresenceMode(
+      payload?.status ?? payload?.presence ?? payload?.mode,
+      user.presenceMode
+    );
+    const previous = normalizePresenceMode(user.presenceMode);
+
+    if (requested !== previous) {
+      user.presenceMode = requested;
+      if (requested === "offline") {
+        user.lastSeenAt = nowIso();
+      } else if (isSocketOnline(userKey)) {
+        user.lastSeenAt = "";
+      }
+      emitStatusToFriends(userKey);
+      emitGroupListUpdatesForUser(userKey);
+      emitFriendList(userKey);
+      emitDiscoverOnlineToAll();
+      schedulePersist();
+    }
+
+    socket.emit("presence_mode_updated", {
+      status: normalizePresenceMode(user.presenceMode),
+      lastSeenAt: user.lastSeenAt || null,
+    });
+    respond({
+      ok: true,
+      status: normalizePresenceMode(user.presenceMode),
+      lastSeenAt: user.lastSeenAt || null,
+    });
+  });
+
   socket.on("global_search_messages", (payload) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
@@ -4212,8 +4353,19 @@ io.on("connection", (socket) => {
     const query = toDisplayName(payload?.query || "").slice(0, 120);
     const filter = normalizeSearchFilter(payload?.filter);
     const limit = Math.max(1, Math.min(250, Number(payload?.limit) || 80));
+    const requestId = Number(payload?.requestId);
+    if (filter === "all" && query.length > 0 && query.length < 2) {
+      socket.emit("global_search_results", {
+        requestId: Number.isFinite(requestId) ? requestId : null,
+        query,
+        filter,
+        results: [],
+      });
+      return;
+    }
     const results = buildGlobalSearchResults(userKey, { query, filter, limit });
     socket.emit("global_search_results", {
+      requestId: Number.isFinite(requestId) ? requestId : null,
       query,
       filter,
       results,
@@ -4529,7 +4681,8 @@ io.on("connection", (socket) => {
 
     emitFriendList(result.newKey);
     emitRequests(result.newKey);
-    emitStatusToFriends(result.newKey, true);
+    emitStatusToFriends(result.newKey);
+    emitDiscoverOnlineToAll();
     schedulePersist();
   });
 
@@ -5079,6 +5232,16 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const friendPresence = getEffectivePresence(toKey);
+    if (friendPresence === "busy") {
+      socket.emit("call_busy", { to: friend.username });
+      return;
+    }
+    if (friendPresence === "offline") {
+      socket.emit("call_unavailable", { to: friend.username });
+      return;
+    }
+
     const friendSocketId = onlineUsers.get(toKey);
     if (!friendSocketId) {
       socket.emit("call_unavailable", { to: friend.username });
@@ -5212,6 +5375,7 @@ io.on("connection", (socket) => {
         });
       }
     }
+    emitDiscoverOnlineToAll();
     schedulePersist();
   });
 
@@ -5976,8 +6140,9 @@ io.on("connection", (socket) => {
       }
 
       onlineUsers.delete(userKey);
-      emitStatusToFriends(userKey, false);
+      emitStatusToFriends(userKey);
       emitGroupListUpdatesForUser(userKey);
+      emitDiscoverOnlineToAll();
       schedulePersist();
     }
   });

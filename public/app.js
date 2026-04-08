@@ -148,6 +148,9 @@ const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const settingsAvatar   = document.getElementById("settingsAvatar");
 const settingsProfileName = document.getElementById("settingsProfileName");
 const settingsProfileHandle = document.getElementById("settingsProfileHandle");
+const settingsPresenceLine = document.getElementById("settingsPresenceLine");
+const settingsPresenceText = document.getElementById("settingsPresenceText");
+const statusPillButtons = Array.from(document.querySelectorAll(".status-pill[data-status]"));
 const createGroupBtn   = document.getElementById("createGroupBtn");
 const chatQuickMenuBtn = document.getElementById("chatQuickMenuBtn");
 const chatQuickMenu    = document.getElementById("chatQuickMenu");
@@ -167,10 +170,15 @@ const mobBackBtn        = document.getElementById("mobBackBtn");
 const SESSION_KEY       = "novyn-session";
 const REMEMBER_KEY      = "novyn-remember";
 const MESSAGE_DRAFTS_KEY = "novyn-message-drafts";
+const PENDING_STATE_KEY = "novyn-pending-v2";
 const LOGIN_PATH        = "/login.html";
 const isDashboardPage   = Boolean(chatLayout) && !document.body.classList.contains("auth-page");
 const MOBILE_BP         = 768;
 const INCOMING_CALLS_ENABLED = true;
+const GLOBAL_SEARCH_MIN_QUERY_LENGTH = 2;
+const PRESENCE_IDLE_AWAY_MS = 5 * 60 * 1000;
+const PRESENCE_HIDDEN_AWAY_MS = 45 * 1000;
+const PRESENCE_ACTIVITY_THROTTLE_MS = 1500;
 const scheduleBtn       = document.getElementById("scheduleBtn");
 const scheduleMenu      = document.getElementById("scheduleMenu");
 const scheduleDateInput = document.getElementById("scheduleDateInput");
@@ -293,8 +301,21 @@ const pendingQueueByTempId = new Map();
 const pendingByTempId = new Map();
 let messageDrafts = new Map();
 let loadedDraftOwnerKey = "";
+let loadedPendingOwnerKey = "";
+let pendingStatePersistTimer = null;
+let suppressPendingStatePersist = 0;
 let networkStateLabel = "";
 let networkStateMode = "";
+let myPresenceMode = "online";
+let manualPresenceMode = "online";
+let pendingPresenceSyncMode = "";
+let presenceSyncTimer = null;
+let nextPresenceSyncRetryAt = 0;
+let presenceIdleTimer = null;
+let presenceHiddenTimer = null;
+let lastPresenceActivityEventAt = 0;
+let presenceAutoAwayActive = false;
+let restoredPendingToastShown = false;
 window._novynProfile = myProfile;
 
 const localTyping = {
@@ -306,6 +327,7 @@ const localTyping = {
 const scrollState = {
   pinnedToBottom: true,
 };
+let suppressMessageViewportHandlers = 0;
 const attachmentUploadState = {
   active: false,
   pendingTempId: "",
@@ -342,6 +364,36 @@ function normalizeSearchText(value) {
 
 function normalizeChatKind(value) {
   return String(value || "").trim().toLowerCase() === "group" ? "group" : "friend";
+}
+
+function normalizePresenceMode(value, fallback = "online") {
+  const mode = String(value || "").trim().toLowerCase();
+  if (mode === "online" || mode === "away" || mode === "busy" || mode === "offline") {
+    return mode;
+  }
+  const fallbackMode = String(fallback || "").trim().toLowerCase();
+  if (fallbackMode === "online" || fallbackMode === "away" || fallbackMode === "busy" || fallbackMode === "offline") {
+    return fallbackMode;
+  }
+  return "online";
+}
+
+function getPresenceLabel(mode, options = {}) {
+  const normalized = normalizePresenceMode(mode, "online");
+  if (options.self && normalized === "offline") return "Invisible";
+  if (normalized === "away") return "Away";
+  if (normalized === "busy") return "Busy";
+  if (normalized === "offline") return "Offline";
+  return "Online";
+}
+
+function resolveFriendPresenceMode(friend) {
+  if (normalizeChatKind(friend?.kind || "friend") === "group") return "offline";
+  const online = Boolean(friend?.online);
+  const fallback = online ? "online" : "offline";
+  const mode = normalizePresenceMode(friend?.presence, fallback);
+  if (!online) return "offline";
+  return mode === "offline" ? "offline" : mode;
 }
 
 function resolveOutgoingTarget(target, kind = "friend") {
@@ -410,11 +462,14 @@ function normalizeGroupInfoPayload(raw = {}) {
     const roleRaw = normalizeName(memberRaw?.role || "");
     const isOwner = Boolean(memberRaw?.isOwner) || roleRaw === "owner";
     const isAdmin = isOwner || Boolean(memberRaw?.isAdmin) || roleRaw === "admin";
+    const rawOnline = Boolean(memberRaw?.online);
+    const presence = normalizePresenceMode(memberRaw?.presence, rawOnline ? "online" : "offline");
     return {
       username,
       displayName: normalizeMojibakeText(memberRaw?.displayName || "").trim(),
       avatarId: normalizeMojibakeText(memberRaw?.avatarId || "").trim(),
-      online: Boolean(memberRaw?.online),
+      online: rawOnline && presence !== "offline",
+      presence,
       lastSeenAt: normalizeMojibakeText(memberRaw?.lastSeenAt || "").trim(),
       isOwner,
       isAdmin,
@@ -651,6 +706,9 @@ function sanitizeMessagePayload(rawMessage) {
 
 function sanitizeFriendRecord(rawFriend) {
   if (!rawFriend || typeof rawFriend !== "object") return rawFriend;
+  const kind = normalizeChatKind(rawFriend.kind || "friend");
+  const online = Boolean(rawFriend.online);
+  const presenceFallback = kind === "group" ? "offline" : (online ? "online" : "offline");
   return {
     ...rawFriend,
     username: normalizeMojibakeText(rawFriend.username),
@@ -658,6 +716,8 @@ function sanitizeFriendRecord(rawFriend) {
     bio: normalizeMojibakeText(rawFriend.bio),
     lastMessage: normalizeMojibakeText(rawFriend.lastMessage),
     lastFrom: normalizeMojibakeText(rawFriend.lastFrom),
+    online,
+    presence: normalizePresenceMode(rawFriend.presence, presenceFallback),
   };
 }
 
@@ -870,6 +930,28 @@ function migrateMessageDraftStoreOwner(oldOwnerKey, newOwnerKey) {
   }
 }
 
+function migratePendingStateStoreOwner(oldOwnerKey, newOwnerKey) {
+  const prevOwner = normalizeName(oldOwnerKey);
+  const nextOwner = normalizeName(newOwnerKey);
+  if (!prevOwner || !nextOwner || prevOwner === nextOwner) return;
+
+  const prevStorageKey = getPendingStateStorageKey(prevOwner);
+  const nextStorageKey = getPendingStateStorageKey(nextOwner);
+  if (!prevStorageKey || !nextStorageKey) return;
+
+  try {
+    const previousRaw = localStorage.getItem(prevStorageKey);
+    if (!previousRaw) return;
+    const nextRaw = localStorage.getItem(nextStorageKey);
+    if (!nextRaw) {
+      localStorage.setItem(nextStorageKey, previousRaw);
+    }
+    localStorage.removeItem(prevStorageKey);
+  } catch (_) {
+    // Ignore local storage migration errors for pending state.
+  }
+}
+
 function persistActiveMessageDraft() {
   if (!activeFriend || !messageInput) return;
   setMessageDraft(activeFriend, messageInput.value);
@@ -882,6 +964,288 @@ function applyActiveMessageDraft() {
   if (sendButton) {
     sendButton.classList.toggle("ready", draft.trim().length > 0);
   }
+}
+
+function getPendingStateOwnerKey() {
+  return normalizeName(me || "");
+}
+
+function getPendingStateStorageKey(ownerKey = getPendingStateOwnerKey()) {
+  const safeOwner = normalizeName(ownerKey || "");
+  if (!safeOwner) return "";
+  return `${PENDING_STATE_KEY}:${safeOwner}`;
+}
+
+function withPendingStatePersistenceSuppressed(task) {
+  suppressPendingStatePersist += 1;
+  try {
+    return task();
+  } finally {
+    suppressPendingStatePersist = Math.max(0, suppressPendingStatePersist - 1);
+  }
+}
+
+function clearPendingRuntimeState() {
+  pendingQueue.length = 0;
+  pendingQueueByTempId.clear();
+  pendingByTempId.clear();
+}
+
+function buildPendingStorageMessage(rawMessage, tempId) {
+  if (!rawMessage || !tempId) return null;
+  const to = normalizeMojibakeText(rawMessage.to || "").trim();
+  if (!to) return null;
+  const toType = normalizeChatKind(rawMessage.toType || rawMessage.kind || "friend");
+  const text = validateOutgoingMessageText(rawMessage.text, { toast: false });
+  if (!text) return null;
+  const timestamp = String(rawMessage.timestamp || new Date().toISOString());
+  return {
+    id: tempId,
+    clientTempId: tempId,
+    from: me || "You",
+    to,
+    toType,
+    kind: toType,
+    groupId: toType === "group" ? to : "",
+    text,
+    timestamp,
+    deliveredAt: null,
+    seenAt: null,
+    pending: Boolean(rawMessage.pending) && !Boolean(rawMessage.failed),
+    failed: Boolean(rawMessage.failed),
+    failedAt: rawMessage.failedAt ? String(rawMessage.failedAt) : "",
+    replyTo: rawMessage.replyTo && typeof rawMessage.replyTo === "object"
+      ? {
+          id: String(rawMessage.replyTo.id || "").trim(),
+          from: normalizeMojibakeText(rawMessage.replyTo.from || "").trim(),
+          text: normalizeMojibakeText(rawMessage.replyTo.text || "").trim(),
+        }
+      : null,
+    attachment: normalizeAttachmentPayload(rawMessage.attachment, text),
+    reactions: {},
+  };
+}
+
+function persistPendingStateNow() {
+  if (!loadedPendingOwnerKey) return;
+  const storageKey = getPendingStateStorageKey(loadedPendingOwnerKey);
+  if (!storageKey) return;
+  try {
+    if (!pendingByTempId.size && !pendingQueue.length) {
+      localStorage.removeItem(storageKey);
+      return;
+    }
+
+    const messages = [];
+    pendingByTempId.forEach((rawMessage, tempId) => {
+      const id = String(tempId || "").trim();
+      if (!id) return;
+      const message = buildPendingStorageMessage(rawMessage, id);
+      if (!message) return;
+      messages.push(message);
+    });
+
+    const queue = [];
+    pendingQueue.forEach((entry) => {
+      const tempId = String(entry?.tempId || "").trim();
+      const payload = entry?.payload || {};
+      const text = validateOutgoingMessageText(payload.text, { toast: false });
+      if (!tempId || !text) return;
+      queue.push({
+        tempId,
+        attempts: Math.max(0, Math.floor(Number(entry.attempts) || 0)),
+        lastAttemptAt: Math.max(0, Math.floor(Number(entry.lastAttemptAt) || 0)),
+        nextAttemptAt: Math.max(0, Math.floor(Number(entry.nextAttemptAt) || 0)),
+        payload: {
+          to: normalizeMojibakeText(payload.to || "").trim(),
+          toType: normalizeChatKind(payload.toType || "friend"),
+          text,
+          clientTempId: tempId,
+          replyTo: payload.replyTo && typeof payload.replyTo === "object" ? payload.replyTo : null,
+          attachment: normalizeAttachmentPayload(payload.attachment, text),
+        },
+      });
+    });
+
+    const serialized = {
+      version: 1,
+      owner: loadedPendingOwnerKey,
+      savedAt: new Date().toISOString(),
+      messages,
+      queue,
+    };
+    localStorage.setItem(storageKey, JSON.stringify(serialized));
+  } catch (_) {
+    // Ignore storage write failures for pending state.
+  }
+}
+
+function schedulePersistPendingState() {
+  if (!loadedPendingOwnerKey || suppressPendingStatePersist > 0) return;
+  if (pendingStatePersistTimer) {
+    clearTimeout(pendingStatePersistTimer);
+  }
+  pendingStatePersistTimer = setTimeout(() => {
+    pendingStatePersistTimer = null;
+    persistPendingStateNow();
+  }, 120);
+}
+
+function restorePendingState(force = false) {
+  const ownerKey = getPendingStateOwnerKey();
+  if (!ownerKey) {
+    loadedPendingOwnerKey = "";
+    clearPendingRuntimeState();
+    return 0;
+  }
+  if (!force && loadedPendingOwnerKey === ownerKey) {
+    return pendingByTempId.size;
+  }
+
+  loadedPendingOwnerKey = ownerKey;
+  const storageKey = getPendingStateStorageKey(ownerKey);
+  let restoredCount = 0;
+
+  withPendingStatePersistenceSuppressed(() => {
+    clearPendingRuntimeState();
+    if (!storageKey) return;
+
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return;
+      const rawMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
+      const rawQueue = Array.isArray(parsed.queue) ? parsed.queue : [];
+
+      rawMessages.forEach((entry) => {
+        const tempId = String(entry?.clientTempId || entry?.id || "").trim();
+        if (!tempId) return;
+        const message = buildPendingStorageMessage(entry, tempId);
+        if (!message) return;
+        const sanitized = sanitizeMessagePayload(message) || message;
+        pendingByTempId.set(tempId, sanitized);
+      });
+
+      const now = Date.now();
+      rawQueue.forEach((entry) => {
+        const tempId = String(entry?.tempId || entry?.payload?.clientTempId || "").trim();
+        if (!tempId) return;
+        const pendingMessage = pendingByTempId.get(tempId);
+        if (!pendingMessage || pendingMessage.failed) return;
+
+        const payload = {
+          to: pendingMessage.to,
+          toType: normalizeChatKind(pendingMessage.toType || pendingMessage.kind || "friend"),
+          text: validateOutgoingMessageText(entry?.payload?.text || pendingMessage.text, { toast: false }),
+          clientTempId: tempId,
+        };
+        if (!payload.text) return;
+        if (pendingMessage.replyTo) payload.replyTo = pendingMessage.replyTo;
+        if (pendingMessage.attachment) payload.attachment = pendingMessage.attachment;
+
+        const restoredEntry = ensurePendingQueueEntry(payload, tempId);
+        if (!restoredEntry) return;
+        restoredEntry.attempts = Math.max(0, Math.floor(Number(entry?.attempts) || 0));
+        restoredEntry.lastAttemptAt = Math.max(0, Math.floor(Number(entry?.lastAttemptAt) || 0));
+        const nextAttemptAt = Math.max(0, Math.floor(Number(entry?.nextAttemptAt) || 0));
+        restoredEntry.nextAttemptAt = nextAttemptAt > now + PENDING_RETRY_MAX_MS
+          ? now
+          : nextAttemptAt;
+      });
+
+      restoredCount = pendingByTempId.size;
+    } catch (_) {
+      // Ignore storage parse failures for pending state.
+    }
+  });
+
+  renderNetworkState();
+  return restoredCount;
+}
+
+function syncPendingPreviewIntoFriendList() {
+  if (!pendingByTempId.size || !Array.isArray(friends) || !friends.length) return;
+  let touched = false;
+  const nextFriends = friends.map((entry) => ({ ...entry }));
+
+  pendingByTempId.forEach((message) => {
+    if (!message || !message.to) return;
+    const target = String(message.to || "").trim();
+    const kind = normalizeChatKind(message.toType || message.kind || "friend");
+    const index = nextFriends.findIndex((friend) =>
+      isSameChatTarget(friend?.username, friend?.kind || "friend", target, kind)
+    );
+    if (index < 0) return;
+
+    const current = nextFriends[index];
+    const pendingTs = getTimestampSortValue(message.timestamp || "");
+    const currentTs = getTimestampSortValue(current?.lastTimestamp || "");
+    if (pendingTs < currentTs) return;
+
+    const attachment = normalizeAttachmentPayload(message.attachment, message.text);
+    const pendingPreview = attachment
+      ? (attachment.kind === "image" ? "Image attachment" : (attachment.name || "Attachment"))
+      : String(message.text || "");
+
+    nextFriends[index] = {
+      ...current,
+      lastMessage: pendingPreview,
+      lastFrom: me || current?.lastFrom || "You",
+      lastTimestamp: message.timestamp || current?.lastTimestamp || "",
+    };
+    touched = true;
+  });
+
+  if (touched) {
+    friends = nextFriends;
+  }
+}
+
+function appendRestoredPendingMessages(messages, target, kind = "friend") {
+  if (!Array.isArray(messages) || !pendingByTempId.size || !target) return messages;
+
+  const staleTempIds = [];
+  const existingTempIds = new Set();
+  messages.forEach((message) => {
+    if (!message) return;
+    const tempId = String(message.clientTempId || "").trim();
+    const messageId = String(message.id || "").trim();
+    if (tempId) existingTempIds.add(tempId);
+    if (messageId.startsWith("tmp-")) existingTempIds.add(messageId);
+  });
+
+  const pendingMatches = [];
+  pendingByTempId.forEach((message, tempId) => {
+    if (!message || !tempId) return;
+    if (!isSameChatTarget(message.to, message.toType || message.kind || "friend", target, kind)) return;
+    if (existingTempIds.has(tempId)) {
+      staleTempIds.push(tempId);
+      return;
+    }
+    pendingMatches.push(message);
+  });
+
+  if (!pendingMatches.length && !staleTempIds.length) return messages;
+
+  staleTempIds.forEach((tempId) => {
+    pendingByTempId.delete(tempId);
+    removePendingFromQueue(tempId);
+  });
+
+  const merged = messages.concat(pendingMatches);
+  merged.sort((a, b) => {
+    const tsDiff = getTimestampSortValue(a?.timestamp || "") - getTimestampSortValue(b?.timestamp || "");
+    if (tsDiff !== 0) return tsDiff;
+    const aKey = String(a?.id || a?.clientTempId || "");
+    const bKey = String(b?.id || b?.clientTempId || "");
+    return aKey.localeCompare(bKey);
+  });
+
+  if (staleTempIds.length) {
+    schedulePersistPendingState();
+  }
+  return merged;
 }
 
 function isNativePlatform() {
@@ -1660,6 +2024,134 @@ window._novynOpenSettingsPanel = () => setSettingsOpen(true);
 window._novynCloseSettingsPanel = () => setSettingsOpen(false);
 window._novynToggleSettingsPanel = () => setSettingsOpen(!settingsOpen);
 
+function syncSettingsPresenceUi() {
+  const mode = normalizePresenceMode(myPresenceMode, "online");
+  if (settingsPresenceLine) {
+    settingsPresenceLine.dataset.presence = mode;
+  }
+  if (settingsPresenceText) {
+    settingsPresenceText.textContent = mode === "online" ? "Active now" : getPresenceLabel(mode, { self: true });
+  }
+  if (statusPillButtons.length) {
+    statusPillButtons.forEach((btn) => {
+      const buttonMode = normalizePresenceMode(btn.dataset.status, "online");
+      btn.classList.toggle("active", buttonMode === mode);
+      btn.setAttribute("aria-pressed", buttonMode === mode ? "true" : "false");
+    });
+  }
+}
+
+function clearPresenceSyncTimer() {
+  if (!presenceSyncTimer) return;
+  clearTimeout(presenceSyncTimer);
+  presenceSyncTimer = null;
+}
+
+function emitPresenceModeToServer(mode) {
+  const normalizedMode = normalizePresenceMode(mode, myPresenceMode);
+  pendingPresenceSyncMode = normalizedMode;
+  if (!socketAvailable || !socket || !socket.connected) return;
+
+  clearPresenceSyncTimer();
+  let acked = false;
+  socket.emit("set_presence_mode", { status: normalizedMode }, (ack) => {
+    acked = true;
+    clearPresenceSyncTimer();
+    if (!ack || ack.ok !== true) {
+      pendingPresenceSyncMode = normalizedMode;
+      return;
+    }
+    pendingPresenceSyncMode = "";
+    const acknowledgedMode = normalizePresenceMode(ack?.status, normalizedMode);
+    if (acknowledgedMode !== myPresenceMode) {
+      setMyPresenceMode(acknowledgedMode, { emit: false, toast: false, manual: false });
+    }
+  });
+
+  presenceSyncTimer = setTimeout(() => {
+    presenceSyncTimer = null;
+    if (!acked) {
+      pendingPresenceSyncMode = normalizedMode;
+    }
+  }, 2500);
+}
+
+function flushPendingPresenceSync() {
+  if (!pendingPresenceSyncMode) return;
+  const now = Date.now();
+  if (now < nextPresenceSyncRetryAt) return;
+  nextPresenceSyncRetryAt = now + 3000;
+  emitPresenceModeToServer(pendingPresenceSyncMode);
+}
+
+function clearPresenceActivityTimers() {
+  if (presenceIdleTimer) {
+    clearTimeout(presenceIdleTimer);
+    presenceIdleTimer = null;
+  }
+  if (presenceHiddenTimer) {
+    clearTimeout(presenceHiddenTimer);
+    presenceHiddenTimer = null;
+  }
+}
+
+function schedulePresenceActivityTimers() {
+  clearPresenceActivityTimers();
+  if (!isDashboardPage || !me) return;
+  if (manualPresenceMode !== "online") return;
+
+  if (document.hidden) {
+    presenceHiddenTimer = setTimeout(() => {
+      if (!isDashboardPage || !me) return;
+      if (manualPresenceMode !== "online") return;
+      if (normalizePresenceMode(myPresenceMode, "online") !== "online") return;
+      presenceAutoAwayActive = true;
+      setMyPresenceMode("away", { emit: true, toast: false, manual: false });
+    }, PRESENCE_HIDDEN_AWAY_MS);
+    return;
+  }
+
+  presenceIdleTimer = setTimeout(() => {
+    if (!isDashboardPage || !me) return;
+    if (manualPresenceMode !== "online") return;
+    if (normalizePresenceMode(myPresenceMode, "online") !== "online") return;
+    presenceAutoAwayActive = true;
+    setMyPresenceMode("away", { emit: true, toast: false, manual: false });
+  }, PRESENCE_IDLE_AWAY_MS);
+}
+
+function markPresenceActivity(options = {}) {
+  if (!isDashboardPage || !me) return;
+  const now = Date.now();
+  const skipThrottle = Boolean(options.skipThrottle);
+  if (!skipThrottle && now - lastPresenceActivityEventAt < PRESENCE_ACTIVITY_THROTTLE_MS) return;
+  lastPresenceActivityEventAt = now;
+
+  if (!document.hidden && presenceAutoAwayActive && manualPresenceMode === "online") {
+    presenceAutoAwayActive = false;
+    setMyPresenceMode("online", { emit: true, toast: false, manual: false });
+  }
+  schedulePresenceActivityTimers();
+}
+
+function setMyPresenceMode(nextMode, options = {}) {
+  const previous = normalizePresenceMode(myPresenceMode, "online");
+  const mode = normalizePresenceMode(nextMode, previous);
+  myPresenceMode = mode;
+  if (options.manual !== false) {
+    manualPresenceMode = mode;
+    presenceAutoAwayActive = false;
+  }
+  syncSettingsPresenceUi();
+  if (options.emit && socketAvailable) {
+    emitPresenceModeToServer(mode);
+  }
+  if (options.toast && mode !== previous) {
+    showToast(`Status set to ${getPresenceLabel(mode, { self: true })}.`, "success");
+  }
+  schedulePresenceActivityTimers();
+}
+
 function syncSettingsPanel() {
   if (!settingsPanel) return;
   const handle = me ? `@${me}` : "@you";
@@ -1674,6 +2166,7 @@ function syncSettingsPanel() {
       settingsAvatar.style.background = "";
     }
   }
+  syncSettingsPresenceUi();
 }
 
 function setCallFilter(nextFilter) {
@@ -2151,6 +2644,9 @@ function redirectToLogin() {
 function prepareLogoutTransition() {
   logoutInProgress = true;
   cameraCaptureModal.close();
+  clearPresenceActivityTimers();
+  clearPresenceSyncTimer();
+  pendingPresenceSyncMode = "";
   clearStoredSession();
   ensureDashboardSession._pending = null;
   resumeSocketSession._pending = false;
@@ -2561,6 +3057,7 @@ function scrollToBottom(skipAnimation = false) {
 
 function pinConversationToBottom(forceLatest = false) {
   if (!messagesEl) return;
+  if (!forceLatest && isMessageViewportMutationActive()) return;
   if (forceLatest || hasNewerMessages()) {
     showLatestMessages();
     return;
@@ -2590,6 +3087,18 @@ function isNearTop() {
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Network state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+
+function beginMessageViewportMutation() {
+  suppressMessageViewportHandlers += 1;
+}
+
+function endMessageViewportMutation() {
+  suppressMessageViewportHandlers = Math.max(0, suppressMessageViewportHandlers - 1);
+}
+
+function isMessageViewportMutationActive() {
+  return suppressMessageViewportHandlers > 0;
+}
 
 function getFailedPendingTempIds() {
   const failedTempIds = [];
@@ -2634,6 +3143,22 @@ function setNetworkState(label, state) {
   networkStateLabel = label;
   networkStateMode = state;
   renderNetworkState();
+}
+
+function syncBrowserNetworkState() {
+  if (typeof navigator !== "undefined" && navigator && navigator.onLine === false) {
+    setNetworkState("Offline (no internet)", "offline");
+    return;
+  }
+  if (socketAvailable && socket && socket.connected) {
+    setNetworkState("Connected", "connected");
+    return;
+  }
+  if (socketAvailable) {
+    setNetworkState("Reconnecting...", "offline");
+    return;
+  }
+  setNetworkState("Realtime unavailable", "offline");
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Toast Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -3229,15 +3754,18 @@ function getFriendPresenceText(friend) {
   }
   if (friend?.blockedByMe) return "Blocked by you";
   if (friend?.blockedYou) return "Blocked you";
-  return friend.online ? "Online now" : formatLastSeen(friend.lastSeenAt);
+  const mode = resolveFriendPresenceMode(friend);
+  if (mode === "away") return "Away";
+  if (mode === "busy") return "Busy";
+  if (mode === "online") return "Online now";
+  return formatLastSeen(friend.lastSeenAt);
 }
 
 function getContactBucket(friend) {
-  if (friend?.online) return "online";
-  const last = new Date(friend?.lastSeenAt || "");
-  if (Number.isNaN(last.getTime())) return "offline";
-  const diffMinutes = (Date.now() - last.getTime()) / 60000;
-  if (diffMinutes <= 60) return "away";
+  const mode = resolveFriendPresenceMode(friend);
+  if (mode === "online") return "online";
+  if (mode === "away") return "away";
+  if (mode === "busy") return "busy";
   return "offline";
 }
 
@@ -3506,6 +4034,7 @@ function syncProfilePanel(friend) {
   const isGroup = normalizeChatKind(resolvedFriend.kind || activeChatKind) === "group";
   profilePanelHandle.textContent = isGroup ? `#${resolvedFriend.username}` : `@${resolvedFriend.username}`;
   const safety = getFriendSafety(resolvedFriend.username, resolvedFriend.kind || activeChatKind);
+  const presenceMode = resolveFriendPresenceMode(resolvedFriend);
   if (isGroup) {
     const members = Number(resolvedFriend.memberCount) || 0;
     const online = Number(resolvedFriend.onlineCount) || 0;
@@ -3515,9 +4044,23 @@ function syncProfilePanel(friend) {
   } else if (safety.blockedYou) {
     profilePanelStatus.textContent = "Blocked you";
   } else {
-    profilePanelStatus.textContent = resolvedFriend.online ? "Active now" : formatLastSeen(resolvedFriend.lastSeenAt);
+    profilePanelStatus.textContent = presenceMode === "away"
+      ? "Away"
+      : presenceMode === "busy"
+        ? "Busy"
+        : presenceMode === "online"
+          ? "Active now"
+          : formatLastSeen(resolvedFriend.lastSeenAt);
   }
-  profilePanelStatus.classList.toggle("offline", !resolvedFriend.online || (!isGroup && safety.blocked));
+  profilePanelStatus.classList.remove("online", "away", "busy", "offline", "me");
+  if (isGroup) {
+    const groupOnline = Number(resolvedFriend.onlineCount) > 0;
+    profilePanelStatus.classList.add(groupOnline ? "online" : "offline");
+  } else if (safety.blocked) {
+    profilePanelStatus.classList.add("offline");
+  } else {
+    profilePanelStatus.classList.add(presenceMode);
+  }
 
   const fallback = getFriendDisplayName(resolvedFriend).slice(0, 2).toUpperCase();
   if (resolvedFriend.avatarId && window._novynAvatarUtils) {
@@ -3708,6 +4251,10 @@ function renderGlobalSearchResults() {
     globalSearchResults.innerHTML = '<div class="global-search-empty">Type to search across chats.</div>';
     return;
   }
+  if (query.length > 0 && query.length < GLOBAL_SEARCH_MIN_QUERY_LENGTH && getSearchFilter() === "all") {
+    globalSearchResults.innerHTML = `<div class="global-search-empty">Type at least ${GLOBAL_SEARCH_MIN_QUERY_LENGTH} characters.</div>`;
+    return;
+  }
 
   if (globalSearchState.loading) {
     globalSearchResults.innerHTML = '<div class="global-search-empty">Searching...</div>';
@@ -3760,9 +4307,21 @@ function requestGlobalSearch() {
   if (!socketAvailable || !socket) return;
   const query = getSearchQuery();
   const filter = getSearchFilter();
+  if (query.length > 0 && query.length < GLOBAL_SEARCH_MIN_QUERY_LENGTH && filter === "all") {
+    globalSearchState.loading = false;
+    globalSearchState.results = [];
+    renderGlobalSearchResults();
+    if (messageSearchCount) {
+      messageSearchCount.classList.remove("hidden");
+      messageSearchCount.textContent = `0 results`;
+    }
+    return;
+  }
   globalSearchState.query = query;
   globalSearchState.filter = filter;
   globalSearchState.loading = true;
+  const requestId = globalSearchState.requestId + 1;
+  globalSearchState.requestId = requestId;
   renderGlobalSearchResults();
 
   if (globalSearchState.timer) {
@@ -3773,6 +4332,7 @@ function requestGlobalSearch() {
       query: messageSearchInput ? messageSearchInput.value.trim() : "",
       filter,
       limit: 120,
+      requestId,
     });
   }, 160);
 }
@@ -4970,11 +5530,59 @@ const messageContextMenu = (() => {
   let longPressTarget = null;
   let longPressStartX = 0;
   let longPressStartY = 0;
+  let swipeReplyPointerId = null;
+  let swipeReplyTarget = null;
+  let swipeReplyStartX = 0;
+  let swipeReplyStartY = 0;
+  let swipeReplyDragX = 0;
+  let swipeReplyLocked = false;
+  let swipeReplyHorizontal = false;
+  const SWIPE_REPLY_TRIGGER_X = 58;
+  const SWIPE_REPLY_MAX_X = 88;
+
+  function triggerSwipeReplyHaptic() {
+    try {
+      const cap = window.Capacitor?.Plugins?.Haptics;
+      if (cap && typeof cap.impact === "function") {
+        cap.impact({ style: "light" });
+        return;
+      }
+    } catch (_) {}
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(9);
+    }
+  }
+
+  function isSwipeReplyGestureTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest("a, button, input, textarea, select")) return false;
+    if (target.closest(".msg-action-btn, .reaction-btn, .reaction-picker")) return false;
+    if (target.closest(".message-context-menu")) return false;
+    if (target.closest(".audio-card, .audio-play, .wv-track, .wv-bar")) return false;
+    if (target.closest(".message-thread-pill")) return false;
+    return true;
+  }
 
   function clearLongPress() {
     if (longPressTimer) clearTimeout(longPressTimer);
     longPressTimer = null;
     longPressTarget = null;
+  }
+
+  function clearSwipeReply(options = {}) {
+    const resetTransform = options.resetTransform !== false;
+    const prevTarget = swipeReplyTarget;
+    swipeReplyPointerId = null;
+    swipeReplyTarget = null;
+    swipeReplyStartX = 0;
+    swipeReplyStartY = 0;
+    swipeReplyDragX = 0;
+    swipeReplyLocked = false;
+    swipeReplyHorizontal = false;
+    if (!resetTransform || !prevTarget) return;
+    prevTarget.classList.remove("swipe-ready");
+    prevTarget.style.removeProperty("transform");
+    prevTarget.style.removeProperty("transition");
   }
 
   messagesEl.addEventListener("pointerdown", (e) => {
@@ -4989,15 +5597,83 @@ const messageContextMenu = (() => {
       open(longPressTarget, longPressStartX, longPressStartY);
       clearLongPress();
     }, 520);
+
+    clearSwipeReply();
+    if (e.pointerType === "mouse") return;
+    if (!isSwipeReplyGestureTarget(e.target)) return;
+    swipeReplyPointerId = e.pointerId;
+    swipeReplyTarget = msgEl;
+    swipeReplyStartX = e.clientX;
+    swipeReplyStartY = e.clientY;
+    swipeReplyDragX = 0;
+    swipeReplyLocked = false;
+    swipeReplyHorizontal = false;
   });
   messagesEl.addEventListener("pointermove", (e) => {
-    if (!longPressTimer) return;
-    const dx = Math.abs(e.clientX - longPressStartX);
-    const dy = Math.abs(e.clientY - longPressStartY);
-    if (dx > 8 || dy > 8) clearLongPress();
+    if (longPressTimer) {
+      const dx = Math.abs(e.clientX - longPressStartX);
+      const dy = Math.abs(e.clientY - longPressStartY);
+      if (dx > 8 || dy > 8) clearLongPress();
+    }
+
+    if (!swipeReplyTarget) return;
+    if (swipeReplyPointerId !== null && e.pointerId !== swipeReplyPointerId) return;
+
+    const dragXRaw = e.clientX - swipeReplyStartX;
+    const dragYRaw = e.clientY - swipeReplyStartY;
+    if (!swipeReplyLocked) {
+      if (Math.abs(dragXRaw) < 4 && Math.abs(dragYRaw) < 4) return;
+      swipeReplyLocked = true;
+      swipeReplyHorizontal = dragXRaw > 0 && Math.abs(dragXRaw) > (Math.abs(dragYRaw) * 1.08);
+      if (!swipeReplyHorizontal) {
+        clearSwipeReply();
+        return;
+      }
+    }
+    if (!swipeReplyHorizontal) return;
+
+    const dragX = Math.max(0, Math.min(SWIPE_REPLY_MAX_X, dragXRaw));
+    swipeReplyDragX = dragX;
+    swipeReplyTarget.style.transition = "none";
+    swipeReplyTarget.style.transform = `translateX(${dragX}px)`;
+    swipeReplyTarget.classList.toggle("swipe-ready", dragX >= SWIPE_REPLY_TRIGGER_X);
+    e.preventDefault();
   });
-  messagesEl.addEventListener("pointerup", clearLongPress);
-  messagesEl.addEventListener("pointercancel", clearLongPress);
+  messagesEl.addEventListener("pointerup", (e) => {
+    if (swipeReplyTarget && (swipeReplyPointerId === null || e.pointerId === swipeReplyPointerId)) {
+      const targetEl = swipeReplyTarget;
+      const shouldReply = swipeReplyDragX >= SWIPE_REPLY_TRIGGER_X;
+      const messageId = String(targetEl?.dataset?.messageId || "").trim();
+      const sourceMessage = messageId ? getConversationMessageById(messageId) : null;
+
+      targetEl.classList.remove("swipe-ready");
+      targetEl.style.transition = "transform .18s ease";
+      targetEl.style.transform = "";
+      setTimeout(() => {
+        targetEl.style.removeProperty("transition");
+      }, 220);
+
+      if (shouldReply && sourceMessage && !sourceMessage.deletedAt) {
+        setReply({
+          id: sourceMessage.id,
+          from: sourceMessage.from,
+          text: sourceMessage.text,
+        });
+        triggerSwipeReplyHaptic();
+        targetEl.classList.add("swipe-fired");
+        setTimeout(() => targetEl.classList.remove("swipe-fired"), 260);
+      }
+
+      clearSwipeReply({ resetTransform: false });
+    } else {
+      clearSwipeReply();
+    }
+    clearLongPress();
+  });
+  messagesEl.addEventListener("pointercancel", () => {
+    clearSwipeReply();
+    clearLongPress();
+  });
 
   return { open, close };
 })();
@@ -5653,55 +6329,118 @@ function getCurrentMessageWindowSize() {
   return Math.max(MAX_VISIBLE_MESSAGES, Math.floor(rawSize));
 }
 
+function captureMessageViewportAnchor() {
+  if (!messagesEl) return null;
+  const rows = Array.from(messagesEl.querySelectorAll("article.message"));
+  if (!rows.length) return null;
+  const scrollTop = messagesEl.scrollTop;
+  let anchorRow = null;
+  for (const row of rows) {
+    if (!row) continue;
+    if ((row.offsetTop + row.offsetHeight) >= scrollTop) {
+      anchorRow = row;
+      break;
+    }
+  }
+  if (!anchorRow) anchorRow = rows[0];
+  if (!anchorRow) return null;
+  const messageId = String(anchorRow.dataset.messageId || "").trim();
+  const tempId = String(anchorRow.dataset.clientTempId || "").trim();
+  if (!messageId && !tempId) return null;
+  return {
+    messageId,
+    tempId,
+    offset: anchorRow.offsetTop - scrollTop,
+  };
+}
+
+function restoreMessageViewportAnchor(anchor) {
+  if (!messagesEl || !anchor) return false;
+  const rows = Array.from(messagesEl.querySelectorAll("article.message"));
+  if (!rows.length) return false;
+  let anchorRow = null;
+  if (anchor.messageId) {
+    anchorRow = rows.find((row) => row.dataset.messageId === anchor.messageId) || null;
+  }
+  if (!anchorRow && anchor.tempId) {
+    anchorRow = rows.find((row) => row.dataset.clientTempId === anchor.tempId) || null;
+  }
+  if (!anchorRow) return false;
+  const offset = Number(anchor.offset);
+  const safeOffset = Number.isFinite(offset) ? offset : 0;
+  messagesEl.scrollTop = Math.max(0, anchorRow.offsetTop - safeOffset);
+  return true;
+}
+
 function renderMessageWindow(options = {}) {
   if (!messagesEl) return;
   const maxVisible = Number.isFinite(Number(options.maxVisible)) && Number(options.maxVisible) > 0
     ? Math.floor(Number(options.maxVisible))
     : MAX_VISIBLE_MESSAGES;
-  const preserveScroll = options.preserveScroll;
+  const preserveScroll = Boolean(options.preserveScroll);
   const prevScrollTop = preserveScroll ? messagesEl.scrollTop : 0;
   const prevScrollHeight = preserveScroll ? messagesEl.scrollHeight : 0;
-  clearMessages();
-  ensureLoadOlderButton();
+  const anchor = preserveScroll ? captureMessageViewportAnchor() : null;
+  if (preserveScroll) beginMessageViewportMutation();
+  try {
+    clearMessages();
+    ensureLoadOlderButton();
 
-  if (!Number.isFinite(messageWindowEnd) || messageWindowEnd <= 0) {
-    messageWindowEnd = conversationMessages.length;
-  }
-  messageWindowEnd = Math.min(conversationMessages.length, messageWindowEnd);
-  if (messageWindowEnd - messageWindowStart > maxVisible) {
-    messageWindowStart = Math.max(0, messageWindowEnd - maxVisible);
-  }
+    if (!Number.isFinite(messageWindowEnd) || messageWindowEnd <= 0) {
+      messageWindowEnd = conversationMessages.length;
+    }
+    messageWindowEnd = Math.min(conversationMessages.length, messageWindowEnd);
+    if (messageWindowEnd - messageWindowStart > maxVisible) {
+      messageWindowStart = Math.max(0, messageWindowEnd - maxVisible);
+    }
 
-  let hadRenderError = false;
-  for (let i = messageWindowStart; i < messageWindowEnd; i += 1) {
-    const msg = conversationMessages[i];
-    if (!msg || typeof msg !== "object") continue;
-    try {
-      if (options.withSeparator !== false) appendDateSeparator(msg.timestamp);
-      const row = buildMessageElement(msg, true);
-      messagesEl.appendChild(row);
-    } catch (err) {
-      hadRenderError = true;
-      console.warn("Failed to render message row:", err);
+    let hadRenderError = false;
+    for (let i = messageWindowStart; i < messageWindowEnd; i += 1) {
+      const msg = conversationMessages[i];
+      if (!msg || typeof msg !== "object") continue;
+      try {
+        if (options.withSeparator !== false) appendDateSeparator(msg.timestamp);
+        const row = buildMessageElement(msg, true);
+        messagesEl.appendChild(row);
+      } catch (err) {
+        hadRenderError = true;
+        console.warn("Failed to render message row:", err);
+      }
+    }
+    if (hadRenderError && !historyRenderWarningShown) {
+      historyRenderWarningShown = true;
+      showToast("Some older messages could not be rendered.", "info");
+    }
+
+    updateLoadOlderButton();
+    if (!options.skipSearch) applyMessageSearch();
+    if (preserveScroll) {
+      const restoredWithAnchor = restoreMessageViewportAnchor(anchor);
+      if (!restoredWithAnchor) {
+        const nextHeight = messagesEl.scrollHeight;
+        const delta = nextHeight - prevScrollHeight;
+        messagesEl.scrollTop = Math.max(0, prevScrollTop + delta);
+      }
+      scrollState.pinnedToBottom = false;
+    }
+    syncLoadOlderButtonVisibility();
+  } finally {
+    if (preserveScroll) {
+      let released = false;
+      const releaseViewportMutation = () => {
+        if (released) return;
+        released = true;
+        endMessageViewportMutation();
+        syncLoadOlderButtonVisibility();
+      };
+      requestAnimationFrame(releaseViewportMutation);
+      setTimeout(releaseViewportMutation, 90);
     }
   }
-  if (hadRenderError && !historyRenderWarningShown) {
-    historyRenderWarningShown = true;
-    showToast("Some older messages could not be rendered.", "info");
-  }
-
-  updateLoadOlderButton();
-  if (!options.skipSearch) applyMessageSearch();
-  if (preserveScroll) {
-    const nextHeight = messagesEl.scrollHeight;
-    const delta = nextHeight - prevScrollHeight;
-    messagesEl.scrollTop = prevScrollTop + delta;
-  }
-  syncLoadOlderButtonVisibility();
 }
 
 function loadOlderMessages() {
-  if (messageWindowStart <= 0) return;
+  if (messageWindowStart <= 0 || !messagesEl) return;
   const btn = ensureLoadOlderButton();
   if (btn) {
     btn.disabled = true;
@@ -5709,6 +6448,7 @@ function loadOlderMessages() {
     btn.setAttribute("aria-busy", "true");
     setLoadOlderButtonText("Loading older messages...", btn);
   }
+  scrollState.pinnedToBottom = false;
   const expandedWindowSize = getCurrentMessageWindowSize() + MESSAGE_WINDOW_PAGE;
   messageWindowEnd = conversationMessages.length;
   messageWindowStart = Math.max(0, messageWindowEnd - expandedWindowSize);
@@ -5734,7 +6474,10 @@ function updateStats() {
   }
   if (friendCount)  friendCount.textContent  = String(friends.length);
   if (onlineCount) {
-    const online = friends.filter((f) => f.online).length;
+    const online = friends.filter((friend) => (
+      normalizeChatKind(friend?.kind || "friend") === "friend"
+      && resolveFriendPresenceMode(friend) !== "offline"
+    )).length;
     onlineCount.textContent = `${online} online`;
   }
   syncMessageFilterUi();
@@ -5808,6 +6551,11 @@ function renderMessages(messages) {
       .filter((message) => message && typeof message === "object")
       .map((message) => sanitizeMessagePayload(message) || message)
     : [];
+  conversationMessages = appendRestoredPendingMessages(
+    conversationMessages,
+    activeFriend,
+    activeChatKind
+  );
 
   if (!conversationMessages.length) {
     renderMessagesEmptyState("No messages yet. Say hello!");
@@ -5973,8 +6721,27 @@ function requestDiscoverOnline() {
   socket.emit("discover_online");
 }
 
+function sanitizeDiscoverUser(rawUser) {
+  if (!rawUser || typeof rawUser !== "object") return null;
+  const username = normalizeMojibakeText(rawUser.username);
+  if (!username) return null;
+  const online = Boolean(rawUser.online);
+  const presence = normalizePresenceMode(rawUser.presence, online ? "online" : "offline");
+  return {
+    ...rawUser,
+    username,
+    displayName: normalizeMojibakeText(rawUser.displayName),
+    avatarId: normalizeMojibakeText(rawUser.avatarId),
+    bio: normalizeMojibakeText(rawUser.bio),
+    presence,
+    online: presence !== "offline",
+  };
+}
+
 function setDiscoverUsers(list) {
-  discoverUsers = Array.isArray(list) ? list.slice() : [];
+  discoverUsers = Array.isArray(list)
+    ? list.map((entry) => sanitizeDiscoverUser(entry)).filter(Boolean)
+    : [];
   renderDiscover();
 }
 
@@ -5991,6 +6758,7 @@ function renderDiscover() {
     const key = normalizeName(username);
     if (!key || key === meKey) return false;
     if (friendKeys.has(key) || requestKeys.has(key)) return false;
+    if (normalizePresenceMode(user?.presence, user?.online ? "online" : "offline") === "offline") return false;
     if (query) {
       const searchBlob = normalizeSearchText(`${user?.displayName || ""} ${username} ${user?.bio || ""}`);
       if (!searchBlob.includes(query)) return false;
@@ -6024,7 +6792,9 @@ function renderDiscover() {
     const sub = document.createElement("div");
     sub.className = "discover-sub";
     const bio = cleanDisplayName(user?.bio);
-    sub.textContent = bio ? `Online now - ${bio}` : "Online now";
+    const presenceLabel = getPresenceLabel(user?.presence);
+    const presenceText = presenceLabel === "Online" ? "Online now" : presenceLabel;
+    sub.textContent = bio ? `${presenceText} - ${bio}` : presenceText;
     meta.append(name, sub);
 
     const action = document.createElement("button");
@@ -6467,7 +7237,10 @@ function friendPreview(friend) {
   if (!friend.lastMessage) {
     const bio = cleanDisplayName(friend?.bio);
     if (bio) return bio;
-    return friend.online ? "Online now" : "No messages yet";
+    const mode = resolveFriendPresenceMode(friend);
+    if (mode === "away") return "Away";
+    if (mode === "busy") return "Busy";
+    return mode === "online" ? "Online now" : "No messages yet";
   }
   const safeLastMessage = normalizeMojibakeText(friend.lastMessage);
   const fromMe = normalizeName(friend.lastFrom) === normalizeName(me);
@@ -6496,7 +7269,7 @@ function findFriend(username, kind = "") {
 function setInfoPanelStatus(text, state) {
   if (!infoPanelStatus) return;
   infoPanelStatus.textContent = normalizeMojibakeText(text);
-  infoPanelStatus.classList.remove("online", "offline", "me");
+  infoPanelStatus.classList.remove("online", "away", "busy", "offline", "me");
   if (state) infoPanelStatus.classList.add(state);
 }
 
@@ -6572,7 +7345,12 @@ function renderGroupMemberList(groupInfo) {
 
     const sub = document.createElement("div");
     sub.className = "group-member-sub";
-    if (member.online) {
+    const memberPresence = normalizePresenceMode(member?.presence, member?.online ? "online" : "offline");
+    if (memberPresence === "away") {
+      sub.textContent = "Away";
+    } else if (memberPresence === "busy") {
+      sub.textContent = "Busy";
+    } else if (memberPresence === "online") {
       sub.textContent = "Online";
     } else if (member.lastSeenAt) {
       sub.textContent = formatLastSeen(member.lastSeenAt);
@@ -6722,14 +7500,20 @@ function syncInfoPanel() {
       infoPanelStatus.title = statusText;
     } else {
       const safety = getFriendSafety(friend.username);
+      const presenceMode = resolveFriendPresenceMode(friend);
       const statusText = safety.blockedByMe
         ? "Blocked by you"
         : safety.blockedYou
           ? "Blocked you"
-          : friend.online
-            ? "Online"
+          : presenceMode === "away"
+            ? "Away"
+            : presenceMode === "busy"
+              ? "Busy"
+              : presenceMode === "online"
+                ? "Online"
             : formatLastSeen(friend.lastSeenAt);
-      setInfoPanelStatus(statusText, friend.online && !safety.blocked ? "online" : "offline");
+      const statusTone = safety.blocked ? "offline" : presenceMode;
+      setInfoPanelStatus(statusText, statusTone);
       infoPanelStatus.title = safety.blocked
         ? (safety.blockedByMe ? "You blocked this user." : "This user blocked you.")
         : statusText;
@@ -6777,7 +7561,7 @@ function renderActiveFriendPresence() {
     activeFriendAvatar.style.background = "";
     if (activeFriendPresenceLine) {
       activeFriendPresenceLine.textContent = "Select a conversation to start chatting";
-      activeFriendPresenceLine.classList.remove("online", "offline");
+      activeFriendPresenceLine.classList.remove("online", "away", "busy", "offline");
     }
     syncProfilePanel();
     return;
@@ -6788,7 +7572,7 @@ function renderActiveFriendPresence() {
     activePresence.classList.add("hidden");
     if (activeFriendPresenceLine) {
       activeFriendPresenceLine.textContent = "Loading conversation status...";
-      activeFriendPresenceLine.classList.remove("online", "offline");
+      activeFriendPresenceLine.classList.remove("online", "away", "busy", "offline");
     }
     syncProfilePanel();
     return;
@@ -6813,12 +7597,14 @@ function renderActiveFriendPresence() {
     activeFriendAvatar.textContent = fallback;
   }
 
-  activeFriendAvatar.classList.toggle("online", !!friend.online);
+  const presenceMode = isGroup ? "offline" : resolveFriendPresenceMode(friend);
+  const showOnlineMarker = isGroup
+    ? Number(friend.onlineCount) > 0
+    : presenceMode !== "offline";
+  activeFriendAvatar.classList.toggle("online", showOnlineMarker);
   activeFriendAvatar.title = isGroup
     ? `${Number(friend.memberCount) || 0} members`
-    : friend.online
-      ? `${friend.username} is online`
-      : `${friend.username} is offline`;
+    : `${friend.username} is ${getPresenceLabel(presenceMode).toLowerCase()}`;
 
   if (activeFriendPresenceLine) {
     if (isGroup) {
@@ -6828,6 +7614,7 @@ function renderActiveFriendPresence() {
         ? `${online} online - ${members} members`
         : `${members} members`;
       activeFriendPresenceLine.textContent = statusText;
+      activeFriendPresenceLine.classList.remove("away", "busy");
       activeFriendPresenceLine.classList.toggle("online", online > 0);
       activeFriendPresenceLine.classList.toggle("offline", online <= 0);
     } else {
@@ -6836,12 +7623,16 @@ function renderActiveFriendPresence() {
         ? "Blocked by you"
         : safety.blockedYou
           ? "Blocked you"
-          : friend.online
+          : presenceMode === "away"
+            ? "Away"
+            : presenceMode === "busy"
+              ? "Busy"
+              : presenceMode === "online"
             ? "Online now"
             : formatLastSeen(friend.lastSeenAt);
       activeFriendPresenceLine.textContent = statusText;
-      activeFriendPresenceLine.classList.toggle("online", !!friend.online && !safety.blocked);
-      activeFriendPresenceLine.classList.toggle("offline", !friend.online || safety.blocked);
+      activeFriendPresenceLine.classList.remove("online", "away", "busy", "offline");
+      activeFriendPresenceLine.classList.add(safety.blocked ? "offline" : presenceMode);
     }
   }
 
@@ -6981,7 +7772,7 @@ function clearActiveFriendSelection() {
   }
   if (activeFriendPresenceLine) {
     activeFriendPresenceLine.textContent = "Choose a chat to start messaging";
-    activeFriendPresenceLine.classList.remove("online", "offline");
+    activeFriendPresenceLine.classList.remove("online", "away", "busy", "offline");
   }
   renderActiveFriendPresence();
   syncRemoveFriendButton();
@@ -7125,7 +7916,8 @@ function renderFriends() {
 
     // Avatar with initials + online dot
     const avatar        = document.createElement("div");
-    avatar.className    = `friend-avatar chat-av av-default${friend.online ? " online" : ""}`;
+    const avatarPresenceMode = resolveFriendPresenceMode(friend);
+    avatar.className    = `friend-avatar chat-av av-default${avatarPresenceMode !== "offline" ? " online" : ""}`;
     if (friend.avatarId && window._novynAvatarUtils) {
       window._novynAvatarUtils.applyAvatarToEl(avatar, friend.avatarId, getFriendDisplayName(friend).slice(0, 2).toUpperCase());
     } else {
@@ -7162,8 +7954,11 @@ function renderFriends() {
     }
     preview.title = preview.textContent;
     const showPresenceState = (isContactsView || (isMessagesView && isDirectMessage)) && !blockedEntry;
-    preview.classList.toggle("status-online", showPresenceState && !!friend.online);
-    preview.classList.toggle("status-offline", showPresenceState && !friend.online);
+    const previewPresenceMode = resolveFriendPresenceMode(friend);
+    preview.classList.toggle("status-online", showPresenceState && previewPresenceMode === "online");
+    preview.classList.toggle("status-away", showPresenceState && previewPresenceMode === "away");
+    preview.classList.toggle("status-busy", showPresenceState && previewPresenceMode === "busy");
+    preview.classList.toggle("status-offline", showPresenceState && previewPresenceMode === "offline");
 
     const nameRow = document.createElement("div");
     nameRow.className = "chat-name-row";
@@ -7216,13 +8011,13 @@ function renderFriends() {
   };
 
   if (isContactsView) {
-    const grouped = { online: [], away: [], offline: [] };
+    const grouped = { online: [], away: [], busy: [], offline: [] };
     sortedFriends.forEach((friend) => {
       const bucket = getContactBucket(friend);
       if (grouped[bucket]) grouped[bucket].push(friend);
     });
-    const order = ["online", "away", "offline"];
-    const labels = { online: "Online", away: "Away", offline: "Offline" };
+    const order = ["online", "away", "busy", "offline"];
+    const labels = { online: "Online", away: "Away", busy: "Busy", offline: "Offline" };
 
     order.forEach((bucket) => {
       const list = grouped[bucket];
@@ -7529,6 +8324,17 @@ if (callFilterButtons.length) {
   });
 }
 
+if (settingsPanel) {
+  settingsPanel.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const btn = target.closest(".status-pill[data-status]");
+    if (!btn || !settingsPanel.contains(btn)) return;
+    const requested = normalizePresenceMode(btn.dataset.status, myPresenceMode);
+    setMyPresenceMode(requested, { emit: true, toast: true, manual: true });
+  });
+}
+
 if (settingsCloseBtn) {
   settingsCloseBtn.addEventListener("click", () => setSettingsOpen(false));
 }
@@ -7569,7 +8375,18 @@ document.addEventListener("visibilitychange", () => {
   } else if (activeFriend) {
     setActiveChatTarget(activeFriend);
   }
+  markPresenceActivity({ skipThrottle: true });
 });
+
+if (isDashboardPage) {
+  const presenceActivityEvents = ["pointerdown", "keydown", "touchstart", "mousemove", "wheel"];
+  presenceActivityEvents.forEach((eventName) => {
+    const listenerOptions = eventName === "keydown" ? undefined : { passive: true };
+    document.addEventListener(eventName, () => {
+      markPresenceActivity();
+    }, listenerOptions);
+  });
+}
 
 if (storiesRow) {
   const activateStoryItem = async (item) => {
@@ -9207,6 +10024,7 @@ function ensurePendingQueueEntry(payload, tempId) {
   const existing = pendingQueueByTempId.get(tempId);
   if (existing) {
     existing.payload = nextPayload;
+    schedulePersistPendingState();
     return existing;
   }
 
@@ -9219,6 +10037,7 @@ function ensurePendingQueueEntry(payload, tempId) {
   };
   pendingQueue.push(entry);
   pendingQueueByTempId.set(tempId, entry);
+  schedulePersistPendingState();
   return entry;
 }
 
@@ -9246,6 +10065,7 @@ function markPendingMessageFailed(tempId, options = {}) {
   message.failed = true;
   message.failedAt = new Date().toISOString();
   removePendingFromQueue(tempId);
+  schedulePersistPendingState();
   rerenderPendingMessageRow(tempId);
   applyMessageSearch();
   renderNetworkState();
@@ -9278,6 +10098,7 @@ function retryFailedMessage(tempId, options = {}) {
   entry.attempts = 0;
   entry.lastAttemptAt = 0;
   entry.nextAttemptAt = 0;
+  schedulePersistPendingState();
 
   rerenderPendingMessageRow(tempId);
   applyMessageSearch();
@@ -9312,6 +10133,7 @@ function sendQueuedMessage(entry) {
   entry.attempts += 1;
   entry.lastAttemptAt = Date.now();
   entry.nextAttemptAt = entry.lastAttemptAt + pendingRetryDelay(entry.attempts);
+  schedulePersistPendingState();
   return true;
 }
 
@@ -9322,6 +10144,7 @@ function removePendingFromQueue(tempId) {
   pendingQueueByTempId.delete(tempId);
   const idx = pendingQueue.indexOf(existing);
   if (idx >= 0) pendingQueue.splice(idx, 1);
+  schedulePersistPendingState();
 }
 
 function queuePendingMessage(payload, options = {}) {
@@ -9368,6 +10191,7 @@ function queuePendingMessage(payload, options = {}) {
   }
   pendingByTempId.set(tempId, message);
   if (shouldQueue) ensurePendingQueueEntry(payload, tempId);
+  schedulePersistPendingState();
   renderNetworkState();
 
   if (targetIsActiveThread && wasAtLatest) {
@@ -9392,6 +10216,7 @@ function updatePendingMessageText(tempId, text) {
     const newRow = buildMessageElement(msg, true);
     row.replaceWith(newRow);
   }
+  schedulePersistPendingState();
   applyMessageSearch();
   if (normalizeName(msg.from) === normalizeName(me)) {
     pinConversationToBottom();
@@ -9411,6 +10236,7 @@ function updatePendingMessageAttachment(tempId, attachment, fallbackText = "") {
     const newRow = buildMessageElement(msg, true);
     row.replaceWith(newRow);
   }
+  schedulePersistPendingState();
   applyMessageSearch();
   if (normalizeName(msg.from) === normalizeName(me)) {
     pinConversationToBottom();
@@ -9426,6 +10252,7 @@ function removePendingMessage(tempId) {
   const row = messagesEl ? messagesEl.querySelector(`[data-client-temp-id="${tempId}"]`) : null;
   if (row) row.remove();
   messageWindowEnd = Math.min(messageWindowEnd, conversationMessages.length);
+  schedulePersistPendingState();
   applyMessageSearch();
 }
 
@@ -10170,9 +10997,24 @@ if (messageInput) {
 }
 
 setInterval(() => {
+  flushPendingPresenceSync();
   if (!pendingQueue.length) return;
   flushPendingQueue();
 }, PENDING_RETRY_TICK_MS);
+
+window.addEventListener("online", () => {
+  syncBrowserNetworkState();
+  flushPendingQueue(true);
+  flushPendingPresenceSync();
+});
+
+window.addEventListener("offline", () => {
+  syncBrowserNetworkState();
+  if (pendingQueue.length) {
+    const label = pendingQueue.length === 1 ? "message is" : "messages are";
+    showToast(`${pendingQueue.length} queued ${label} waiting for connection.`, "info");
+  }
+});
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Socket events Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
@@ -10204,6 +11046,10 @@ socket.on("register_success", (data) => {
     myProfile.gender      = "";
     myProfile.bio         = "";
   }
+  manualPresenceMode = normalizePresenceMode(data?.presenceMode, "online");
+  myPresenceMode = manualPresenceMode;
+  pendingPresenceSyncMode = "";
+  presenceAutoAwayActive = false;
   window._novynProfile  = myProfile;
   renderMyName();
   applyMyAvatar();
@@ -10223,7 +11069,19 @@ socket.on("register_success", (data) => {
   resumeSocketSession._pending = false;
   setComposerEnabled(false);
   renderMessagesEmptyState(EMPTY_CONVERSATION_HINT);
-  setNetworkState("Connected", "connected");
+  syncBrowserNetworkState();
+
+  const restoredPendingCount = restorePendingState(true);
+  syncPendingPreviewIntoFriendList();
+  if (restoredPendingCount > 0 && !restoredPendingToastShown) {
+    restoredPendingToastShown = true;
+    const label = restoredPendingCount === 1 ? "message" : "messages";
+    showToast(`Recovered ${restoredPendingCount} unsent ${label}.`, "info");
+  }
+  flushPendingQueue(true);
+  pendingPresenceSyncMode = myPresenceMode;
+  flushPendingPresenceSync();
+  schedulePresenceActivityTimers();
 
   renderRequests();
   renderFriends();
@@ -10294,6 +11152,8 @@ socket.on("discover_online", (data) => {
 socket.on("global_search_results", (data) => {
   const scope = getSearchScope();
   if (scope !== "global") return;
+  const requestId = Number(data?.requestId);
+  if (Number.isFinite(requestId) && requestId !== globalSearchState.requestId) return;
   const query = normalizeSearchText(data?.query || "");
   const currentQuery = normalizeSearchText(messageSearchInput ? messageSearchInput.value : "");
   const filter = String(data?.filter || "").toLowerCase();
@@ -10713,9 +11573,11 @@ socket.on("username_changed", (data) => {
   const newKey = normalizeName(newUsername);
   persistActiveMessageDraft();
   migrateMessageDraftStoreOwner(oldKey, newKey);
+  migratePendingStateStoreOwner(oldKey, newKey);
   if (normalizeName(me) === oldKey) {
     me = newUsername;
     ensureMessageDraftsLoaded(true);
+    restorePendingState(true);
     renderMyName();
     applyMyAvatar();
     syncSettingsPanel();
@@ -10790,6 +11652,7 @@ socket.on("private_message", (message) => {
     const pendingMessage = pendingByTempId.get(tempId);
     Object.assign(pendingMessage, message, { pending: false, failed: false, clientTempId: tempId });
     pendingByTempId.delete(tempId);
+    schedulePersistPendingState();
     renderNetworkState();
 
     const row = messagesEl.querySelector(`[data-client-temp-id="${tempId}"]`);
@@ -10820,9 +11683,11 @@ socket.on("private_message", (message) => {
         applyMessageSearch();
       }
       renderNetworkState();
+      schedulePersistPendingState();
       return;
     }
     renderNetworkState();
+    schedulePersistPendingState();
   }
 
   const cachedLog = cacheCallLogMessage(message);
@@ -10974,6 +11839,10 @@ socket.on("typing", ({ from, isTyping, toType, to }) => {
 });
 
 socket.on("voice_activity", ({ from, isSpeaking, toType, to }) => {
+  if (callState.status !== "idle") {
+    hideSpeakingIndicator("voice-note");
+    return;
+  }
   const kind = normalizeChatKind(toType || "friend");
   if (kind === "group") {
     if (!activeFriend || normalizeChatKind(activeChatKind) !== "group") return;
@@ -11093,14 +11962,34 @@ socket.on("call_signal", (payload) => {
   handleCallSignal(payload).catch(() => {});
 });
 
-socket.on("user_status", ({ username, online, lastSeenAt }) => {
+socket.on("user_status", ({ username, online, presence, lastSeenAt }) => {
+  const nextPresence = normalizePresenceMode(presence, online ? "online" : "offline");
+  const isOnline = Boolean(online) && nextPresence !== "offline";
   friends = friends.map((f) =>
     normalizeName(f.username) === normalizeName(username)
-      ? { ...f, online, lastSeenAt: lastSeenAt || f.lastSeenAt || "" }
+      ? {
+          ...f,
+          online: isOnline,
+          presence: nextPresence,
+          lastSeenAt: lastSeenAt || f.lastSeenAt || "",
+        }
       : f
   );
   renderFriends();
   syncInfoPanel();
+  if (sidebarView === "discover") {
+    requestDiscoverOnline();
+  }
+});
+
+socket.on("presence_mode_updated", (payload) => {
+  pendingPresenceSyncMode = "";
+  clearPresenceSyncTimer();
+  const acknowledgedMode = normalizePresenceMode(payload?.status, myPresenceMode);
+  if (!presenceAutoAwayActive) {
+    manualPresenceMode = acknowledgedMode;
+  }
+  setMyPresenceMode(acknowledgedMode, { emit: false, toast: false, manual: false });
 });
 
 socket.on("error_message", (data) => {
@@ -11118,9 +12007,11 @@ socket.on("error_message", (data) => {
 });
 
 socket.on("connect", () => {
-  setNetworkState("Connected", "connected");
+  syncBrowserNetworkState();
   void ensureDashboardSession(true);
   flushPendingQueue(true);
+  flushPendingPresenceSync();
+  schedulePresenceActivityTimers();
   requestScheduledMessagesForActiveChat();
   if (normalizeChatKind(activeChatKind) === "group" && activeFriend) {
     const groupId = resolveGroupChatId(activeFriend, "group");
@@ -11133,7 +12024,8 @@ socket.on("disconnect", () => {
   hideTypingIndicator();
   ensureDashboardSession._pending = null;
   resumeSocketSession._pending = false;
-  setNetworkState("Disconnected", "offline");
+  syncBrowserNetworkState();
+  clearPresenceActivityTimers();
   if (!logoutInProgress) {
     showToast("Disconnected from server", "error");
   }
@@ -11143,7 +12035,7 @@ socket.on("disconnect", () => {
 socket.on("connect_error", () => {
   ensureDashboardSession._pending = null;
   resumeSocketSession._pending = false;
-  setNetworkState("Connection issue", "offline");
+  syncBrowserNetworkState();
 });
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Profile helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -11237,6 +12129,7 @@ syncSafetyActionButtons();
 syncMessageSearchUi();
 if (messagesEl) {
   messagesEl.addEventListener("scroll", () => {
+    if (isMessageViewportMutationActive()) return;
     scrollState.pinnedToBottom = isNearBottom();
     syncLoadOlderButtonVisibility();
   }, { passive: true });
@@ -11244,6 +12137,10 @@ if (messagesEl) {
 if (messagesEl && typeof ResizeObserver !== "undefined") {
   const messagesResizeObserver = new ResizeObserver(() => {
     if (!activeFriend) return;
+    if (isMessageViewportMutationActive()) {
+      syncLoadOlderButtonVisibility();
+      return;
+    }
     if (scrollState.pinnedToBottom) scrollToBottom(true);
     syncLoadOlderButtonVisibility();
   });
@@ -11252,6 +12149,10 @@ if (messagesEl && typeof ResizeObserver !== "undefined") {
 window.addEventListener("resize", () => {
   syncViewportLayoutMetrics();
   if (!activeFriend) return;
+  if (isMessageViewportMutationActive()) {
+    syncLoadOlderButtonVisibility();
+    return;
+  }
   if (scrollState.pinnedToBottom) scrollToBottom(true);
   syncLoadOlderButtonVisibility();
 }, { passive: true });
@@ -11259,11 +12160,21 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", syncViewportLayoutMetrics, { passive: true });
   window.visualViewport.addEventListener("scroll", syncViewportLayoutMetrics, { passive: true });
 }
+window.addEventListener("beforeunload", () => {
+  persistActiveMessageDraft();
+  persistPendingStateNow();
+});
 
 window._novynReply = { setReply };
 window._novynSocket = socket;
 window._novynMe = () => me;
 window._novynActiveFriend = () => activeFriend;
+window._novynActiveChatKind = () => normalizeChatKind(activeChatKind);
+window._novynRequestHistoryRefresh = () => {
+  if (!socketAvailable || !isDashboardPage || !activeFriend) return false;
+  socket.emit("get_history", { to: activeFriend, toType: normalizeChatKind(activeChatKind) });
+  return true;
+};
 window._novynToast = showToast;
 window._novynMessageWindow = {
   hasNewer: hasNewerMessages,

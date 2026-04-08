@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /uploads/
+Disallow: /index.html
+
+Sitemap: https://novyn-live.onrender.com/sitemap.xml
