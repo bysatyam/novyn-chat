@@ -10,6 +10,13 @@ const { Server } = require("socket.io");
 const webpush = require("web-push");
 const { cloudinary, hasCloudinaryConfig } = require("./cloudinary");
 
+let nodemailer = null;
+try {
+  nodemailer = require("nodemailer");
+} catch (_) {
+  nodemailer = null;
+}
+
 const app = express();
 const server = http.createServer(app);
 app.use(express.json({ limit: "64kb" }));
@@ -522,7 +529,25 @@ const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 const PASSWORD_RESET_WINDOW_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_MAX_PER_WINDOW = 3;
 const PASSWORD_RESET_RESEND_COOLDOWN_MS = 30 * 1000;
+const EMAIL_CHANGE_CODE_TTL_MS = 15 * 60 * 1000;
+const EMAIL_CHANGE_MAX_ATTEMPTS = 5;
+const EMAIL_CHANGE_WINDOW_MS = 15 * 60 * 1000;
+const EMAIL_CHANGE_MAX_PER_WINDOW = 3;
+const EMAIL_CHANGE_RESEND_COOLDOWN_MS = 30 * 1000;
 const PASSWORD_RESET_LOG_CODES = process.env.NODE_ENV !== "production";
+const SMTP_HOST = toDisplayName(process.env.SMTP_HOST);
+const SMTP_PORT = Number.isFinite(Number(process.env.SMTP_PORT))
+  ? Math.max(1, Math.floor(Number(process.env.SMTP_PORT)))
+  : 587;
+const SMTP_SECURE = parseEnvBoolean(process.env.SMTP_SECURE, SMTP_PORT === 465);
+const SMTP_USER = toDisplayName(process.env.SMTP_USER);
+const SMTP_PASS = toDisplayName(process.env.SMTP_PASS);
+const SMTP_FROM = toDisplayName(process.env.SMTP_FROM) || SMTP_USER;
+const SMTP_REPLY_TO = toDisplayName(process.env.SMTP_REPLY_TO);
+const PASSWORD_RESET_EMAIL_SUBJECT =
+  toDisplayName(process.env.PASSWORD_RESET_EMAIL_SUBJECT) || "Your Novyn password reset code";
+const EMAIL_CHANGE_EMAIL_SUBJECT =
+  toDisplayName(process.env.EMAIL_CHANGE_EMAIL_SUBJECT) || "Verify your new Novyn email";
 const MAX_MESSAGE_LENGTH = 1000;
 const MAX_GROUP_NAME_LENGTH = 48;
 const MAX_GROUP_MEMBERS = 48;
@@ -588,6 +613,33 @@ if (!process.env.AUTH_SECRET && !process.env.UPLOAD_TOKEN_SECRET) {
   console.warn("AUTH_SECRET is not set. Using an insecure dev secret for auth tokens.");
 }
 
+const passwordResetEmailConfigured = Boolean(
+  nodemailer && SMTP_HOST && SMTP_USER && SMTP_PASS && SMTP_FROM
+);
+const passwordResetMailer = passwordResetEmailConfigured
+  ? nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS,
+      },
+    })
+  : null;
+
+if (!nodemailer && process.env.NODE_ENV === "production") {
+  console.warn(
+    "nodemailer is not installed. Run `npm install nodemailer` to enable password reset emails."
+  );
+}
+
+if (!passwordResetEmailConfigured && !PASSWORD_RESET_LOG_CODES) {
+  console.warn(
+    "SMTP config missing. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM for password reset emails."
+  );
+}
+
 const users = new Map();
 const onlineUsers = new Map();
 const conversations = new Map();
@@ -598,6 +650,9 @@ const activeCalls = new Map();
 const passwordResetTokens = new Map();
 const passwordResetByUser = new Map();
 const passwordResetRate = new Map();
+const emailChangeTokens = new Map();
+const emailChangeByUser = new Map();
+const emailChangeRate = new Map();
 const refreshSessions = new Map();
 const refreshByUser = new Map();
 const authUserAliases = new Map();
@@ -622,6 +677,20 @@ function toDisplayName(name) {
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function isPlausibleEmail(email) {
+  const value = toDisplayName(email);
+  if (!value || value.length > 120) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function parseEnvBoolean(value, fallback = false) {
+  const normalized = toDisplayName(value).toLowerCase();
+  if (!normalized) return fallback;
+  if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") return true;
+  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") return false;
+  return fallback;
 }
 
 function normalizeHandleInput(handle) {
@@ -1567,13 +1636,171 @@ function markPasswordResetIssued(userKey, state) {
   passwordResetRate.set(key, state);
 }
 
-function dispatchPasswordResetCode(user, code) {
-  const email = normalizeEmail(user?.email);
-  if (!email) return false;
-  if (PASSWORD_RESET_LOG_CODES) {
-    console.log(`[Password reset code] ${email}: ${code}`);
+function dropEmailChangeTokenById(tokenId) {
+  const id = toDisplayName(tokenId);
+  if (!id) return;
+  const entry = emailChangeTokens.get(id);
+  if (!entry) return;
+  emailChangeTokens.delete(id);
+  if (entry.userKey && emailChangeByUser.get(entry.userKey) === id) {
+    emailChangeByUser.delete(entry.userKey);
   }
-  return true;
+}
+
+function pruneExpiredEmailChangeTokens() {
+  const now = Date.now();
+  for (const [tokenId, entry] of emailChangeTokens.entries()) {
+    if (!entry || Number(entry.expiresAt) <= now) {
+      dropEmailChangeTokenById(tokenId);
+    }
+  }
+  for (const [userKey, rate] of emailChangeRate.entries()) {
+    if (!rate || now - Number(rate.windowStartedAt || 0) > EMAIL_CHANGE_WINDOW_MS) {
+      emailChangeRate.delete(userKey);
+    }
+  }
+}
+
+function canIssueEmailChangeCode(userKey) {
+  const key = normalizeName(userKey);
+  if (!key) {
+    return { allowed: false, message: "Please wait before requesting another code." };
+  }
+  const now = Date.now();
+  const state = emailChangeRate.get(key) || {
+    windowStartedAt: now,
+    sentCount: 0,
+    lastSentAt: 0,
+  };
+
+  if (now - state.windowStartedAt > EMAIL_CHANGE_WINDOW_MS) {
+    state.windowStartedAt = now;
+    state.sentCount = 0;
+  }
+  if (now - state.lastSentAt < EMAIL_CHANGE_RESEND_COOLDOWN_MS) {
+    return { allowed: false, message: "Please wait before requesting another code." };
+  }
+  if (state.sentCount >= EMAIL_CHANGE_MAX_PER_WINDOW) {
+    return { allowed: false, message: "Too many verification requests. Try again later." };
+  }
+  return { allowed: true, state };
+}
+
+function markEmailChangeCodeIssued(userKey, state) {
+  const key = normalizeName(userKey);
+  if (!key || !state) return;
+  const now = Date.now();
+  state.sentCount = Number(state.sentCount || 0) + 1;
+  state.lastSentAt = now;
+  if (!state.windowStartedAt) state.windowStartedAt = now;
+  emailChangeRate.set(key, state);
+}
+
+function isPasswordResetDeliveryAvailable() {
+  return Boolean(passwordResetMailer) || PASSWORD_RESET_LOG_CODES;
+}
+
+async function dispatchPasswordResetCode(user, code) {
+  const email = normalizeEmail(user?.email);
+  const resetCode = toDisplayName(code);
+  if (!email || !resetCode) return false;
+
+  if (!passwordResetMailer) {
+    if (PASSWORD_RESET_LOG_CODES) {
+      console.log(`[Password reset code] ${email}: ${resetCode}`);
+      return true;
+    }
+    return false;
+  }
+
+  const recipientName = toDisplayName(user?.name || user?.username) || "there";
+  const expiresMinutes = Math.max(1, Math.ceil(PASSWORD_RESET_CODE_TTL_MS / (60 * 1000)));
+  const text = [
+    `Hi ${recipientName},`,
+    "",
+    "Use this code to reset your Novyn password:",
+    resetCode,
+    "",
+    `This code expires in ${expiresMinutes} minute(s).`,
+    "If you didn't request this reset, you can ignore this email.",
+    "",
+    "Novyn Team",
+  ].join("\n");
+
+  try {
+    await passwordResetMailer.sendMail({
+      from: SMTP_FROM,
+      to: email,
+      subject: PASSWORD_RESET_EMAIL_SUBJECT,
+      text,
+      ...(SMTP_REPLY_TO ? { replyTo: SMTP_REPLY_TO } : {}),
+    });
+    return true;
+  } catch (err) {
+    console.warn(`Failed to send password reset email to ${email}:`, err?.message || err);
+    if (PASSWORD_RESET_LOG_CODES) {
+      console.log(`[Password reset code fallback] ${email}: ${resetCode}`);
+      return true;
+    }
+    return false;
+  }
+}
+
+function maskEmailAddress(email) {
+  const value = normalizeEmail(email || "");
+  if (!value || !value.includes("@")) return value;
+  const [local, domain] = value.split("@");
+  if (!domain) return value;
+  if (!local) return `***@${domain}`;
+  if (local.length === 1) return `*@${domain}`;
+  if (local.length === 2) return `${local[0]}*@${domain}`;
+  return `${local[0]}${"*".repeat(local.length - 2)}${local[local.length - 1]}@${domain}`;
+}
+
+async function dispatchEmailChangeCode(user, nextEmail, code) {
+  const email = normalizeEmail(nextEmail);
+  const verifyCode = toDisplayName(code);
+  if (!email || !verifyCode) return false;
+
+  if (!passwordResetMailer) {
+    if (PASSWORD_RESET_LOG_CODES) {
+      console.log(`[Email change code] ${email} (${user?.username || "user"}): ${verifyCode}`);
+      return true;
+    }
+    return false;
+  }
+
+  const recipientName = toDisplayName(user?.displayName || user?.username) || "there";
+  const expiresMinutes = Math.max(1, Math.ceil(EMAIL_CHANGE_CODE_TTL_MS / (60 * 1000)));
+  const text = [
+    `Hi ${recipientName},`,
+    "",
+    "Use this code to verify your new Novyn email address:",
+    verifyCode,
+    "",
+    `This code expires in ${expiresMinutes} minute(s).`,
+    "If you didn't request this change, you can ignore this email.",
+    "",
+    "Novyn Team",
+  ].join("\n");
+
+  try {
+    await passwordResetMailer.sendMail({
+      from: SMTP_FROM,
+      to: email,
+      subject: EMAIL_CHANGE_EMAIL_SUBJECT,
+      text,
+      ...(SMTP_REPLY_TO ? { replyTo: SMTP_REPLY_TO } : {}),
+    });
+    return true;
+  } catch (err) {
+    console.warn(`Failed to send email-change code to ${email}:`, err?.message || err);
+    if (PASSWORD_RESET_LOG_CODES) {
+      console.log(`[Email change code fallback] ${email}: ${verifyCode}`);
+      return true;
+    }
+    return false;
+  }
 }
 
 function normalizePushSubscription(raw) {
@@ -2889,6 +3116,7 @@ function runRetentionMaintenance() {
   pruneExpiredAuthState();
   pruneHttpRateLimits();
   pruneExpiredPasswordResetTokens();
+  pruneExpiredEmailChangeTokens();
   const pruned = pruneExpiredMessages();
   if (!pruned) {
     return;
@@ -4132,10 +4360,16 @@ io.on("connection", (socket) => {
 
     finalizeSocketAuthentication(socket, user);
   });
-  socket.on("request_password_reset", (payload) => {
+  socket.on("request_password_reset", async (payload) => {
     pruneExpiredPasswordResetTokens();
     const identifier = toDisplayName(payload?.identifier || payload?.email || payload);
     const genericSentMessage = "If an account exists, a reset code has been sent.";
+    if (!isPasswordResetDeliveryAvailable()) {
+      socket.emit("password_reset_failed", {
+        message: "Password reset email service is unavailable. Try again later.",
+      });
+      return;
+    }
     if (!identifier) {
       socket.emit("password_reset_sent", { message: genericSentMessage });
       return;
@@ -4172,7 +4406,12 @@ io.on("connection", (socket) => {
     });
     passwordResetByUser.set(userKey, tokenId);
     markPasswordResetIssued(userKey, rate.state);
-    dispatchPasswordResetCode(user, token);
+    const dispatched = await dispatchPasswordResetCode(user, token);
+    if (!dispatched) {
+      dropPasswordResetTokenById(tokenId);
+      socket.emit("password_reset_sent", { message: genericSentMessage });
+      return;
+    }
 
     socket.emit("password_reset_sent", {
       message: genericSentMessage,
@@ -4245,6 +4484,174 @@ io.on("connection", (socket) => {
     schedulePersist();
 
     socket.emit("password_reset_success", { message: "Password updated. Please sign in." });
+  });
+
+  socket.on("request_email_change_code", async (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) {
+      socket.emit("email_change_failed", { message: "Sign in again to continue." });
+      return;
+    }
+    if (!isPasswordResetDeliveryAvailable()) {
+      socket.emit("email_change_failed", {
+        message: "Email verification service is unavailable. Try again later.",
+      });
+      return;
+    }
+
+    const user = users.get(userKey);
+    if (!user || !user.isRegistered) {
+      socket.emit("email_change_failed", { message: "Sign in again to continue." });
+      return;
+    }
+
+    pruneExpiredEmailChangeTokens();
+    const nextEmail = normalizeEmail(payload?.email || payload?.newEmail || "");
+    const currentEmail = normalizeEmail(user.email || "");
+
+    if (!nextEmail) {
+      socket.emit("email_change_failed", { message: "Enter your new email address." });
+      return;
+    }
+    if (!isPlausibleEmail(nextEmail)) {
+      socket.emit("email_change_failed", { message: "Enter a valid email address." });
+      return;
+    }
+    if (nextEmail === currentEmail) {
+      socket.emit("email_change_failed", { message: "That email is already linked to your account." });
+      return;
+    }
+
+    const existing = findUserByEmail(nextEmail);
+    if (existing && normalizeName(existing.username) !== userKey) {
+      socket.emit("email_change_failed", { message: "Email already linked to another account." });
+      return;
+    }
+
+    const rate = canIssueEmailChangeCode(userKey);
+    if (!rate.allowed) {
+      socket.emit("email_change_failed", { message: rate.message });
+      return;
+    }
+
+    const previousTokenId = emailChangeByUser.get(userKey);
+    if (previousTokenId) dropEmailChangeTokenById(previousTokenId);
+
+    const token = createResetToken();
+    const salt = crypto.randomBytes(8).toString("hex");
+    const tokenHash = createResetTokenHash(token, salt);
+    const tokenId = createResetTokenId();
+    const expiresAt = Date.now() + EMAIL_CHANGE_CODE_TTL_MS;
+    emailChangeTokens.set(tokenId, {
+      userKey,
+      pendingEmail: nextEmail,
+      salt,
+      tokenHash,
+      expiresAt,
+      attemptsLeft: EMAIL_CHANGE_MAX_ATTEMPTS,
+    });
+    emailChangeByUser.set(userKey, tokenId);
+    markEmailChangeCodeIssued(userKey, rate.state);
+
+    const dispatched = await dispatchEmailChangeCode(user, nextEmail, token);
+    if (!dispatched) {
+      dropEmailChangeTokenById(tokenId);
+      socket.emit("email_change_failed", {
+        message: "Email verification service is unavailable. Try again later.",
+      });
+      return;
+    }
+
+    socket.emit("email_change_code_sent", {
+      message: `Verification code sent to ${maskEmailAddress(nextEmail)}.`,
+      email: nextEmail,
+    });
+  });
+
+  socket.on("verify_email_change_code", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) {
+      socket.emit("email_change_failed", { message: "Sign in again to continue." });
+      return;
+    }
+
+    const user = users.get(userKey);
+    if (!user || !user.isRegistered) {
+      socket.emit("email_change_failed", { message: "Sign in again to continue." });
+      return;
+    }
+
+    pruneExpiredEmailChangeTokens();
+    const nextEmail = normalizeEmail(payload?.email || payload?.newEmail || "");
+    const token = toDisplayName(payload?.token || payload?.code || "");
+    if (!nextEmail || !token) {
+      socket.emit("email_change_failed", { message: "Email and verification code are required." });
+      return;
+    }
+
+    const tokenId = emailChangeByUser.get(userKey);
+    const entry = tokenId ? emailChangeTokens.get(tokenId) : null;
+    if (!entry || entry.userKey !== userKey) {
+      socket.emit("email_change_failed", { message: "Invalid or expired verification code." });
+      return;
+    }
+
+    if (normalizeEmail(entry.pendingEmail || "") !== nextEmail) {
+      socket.emit("email_change_failed", {
+        message: "This code was issued for a different email. Request a new code.",
+      });
+      return;
+    }
+
+    if (Date.now() > Number(entry.expiresAt)) {
+      dropEmailChangeTokenById(tokenId);
+      socket.emit("email_change_failed", { message: "Verification code expired. Request a new one." });
+      return;
+    }
+
+    if (!Number.isFinite(Number(entry.attemptsLeft)) || Number(entry.attemptsLeft) <= 0) {
+      dropEmailChangeTokenById(tokenId);
+      socket.emit("email_change_failed", { message: "Too many attempts. Request a new code." });
+      return;
+    }
+
+    const existing = findUserByEmail(nextEmail);
+    if (existing && normalizeName(existing.username) !== userKey) {
+      dropEmailChangeTokenById(tokenId);
+      socket.emit("email_change_failed", { message: "Email already linked to another account." });
+      return;
+    }
+
+    const expectedHash = createResetTokenHash(token, entry.salt);
+    if (expectedHash !== entry.tokenHash) {
+      entry.attemptsLeft = Math.max(0, Number(entry.attemptsLeft) - 1);
+      if (entry.attemptsLeft <= 0) {
+        dropEmailChangeTokenById(tokenId);
+        socket.emit("email_change_failed", { message: "Too many attempts. Request a new code." });
+        return;
+      }
+      socket.emit("email_change_failed", {
+        message: `Invalid verification code. ${entry.attemptsLeft} attempt(s) left.`,
+      });
+      return;
+    }
+
+    user.email = nextEmail;
+    dropEmailChangeTokenById(tokenId);
+    schedulePersist();
+
+    socket.emit("profile_updated", {
+      avatarId: user.avatarId,
+      age: user.age,
+      gender: user.gender,
+      displayName: user.displayName,
+      bio: user.bio,
+      email: user.email || "",
+    });
+    socket.emit("email_change_verified", {
+      message: "Email linked successfully.",
+      email: user.email || "",
+    });
   });
 
   socket.on("push_subscribe", (payload) => {
@@ -5359,13 +5766,28 @@ io.on("connection", (socket) => {
     if (!userKey) return;
     const user = users.get(userKey);
     if (!user) return;
+    if (payload?.email !== undefined) {
+      const currentEmail = normalizeEmail(user.email || "");
+      const attemptedEmail = normalizeEmail(payload.email || "");
+      if (attemptedEmail !== currentEmail) {
+        socket.emit("error_message", {
+          message: "Verify your new email with a code before saving.",
+        });
+        return;
+      }
+    }
     if (payload?.avatarId !== undefined) user.avatarId = toDisplayName(payload.avatarId).slice(0, 32);
     if (payload?.age !== undefined) user.age = toDisplayName(payload.age).slice(0, 3);
     if (payload?.gender !== undefined) user.gender = toDisplayName(payload.gender).slice(0, 20);
     if (payload?.displayName !== undefined) user.displayName = toDisplayName(payload.displayName).slice(0, 32);
     if (payload?.bio !== undefined) user.bio = toDisplayName(payload.bio).slice(0, 120);
     socket.emit("profile_updated", {
-      avatarId: user.avatarId, age: user.age, gender: user.gender, displayName: user.displayName, bio: user.bio,
+      avatarId: user.avatarId,
+      age: user.age,
+      gender: user.gender,
+      displayName: user.displayName,
+      bio: user.bio,
+      email: user.email || "",
     });
     for (const friendKey of user.friends) {
       const friendSocket = onlineUsers.get(friendKey);

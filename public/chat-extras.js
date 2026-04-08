@@ -1686,10 +1686,17 @@
   var avatarGrid  = document.getElementById('profileAvatarGrid');
   var inputName   = document.getElementById('profileDisplayName');
   var inputBio    = document.getElementById('profileBio');
+  var inputEmail  = document.getElementById('profileEmail');
+  var emailCodeInput = document.getElementById('profileEmailCode');
+  var emailSendBtn = document.getElementById('profileEmailSendCodeBtn');
+  var emailVerifyBtn = document.getElementById('profileEmailVerifyBtn');
+  var emailStatusEl = document.getElementById('profileEmailStatus');
   var inputAge    = document.getElementById('profileAge');
   var inputGender = document.getElementById('profileGender');
 
   var currentAvatarId = '';
+  var pendingEmailCodeRequest = false;
+  var pendingEmailCodeVerify = false;
 
   function getAvatarById(id) {
     return AVATARS.find(function(a){ return a.id === id; }) || null;
@@ -1704,6 +1711,35 @@
       el.style.background = '';
       el.textContent = fallbackText || '?';
     }
+  }
+
+  function normalizeEmail(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function toast(msg, type) {
+    if (window._novynToast) {
+      window._novynToast(msg, type || 'info');
+      return;
+    }
+    alert(msg);
+  }
+
+  function setEmailStatus(message, type) {
+    if (!emailStatusEl) return;
+    emailStatusEl.textContent = message || '';
+    emailStatusEl.classList.remove('success', 'error');
+    if (type) emailStatusEl.classList.add(type);
+  }
+
+  function setEmailBusy(isBusy) {
+    var disabled = Boolean(isBusy);
+    if (emailSendBtn) emailSendBtn.disabled = disabled || pendingEmailCodeVerify;
+    if (emailVerifyBtn) emailVerifyBtn.disabled = disabled || pendingEmailCodeRequest;
+  }
+
+  function getLinkedEmail() {
+    return normalizeEmail(window._novynProfile && window._novynProfile.email);
   }
 
   // Build avatar grid
@@ -1769,8 +1805,18 @@
     currentAvatarId = p.avatarId || '';
     if (inputName)   inputName.value   = p.displayName || '';
     if (inputBio)    inputBio.value    = p.bio || '';
+    if (inputEmail)  inputEmail.value  = p.email || '';
+    if (emailCodeInput) emailCodeInput.value = '';
     if (inputAge)    inputAge.value    = p.age || '';
     if (inputGender) inputGender.value = p.gender || '';
+    pendingEmailCodeRequest = false;
+    pendingEmailCodeVerify = false;
+    setEmailBusy(false);
+    if (p.email) {
+      setEmailStatus('Current linked email: ' + p.email, '');
+    } else {
+      setEmailStatus('Add an email, send code, then verify to link it.', '');
+    }
     if (avatarBig) {
       var me = window._novynMe ? window._novynMe() : '';
       applyAvatarToEl(avatarBig, currentAvatarId, (me || '?').slice(0,2).toUpperCase());
@@ -1807,7 +1853,119 @@
     if (e.key === 'Escape' && modal && modal.style.display !== 'none') hideModal();
   });
 
+  function bindProfileSocketHandlers() {
+    var socket = window._novynSocket;
+    if (!socket || bindProfileSocketHandlers._bound) return;
+    bindProfileSocketHandlers._bound = true;
+
+    socket.on('email_change_code_sent', function (data) {
+      pendingEmailCodeRequest = false;
+      setEmailBusy(false);
+      var message = data && data.message ? data.message : 'Verification code sent.';
+      setEmailStatus(message, 'success');
+      toast(message, 'success');
+      if (emailCodeInput) emailCodeInput.focus();
+    });
+
+    socket.on('email_change_failed', function (data) {
+      pendingEmailCodeRequest = false;
+      pendingEmailCodeVerify = false;
+      setEmailBusy(false);
+      var message = data && data.message ? data.message : 'Unable to verify email.';
+      setEmailStatus(message, 'error');
+      toast(message, 'error');
+    });
+
+    socket.on('email_change_verified', function (data) {
+      pendingEmailCodeRequest = false;
+      pendingEmailCodeVerify = false;
+      setEmailBusy(false);
+      var nextEmail = normalizeEmail(data && data.email);
+      if (inputEmail && nextEmail) inputEmail.value = nextEmail;
+      if (emailCodeInput) emailCodeInput.value = '';
+      var message = data && data.message ? data.message : 'Email linked successfully.';
+      setEmailStatus(message, 'success');
+    });
+  }
+  bindProfileSocketHandlers();
+  if (!bindProfileSocketHandlers._bound) {
+    var profileSocketBindTimer = setInterval(function () {
+      bindProfileSocketHandlers();
+      if (bindProfileSocketHandlers._bound) {
+        clearInterval(profileSocketBindTimer);
+      }
+    }, 400);
+    setTimeout(function () { clearInterval(profileSocketBindTimer); }, 8000);
+  }
+
+  emailSendBtn && emailSendBtn.addEventListener('click', function () {
+    if (pendingEmailCodeRequest || pendingEmailCodeVerify) return;
+    var socket = window._novynSocket;
+    if (!socket) {
+      setEmailStatus('Realtime connection not available.', 'error');
+      toast('Realtime connection not available.', 'error');
+      return;
+    }
+    var nextEmail = normalizeEmail(inputEmail ? inputEmail.value : '');
+    var linkedEmail = getLinkedEmail();
+    if (!nextEmail) {
+      setEmailStatus('Enter your new email address first.', 'error');
+      return;
+    }
+    if (nextEmail === linkedEmail) {
+      setEmailStatus('That email is already linked to your account.', 'error');
+      return;
+    }
+    pendingEmailCodeRequest = true;
+    setEmailBusy(true);
+    setEmailStatus('Sending verification code...', '');
+    socket.emit('request_email_change_code', { email: nextEmail });
+  });
+
+  emailVerifyBtn && emailVerifyBtn.addEventListener('click', function () {
+    if (pendingEmailCodeRequest || pendingEmailCodeVerify) return;
+    var socket = window._novynSocket;
+    if (!socket) {
+      setEmailStatus('Realtime connection not available.', 'error');
+      toast('Realtime connection not available.', 'error');
+      return;
+    }
+    var nextEmail = normalizeEmail(inputEmail ? inputEmail.value : '');
+    var code = String(emailCodeInput ? emailCodeInput.value : '').trim();
+    if (!nextEmail) {
+      setEmailStatus('Enter your new email first.', 'error');
+      return;
+    }
+    if (!code) {
+      setEmailStatus('Enter the verification code sent to your email.', 'error');
+      return;
+    }
+    pendingEmailCodeVerify = true;
+    setEmailBusy(true);
+    setEmailStatus('Verifying code...', '');
+    socket.emit('verify_email_change_code', { email: nextEmail, code: code });
+  });
+
+  inputEmail && inputEmail.addEventListener('input', function () {
+    if (!emailStatusEl) return;
+    setEmailStatus('', '');
+  });
+  emailCodeInput && emailCodeInput.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (emailVerifyBtn) emailVerifyBtn.click();
+  });
+
   saveBtn && saveBtn.addEventListener('click', function() {
+    var linkedEmail = getLinkedEmail();
+    var enteredEmail = normalizeEmail(inputEmail ? inputEmail.value : '');
+    if (enteredEmail !== linkedEmail) {
+      setEmailStatus('Verify your new email with code before saving profile changes.', 'error');
+      if (enteredEmail && !pendingEmailCodeRequest && !pendingEmailCodeVerify && emailCodeInput) {
+        emailCodeInput.focus();
+      }
+      return;
+    }
     var payload = {
       avatarId: currentAvatarId,
       displayName: inputName   ? inputName.value.trim()   : '',

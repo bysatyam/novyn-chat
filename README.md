@@ -22,6 +22,35 @@ Open `http://localhost:3000`.
 
 To test real-time chat, open two browser windows (or different devices) and login with different accounts.
 
+## Password reset email setup
+
+Forgot-password uses email reset codes. Configure SMTP in `.env`:
+
+- `SMTP_HOST` (for example: `smtp.resend.com`)
+- `SMTP_PORT` (usually `587` for STARTTLS or `465` for SSL)
+- `SMTP_SECURE` (`true` for SSL/465, `false` for STARTTLS/587)
+- `SMTP_USER` (SMTP username)
+- `SMTP_PASS` (SMTP password/app password)
+- `SMTP_FROM` (sender, for example: `Novyn <no-reply@example.com>`)
+- `SMTP_REPLY_TO` (optional support email)
+- `PASSWORD_RESET_EMAIL_SUBJECT` (optional custom subject line)
+- `EMAIL_CHANGE_EMAIL_SUBJECT` (optional custom subject for change-email verification)
+
+If SMTP is not configured, production resets are disabled. In non-production, reset codes are logged to the server console for local testing.
+
+### Resend quick config
+
+For Resend (recommended for Render), use:
+
+- `SMTP_HOST=smtp.resend.com`
+- `SMTP_PORT=465`
+- `SMTP_SECURE=true`
+- `SMTP_USER=resend`
+- `SMTP_PASS=your_resend_api_key`
+- `SMTP_FROM=Novyn <onboarding@resend.dev>` (testing) or your verified domain sender
+
+`SMTP_PASS` is your Resend API key, and `SMTP_FROM` should use a verified sender domain in production.
+
 ## Android app workflow (Capacitor)
 
 The project now includes a native Android shell in `android/` (Capacitor).

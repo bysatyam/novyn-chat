@@ -274,7 +274,7 @@ const friendSuggestState = {
   timer: null,
   lastQuery: "",
 };
-let myProfile    = { avatarId: "", displayName: "", age: "", gender: "", bio: "" };
+let myProfile    = { avatarId: "", displayName: "", age: "", gender: "", bio: "", email: "" };
 let conversationMessages = [];
 let pendingUnreadJump = { friendKey: "", count: 0 };
 let lastInfoPanelFriendKey = "";
@@ -11051,12 +11051,14 @@ socket.on("register_success", (data) => {
     myProfile.age         = data.profile.age || "";
     myProfile.gender      = data.profile.gender || "";
     myProfile.bio         = data.profile.bio || "";
+    myProfile.email       = data.email || "";
   } else {
     myProfile.avatarId    = "";
     myProfile.displayName = "";
     myProfile.age         = "";
     myProfile.gender      = "";
     myProfile.bio         = "";
+    myProfile.email       = data.email || "";
   }
   manualPresenceMode = normalizePresenceMode(data?.presenceMode, "online");
   myPresenceMode = manualPresenceMode;
@@ -12069,6 +12071,7 @@ socket.on("profile_updated", (data) => {
   myProfile.age         = data.age         || "";
   myProfile.gender      = data.gender      || "";
   myProfile.bio         = data.bio         || "";
+  myProfile.email       = data.email       || "";
   window._novynProfile  = myProfile;
   renderMyName();
   applyMyAvatar();

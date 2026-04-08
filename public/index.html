@@ -792,7 +792,10 @@
     <div class="profile-modal-backdrop"></div>
     <div class="profile-modal-card">
       <div class="profile-modal-header">
-        <span class="profile-modal-title">Edit profile</span>
+        <div class="profile-modal-heading">
+          <span class="profile-modal-title">Edit profile</span>
+          <p class="profile-modal-subtitle">Personalize your profile and keep your account email verified.</p>
+        </div>
         <button class="icon-btn" id="profileModalClose" aria-label="Close profile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -800,7 +803,13 @@
         </button>
       </div>
       <div class="profile-avatar-section">
-        <div class="profile-modal-big" id="profileAvatarBig">?</div>
+        <div class="profile-avatar-top">
+          <div class="profile-modal-big" id="profileAvatarBig">?</div>
+          <div class="profile-avatar-copy">
+            <p class="profile-avatar-title">Choose avatar</p>
+            <p class="profile-avatar-hint">Pick the style friends will see in chats.</p>
+          </div>
+        </div>
         <div class="profile-avatar-grid" id="profileAvatarGrid"></div>
       </div>
       <div class="profile-fields-section">
@@ -811,6 +820,33 @@
         <div class="profile-field">
           <label for="profileBio">Bio</label>
           <input id="profileBio" type="text" maxlength="140" placeholder="A short bio" autocomplete="off" />
+        </div>
+        <div class="profile-field">
+          <label for="profileEmail">Email</label>
+          <input
+            id="profileEmail"
+            type="email"
+            maxlength="120"
+            placeholder="you@example.com"
+            autocomplete="email"
+            inputmode="email"
+          />
+          <div class="profile-email-actions">
+            <button class="profile-email-btn" id="profileEmailSendCodeBtn" type="button">Send code</button>
+            <div class="profile-email-code-wrap">
+              <input
+                id="profileEmailCode"
+                type="text"
+                maxlength="6"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                placeholder="Verification code"
+                autocomplete="one-time-code"
+              />
+              <button class="profile-email-btn" id="profileEmailVerifyBtn" type="button">Verify email</button>
+            </div>
+          </div>
+          <div class="profile-email-status" id="profileEmailStatus" role="status" aria-live="polite"></div>
         </div>
         <div class="profile-field-row">
           <div class="profile-field">
