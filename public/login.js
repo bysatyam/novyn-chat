@@ -217,11 +217,25 @@
         throw new Error("Google sign-in failed. Please try again.");
       }
       const remember = Boolean(rememberCheckbox && rememberCheckbox.checked);
-      const response = await postAuth("/api/auth/google", { idToken, remember });
+      const payload = { idToken, remember };
+      const existingIdentifier = getValue(loginIdentifierInput);
+      const existingPassword = getValue(loginPasswordInput);
+      if (existingIdentifier && existingPassword) {
+        payload.identifier = existingIdentifier;
+        payload.password = existingPassword;
+      }
+
+      const response = await postAuth("/api/auth/google", payload);
       if (!response?.ok) {
         throw new Error(response?.data?.message || "Google authentication failed.");
       }
-      setMessage("Signed in with Google. Redirecting...", "success");
+      const linkedExisting = Boolean(response?.data?.linkedExisting);
+      const createdAccount = Boolean(response?.data?.createdAccount);
+      if (linkedExisting && !createdAccount) {
+        setMessage("Google connected to your existing account. Redirecting...", "success");
+      } else {
+        setMessage("Signed in with Google. Redirecting...", "success");
+      }
       redirectToDashboard();
     } catch (err) {
       setMessage(err?.message || "Google sign-in failed.", "error");

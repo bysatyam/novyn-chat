@@ -1326,6 +1326,7 @@ function createUserRecord(username) {
   return {
     username: toDisplayName(username),
     email: "",
+    googleUid: "",
     friends: new Set(),
     groups: new Set(),
     requests: new Set(),
@@ -1353,6 +1354,7 @@ function serializeState() {
       key,
       username: user.username,
       email: toDisplayName(user.email),
+      googleUid: toDisplayName(user.googleUid),
       friends: Array.from(user.friends),
       groups: Array.from(user.groups || []),
       requests: Array.from(user.requests),
@@ -1473,6 +1475,7 @@ async function persistMongoNow() {
             $set: {
               username: toDisplayName(entry.username),
               email: normalizeEmail(entry.email),
+              googleUid: toDisplayName(entry.googleUid),
               friends: Array.isArray(entry.friends) ? entry.friends : [],
               groups: Array.isArray(entry.groups) ? entry.groups : [],
               requests: Array.isArray(entry.requests) ? entry.requests : [],
@@ -2009,6 +2012,7 @@ function applyLoadedState(parsed) {
     user.passwordSalt = toDisplayName(entry.passwordSalt);
     user.passwordHash = toDisplayName(entry.passwordHash);
     user.email = normalizeEmail(entry.email);
+    user.googleUid = toDisplayName(entry.googleUid);
     user.avatarId = toDisplayName(entry.avatarId);
     user.age = toDisplayName(entry.age);
     user.gender = toDisplayName(entry.gender);
@@ -2143,6 +2147,7 @@ function toSerializedUserEntry(doc) {
     key,
     username: toDisplayName(doc?.username || key),
     email: normalizeEmail(doc?.email),
+    googleUid: toDisplayName(doc?.googleUid),
     friends: Array.isArray(doc?.friends) ? doc.friends : [],
     groups: Array.isArray(doc?.groups) ? doc.groups : [],
     requests: Array.isArray(doc?.requests) ? doc.requests : [],
@@ -2353,6 +2358,15 @@ function findUserByEmail(email) {
   if (!key) return null;
   for (const user of users.values()) {
     if (normalizeEmail(user?.email) === key) return user;
+  }
+  return null;
+}
+
+function findUserByGoogleUid(googleUid) {
+  const key = toDisplayName(googleUid);
+  if (!key) return null;
+  for (const user of users.values()) {
+    if (toDisplayName(user?.googleUid) === key) return user;
   }
   return null;
 }
@@ -4179,7 +4193,7 @@ app.post(
     }
 
     const idToken = toDisplayName(req.body?.idToken || "");
-    const remember = Boolean(req.body?.remember);
+    const remember = readRememberFlag(req.body?.remember);
     if (!idToken) {
       res.status(400).json({ message: "Google sign-in token is required." });
       return;
@@ -4193,28 +4207,98 @@ app.post(
       return;
     }
 
+    const googleUid = toDisplayName(decoded.uid || decoded.sub || "");
+    if (!googleUid) {
+      res.status(400).json({ message: "Google account identifier is missing." });
+      return;
+    }
+
     const email = normalizeEmail(decoded.email || "");
     if (!email) {
       res.status(400).json({ message: "Google account email is required." });
       return;
     }
+    const googleDisplayName = toDisplayName(decoded.name || decoded.displayName || email.split("@")[0] || "");
+    const linkIdentifier = toDisplayName(req.body?.identifier || "");
+    const linkPassword = toDisplayName(req.body?.password || "");
 
-    let user = findUserByEmail(email);
+    let user = findUserByGoogleUid(googleUid);
+    let linkedExisting = Boolean(user);
+    if (!user) {
+      user = findUserByEmail(email);
+      linkedExisting = Boolean(user);
+    }
+
+    if (!user && linkIdentifier && linkPassword) {
+      const linkedAuth = authenticateSigninPayload({
+        identifier: linkIdentifier,
+        password: linkPassword,
+      });
+      if (!linkedAuth.ok || !linkedAuth.user) {
+        res.status(linkedAuth.status || 401).json({
+          message: "Could not link Google account. Check your existing account credentials and try again.",
+        });
+        return;
+      }
+
+      const candidate = linkedAuth.user;
+      const candidateEmail = normalizeEmail(candidate.email || "");
+      if (candidateEmail && candidateEmail !== email) {
+        res.status(409).json({
+          message: `This account is already using ${candidateEmail}. Sign in with that Google email or update your email first.`,
+        });
+        return;
+      }
+
+      user = candidate;
+      linkedExisting = true;
+    }
+
+    let createdAccount = false;
     if (!user) {
       const username = pickAvailableUsername(decoded.name || email.split("@")[0] || `user${Date.now()}`);
       user = getOrCreateUser(username);
+      createdAccount = true;
+    }
+
+    const currentUserGoogleUid = toDisplayName(user.googleUid);
+    if (currentUserGoogleUid && currentUserGoogleUid !== googleUid) {
+      res.status(409).json({
+        message: "This account is already linked to another Google account.",
+      });
+      return;
+    }
+
+    const existingGoogleOwner = findUserByGoogleUid(googleUid);
+    if (existingGoogleOwner && normalizeName(existingGoogleOwner.username) !== normalizeName(user.username)) {
+      res.status(409).json({
+        message: "This Google account is already linked to another user.",
+      });
+      return;
+    }
+
+    let userChanged = false;
+    if (toDisplayName(user.googleUid) !== googleUid) {
+      user.googleUid = googleUid;
+      userChanged = true;
+    }
+    if (!user.isRegistered) {
+      user.isRegistered = true;
+      userChanged = true;
+    }
+    if (!user.createdAt) {
+      user.createdAt = nowIso();
+      userChanged = true;
+    }
+    if (!normalizeEmail(user.email || "")) {
       user.email = email;
-      user.displayName = toDisplayName(decoded.name || username);
-      user.isRegistered = true;
-      if (!user.createdAt) {
-        user.createdAt = nowIso();
-      }
-      schedulePersist();
-    } else if (!user.isRegistered) {
-      user.isRegistered = true;
-      if (!user.createdAt) {
-        user.createdAt = nowIso();
-      }
+      userChanged = true;
+    }
+    if (!toDisplayName(user.displayName) && googleDisplayName) {
+      user.displayName = googleDisplayName;
+      userChanged = true;
+    }
+    if (userChanged) {
       schedulePersist();
     }
 
@@ -4224,7 +4308,12 @@ app.post(
       return;
     }
     applyAuthCookies(res, tokens);
-    res.json({ username: user.username, email: user.email || "" });
+    res.json({
+      username: user.username,
+      email: user.email || "",
+      linkedExisting: Boolean(linkedExisting),
+      createdAccount: Boolean(createdAccount),
+    });
   }
 );
 
