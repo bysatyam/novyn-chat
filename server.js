@@ -11,12 +11,69 @@ const webpush = require("web-push");
 const { cloudinary, hasCloudinaryConfig } = require("./cloudinary");
 const admin = require("firebase-admin");
 
+function readEnvText(value) {
+  return String(value || "").trim();
+}
+
+function parseJsonMaybe(rawText) {
+  const text = readEnvText(rawText).replace(/^\uFEFF/, "");
+  if (!text) return null;
+  return JSON.parse(text);
+}
+
+function loadFirebaseServiceAccount() {
+  const rawJson = readEnvText(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  if (rawJson) {
+    try {
+      return parseJsonMaybe(rawJson);
+    } catch (err) {
+      console.warn("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", err?.message || err);
+    }
+  }
+
+  const configuredPath = readEnvText(process.env.FIREBASE_SERVICE_ACCOUNT_FILE);
+  const fallbackPath = path.join(__dirname, "novynchat-firebase-adminsdk.json");
+  const serviceAccountPath = configuredPath ? path.resolve(configuredPath) : fallbackPath;
+  if (serviceAccountPath && fs.existsSync(serviceAccountPath)) {
+    try {
+      const fileContents = fs.readFileSync(serviceAccountPath, "utf8");
+      return parseJsonMaybe(fileContents);
+    } catch (err) {
+      console.warn(
+        `Failed to read Firebase service account file "${serviceAccountPath}":`,
+        err?.message || err
+      );
+    }
+  }
+
+  const projectId = readEnvText(process.env.FIREBASE_PROJECT_ID);
+  const clientEmail = readEnvText(process.env.FIREBASE_CLIENT_EMAIL);
+  const privateKeyRaw = String(process.env.FIREBASE_PRIVATE_KEY || "");
+  const privateKey = privateKeyRaw.replace(/\\n/g, "\n").trim();
+  if (projectId && clientEmail && privateKey) {
+    return {
+      type: "service_account",
+      project_id: projectId,
+      client_email: clientEmail,
+      private_key: privateKey,
+    };
+  }
+
+  return null;
+}
+
 let firebaseAdmin = null;
 try {
-  const serviceAccount = require("./novynchat-firebase-adminsdk.json");
-  firebaseAdmin = admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
+  const serviceAccount = loadFirebaseServiceAccount();
+  if (serviceAccount) {
+    firebaseAdmin = admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  } else {
+    console.warn(
+      "Firebase Admin SDK unavailable: set FIREBASE_SERVICE_ACCOUNT_JSON, FIREBASE_SERVICE_ACCOUNT_FILE, or FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY."
+    );
+  }
 } catch (err) {
   console.warn("Firebase Admin SDK unavailable:", err?.message || err);
 }
