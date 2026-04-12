@@ -105,7 +105,7 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         })
-        .catch(() => cached);
+        .catch(() => cached || Response.error()); // ← never return undefined
 
       return cached || network;
     })

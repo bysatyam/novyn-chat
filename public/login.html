@@ -7,7 +7,7 @@
 <meta name="description" content="Novyn is a private real-time chat app with secure messaging, voice and video calls, and live presence.">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
 <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
-<meta name="theme-color" content="#0f172a">
+<meta name="theme-color" content="#0A0C10" id="themeColorMeta">
 <link rel="canonical" href="https://novyn-live.onrender.com/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Novyn | Private Real-Time Chat">
@@ -22,7 +22,7 @@
 <meta name="application-name" content="Novyn">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="/icons/novyn-badge.svg">
 <link rel="stylesheet" href="login.css">
 <script type="application/ld+json">
@@ -49,29 +49,56 @@
 </head>
 <body>
 
+<!-- Theme toggle -->
+<button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+  <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+  </svg>
+  <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="5"/>
+    <line x1="12" y1="1" x2="12" y2="3"/>
+    <line x1="12" y1="21" x2="12" y2="23"/>
+    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+    <line x1="1" y1="12" x2="3" y2="12"/>
+    <line x1="21" y1="12" x2="23" y2="12"/>
+    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+  </svg>
+</button>
+
 <div class="page">
 
-  <!-- Background -->
+  <!-- Background canvas -->
   <div class="brand" aria-hidden="true"></div>
 
+  <!-- Mobile brand (shown on small screens only) -->
+  <div class="mobile-brand" aria-hidden="true">
+    <div class="mobile-logo-icon">
+      <svg class="login-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g class="portal-ring-bg"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/></g>
+        <g class="portal-outer"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/></g>
+        <g class="portal-inner"><circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/></g>
+        <g class="portal-dot"><circle cx="24" cy="24" r="3" fill="currentColor"/></g>
+      </svg>
+    </div>
+    <span class="mobile-brand-name">Novyn</span>
+  </div>
+  <div class="mobile-brand-tag">Private real-time chat</div>
+
   <div class="auth-shell">
+
+    <!-- Hero pane (tablet / desktop) -->
     <section class="hero-pane" aria-label="Novyn highlights">
       <div class="hero-inner">
+
         <div class="hero-brand">
           <span class="hero-mark">
             <svg class="login-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <g class="portal-ring-bg">
-                <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/>
-              </g>
-              <g class="portal-outer">
-                <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/>
-              </g>
-              <g class="portal-inner">
-                <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/>
-              </g>
-              <g class="portal-dot">
-                <circle cx="24" cy="24" r="3" fill="currentColor"/>
-              </g>
+              <g class="portal-ring-bg"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/></g>
+              <g class="portal-outer"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/></g>
+              <g class="portal-inner"><circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/></g>
+              <g class="portal-dot"><circle cx="24" cy="24" r="3" fill="currentColor"/></g>
             </svg>
           </span>
           <div>
@@ -139,6 +166,7 @@
             </div>
           </div>
         </div>
+
       </div>
     </section>
 
@@ -150,18 +178,10 @@
       <div class="card-logo">
         <div class="card-logo-icon">
           <svg class="login-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <g class="portal-ring-bg">
-              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/>
-            </g>
-            <g class="portal-outer">
-              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/>
-            </g>
-            <g class="portal-inner">
-              <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/>
-            </g>
-            <g class="portal-dot">
-              <circle cx="24" cy="24" r="3" fill="currentColor"/>
-            </g>
+            <g class="portal-ring-bg"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/></g>
+            <g class="portal-outer"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/></g>
+            <g class="portal-inner"><circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/></g>
+            <g class="portal-dot"><circle cx="24" cy="24" r="3" fill="currentColor"/></g>
           </svg>
         </div>
         <span class="card-logo-name">Novyn</span>
@@ -186,13 +206,14 @@
       <div class="slider">
         <div class="track" id="f-track">
 
-          <!-- SIGN IN -->
+          <!-- ── SIGN IN ── -->
           <div class="slide">
+
             <div class="field">
               <label>Email or username</label>
               <div class="input-wrap">
                 <span class="ico">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                     <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/>
                   </svg>
                 </span>
@@ -205,13 +226,13 @@
               <label>Password</label>
               <div class="input-wrap">
                 <span class="ico">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                     <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
                 </span>
                 <input type="password" id="loginPassword" placeholder=" " autocomplete="current-password">
                 <label class="float-label" for="loginPassword">Password</label>
-                <button class="eye" onclick="togglePw('loginPassword',this)" tabindex="-1" type="button">
+                <button class="eye" onclick="togglePw('loginPassword',this)" tabindex="-1" type="button" aria-label="Show password">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="ei">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                   </svg>
@@ -224,7 +245,7 @@
               <a href="#" id="forgotPasswordLink">Forgot password?</a>
             </div>
 
-            <div class="divider"><span>or continue with</span></div>
+            <!-- Google sign in — prominent position -->
             <button class="btn-google" id="googleSignInBtn" type="button" onclick="ripple(event,this)">
               <span class="google-badge" aria-hidden="true">
                 <svg class="google-logo" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -243,13 +264,16 @@
               </span>
             </button>
 
+            <div class="divider"><span>or sign in with email</span></div>
+
             <button class="btn-primary" id="signInBtn" type="button" onclick="ripple(event,this)">
               Sign in
             </button>
           </div>
 
-          <!-- SIGN UP -->
+          <!-- ── SIGN UP ── -->
           <div class="slide">
+
             <div class="field">
               <label>Full name</label>
               <div class="input-wrap">
@@ -268,7 +292,8 @@
               <div class="input-wrap">
                 <span class="ico">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                    <circle cx="12" cy="8" r="4"/><path d="M6 20v-1a6 6 0 0 1 12 0v1"/>
+                    <path d="M17 14l1.5 1.5L21 13" stroke-linejoin="round"/>
                   </svg>
                 </span>
                 <input id="signupHandle" type="text" placeholder=" " autocomplete="username">
@@ -299,7 +324,7 @@
                 </span>
                 <input type="password" id="signupPassword" placeholder=" " autocomplete="new-password" oninput="checkStrength(this)">
                 <label class="float-label" for="signupPassword">Password</label>
-                <button class="eye" onclick="togglePw('signupPassword',this)" tabindex="-1" type="button">
+                <button class="eye" onclick="togglePw('signupPassword',this)" tabindex="-1" type="button" aria-label="Show password">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="ei">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                   </svg>
@@ -313,7 +338,7 @@
               </div>
             </div>
 
-            <div class="divider"><span>or continue with</span></div>
+            <!-- Google sign up — prominent position -->
             <button class="btn-google" id="googleSignUpBtn" type="button" onclick="ripple(event,this)">
               <span class="google-badge" aria-hidden="true">
                 <svg class="google-logo" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -332,8 +357,9 @@
               </span>
             </button>
 
-            <button class="btn-primary" id="signUpBtn" type="button"
-              onclick="ripple(event,this)" style="margin-top:8px">
+            <div class="divider"><span>or create with email</span></div>
+
+            <button class="btn-primary" id="signUpBtn" type="button" onclick="ripple(event,this)">
               Create account
             </button>
 
@@ -347,7 +373,7 @@
 
       <div class="card-footer">
         <span class="card-footer-dot"></span>
-        End-to-end encrypted - 2,400+ people on the network
+        End-to-end encrypted · 2,400+ on the network
       </div>
 
     </div>
@@ -356,46 +382,81 @@
 
 </div>
 
-  <!-- Reset password modal -->
-  <div id="resetModal" class="reset-modal hidden" role="dialog" aria-modal="true" aria-labelledby="resetTitle">
-    <div class="reset-backdrop" data-reset-close></div>
-    <div class="reset-card" role="document">
-      <div class="reset-header">
-        <span id="resetTitle">Reset password</span>
-        <button class="reset-close" type="button" data-reset-close aria-label="Close">✕</button>
+<!-- Reset password modal -->
+<div id="resetModal" class="reset-modal hidden" role="dialog" aria-modal="true" aria-labelledby="resetTitle">
+  <div class="reset-backdrop" data-reset-close></div>
+  <div class="reset-card" role="document">
+    <div class="reset-header">
+      <span id="resetTitle">Reset password</span>
+      <button class="reset-close" type="button" data-reset-close aria-label="Close">✕</button>
+    </div>
+    <div class="reset-body">
+      <div class="reset-step" data-reset-step="request">
+        <label for="resetEmail">Email or username</label>
+        <input id="resetEmail" type="text" autocomplete="username" placeholder="you@example.com">
+        <button class="btn-primary reset-action" id="resetRequestBtn" type="button">Send reset code</button>
+        <div class="reset-hint">We'll send a one-time code to verify it's you.</div>
       </div>
-      <div class="reset-body">
-        <div class="reset-step" data-reset-step="request">
-          <label for="resetEmail">Email or username</label>
-          <input id="resetEmail" type="text" autocomplete="username" placeholder="you@example.com">
-          <button class="btn-primary reset-action" id="resetRequestBtn" type="button">Send reset code</button>
-          <div class="reset-hint">We'll send a one-time code to verify it's you.</div>
-        </div>
-        <div class="reset-step hidden" data-reset-step="confirm">
-          <label for="resetCode">Reset code</label>
-          <input id="resetCode" type="text" inputmode="numeric" placeholder="6-digit code">
-          <label for="resetNewPassword">New password</label>
-          <input id="resetNewPassword" type="password" autocomplete="new-password" placeholder="New password">
-          <label for="resetConfirmPassword">Confirm password</label>
-          <input id="resetConfirmPassword" type="password" autocomplete="new-password" placeholder="Confirm password">
-          <button class="btn-primary reset-action" id="resetConfirmBtn" type="button">Update password</button>
-          <div id="resetDevToken" class="reset-token hidden"></div>
-        </div>
-        <div id="resetMessage" class="reset-message" aria-live="polite"></div>
+      <div class="reset-step hidden" data-reset-step="confirm">
+        <label for="resetCode">Reset code</label>
+        <input id="resetCode" type="text" inputmode="numeric" placeholder="6-digit code">
+        <label for="resetNewPassword">New password</label>
+        <input id="resetNewPassword" type="password" autocomplete="new-password" placeholder="New password">
+        <label for="resetConfirmPassword">Confirm password</label>
+        <input id="resetConfirmPassword" type="password" autocomplete="new-password" placeholder="Confirm password">
+        <button class="btn-primary reset-action" id="resetConfirmBtn" type="button">Update password</button>
+        <div id="resetDevToken" class="reset-token hidden"></div>
       </div>
+      <div id="resetMessage" class="reset-message" aria-live="polite"></div>
     </div>
   </div>
+</div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="auth-session.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="google-auth.js"></script>
+
 <script>
+  // ─── Theme toggle ───────────────────────────────────────────
+  (function() {
+    var THEME_KEY = 'novyn-theme';
+    var root = document.documentElement;
+    var metaThemeColor = document.getElementById('themeColorMeta');
+
+    function applyTheme(theme) {
+      if (theme === 'light') {
+        root.setAttribute('data-theme', 'light');
+        if (metaThemeColor) metaThemeColor.content = '#F2F4FA';
+      } else {
+        root.removeAttribute('data-theme');
+        if (metaThemeColor) metaThemeColor.content = '#0A0C10';
+      }
+      try { localStorage.setItem(THEME_KEY, theme); } catch(_) {}
+    }
+
+    // Restore saved preference
+    var saved;
+    try { saved = localStorage.getItem(THEME_KEY); } catch(_) {}
+    applyTheme(saved === 'light' ? 'light' : 'dark');
+
+    document.addEventListener('DOMContentLoaded', function() {
+      var btn = document.getElementById('themeToggle');
+      if (!btn) return;
+      btn.addEventListener('click', function() {
+        var current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+        applyTheme(current === 'light' ? 'dark' : 'light');
+      });
+    });
+  })();
+
+  // ─── Tab logic ───────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', function() {
     var tabs   = document.getElementById('authTabs');
     var btnSI  = document.getElementById('tabSignIn');
     var btnSU  = document.getElementById('tabSignUp');
+
     window.go = function(t) {
       var su = t === 'su';
       document.getElementById('f-track').classList.toggle('slid', su);
@@ -406,6 +467,7 @@
     };
   });
 </script>
+
 <script src="login.js"></script>
 </body>
 </html>
