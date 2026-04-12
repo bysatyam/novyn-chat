@@ -9,6 +9,7 @@ const { MongoClient } = require("mongodb");
 const { Server } = require("socket.io");
 const webpush = require("web-push");
 const { cloudinary, hasCloudinaryConfig } = require("./cloudinary");
+require("dotenv").config();
 const admin = require("firebase-admin");
 
 function readEnvText(value) {
