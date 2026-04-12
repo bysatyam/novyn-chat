@@ -3,6 +3,7 @@ node_modules/
 uploads/
 data/chat-state.json
 .env
+novynchat-firebase-adminsdk.json
 
 # Android / Capacitor build artifacts
 *.apk

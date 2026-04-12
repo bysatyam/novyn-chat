@@ -9,6 +9,17 @@ const { MongoClient } = require("mongodb");
 const { Server } = require("socket.io");
 const webpush = require("web-push");
 const { cloudinary, hasCloudinaryConfig } = require("./cloudinary");
+const admin = require("firebase-admin");
+
+let firebaseAdmin = null;
+try {
+  const serviceAccount = require("./novynchat-firebase-adminsdk.json");
+  firebaseAdmin = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+} catch (err) {
+  console.warn("Firebase Admin SDK unavailable:", err?.message || err);
+}
 
 let nodemailer = null;
 try {
@@ -4132,25 +4143,90 @@ app.post("/api/auth/signin", createIpRateLimiter("auth-signin", 25, 15 * 60 * 10
   });
 });
 
-app.post("/api/auth/signup", createIpRateLimiter("auth-signup", 12, 60 * 60 * 1000), requireCsrf, (req, res) => {
-  const result = authenticateSignupPayload(req.body || {});
-  if (!result.ok) {
-    res.status(result.status || 400).json({ message: result.message || "Unable to sign up." });
-    return;
+app.post(
+  "/api/auth/signup",
+  createIpRateLimiter("auth-signup", 20, 15 * 60 * 1000),
+  requireCsrf,
+  (req, res) => {
+    const result = authenticateSignupPayload(req.body || {});
+    if (!result.ok) {
+      res.status(result.status || 400).json({ message: result.message || "Unable to sign up." });
+      return;
+    }
+    const remember = readRememberFlag(req.body?.remember);
+    const userKey = normalizeName(result.user.username);
+    const tokens = issueAuthTokensForUser(userKey, remember);
+    if (!tokens) {
+      res.status(500).json({ message: "Unable to create session." });
+      return;
+    }
+    applyAuthCookies(res, tokens);
+    res.json({
+      username: result.user.username,
+      email: result.user.email || "",
+    });
   }
-  const remember = readRememberFlag(req.body?.remember);
-  const userKey = normalizeName(result.user.username);
-  const tokens = issueAuthTokensForUser(userKey, remember);
-  if (!tokens) {
-    res.status(500).json({ message: "Unable to create session." });
-    return;
+);
+
+app.post(
+  "/api/auth/google",
+  createIpRateLimiter("auth-google", 25, 15 * 60 * 1000),
+  requireCsrf,
+  async (req, res) => {
+    if (!firebaseAdmin) {
+      res.status(503).json({ message: "Firebase authentication is not configured." });
+      return;
+    }
+
+    const idToken = toDisplayName(req.body?.idToken || "");
+    const remember = Boolean(req.body?.remember);
+    if (!idToken) {
+      res.status(400).json({ message: "Google sign-in token is required." });
+      return;
+    }
+
+    let decoded;
+    try {
+      decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
+    } catch (err) {
+      res.status(401).json({ message: "Invalid Google sign-in token." });
+      return;
+    }
+
+    const email = normalizeEmail(decoded.email || "");
+    if (!email) {
+      res.status(400).json({ message: "Google account email is required." });
+      return;
+    }
+
+    let user = findUserByEmail(email);
+    if (!user) {
+      const username = pickAvailableUsername(decoded.name || email.split("@")[0] || `user${Date.now()}`);
+      user = getOrCreateUser(username);
+      user.email = email;
+      user.displayName = toDisplayName(decoded.name || username);
+      user.isRegistered = true;
+      if (!user.createdAt) {
+        user.createdAt = nowIso();
+      }
+      schedulePersist();
+    } else if (!user.isRegistered) {
+      user.isRegistered = true;
+      if (!user.createdAt) {
+        user.createdAt = nowIso();
+      }
+      schedulePersist();
+    }
+
+    const tokens = issueAuthTokensForUser(user.username, remember);
+    if (!tokens) {
+      res.status(500).json({ message: "Unable to create session." });
+      return;
+    }
+    applyAuthCookies(res, tokens);
+    res.json({ username: user.username, email: user.email || "" });
   }
-  applyAuthCookies(res, tokens);
-  res.json({
-    username: result.user.username,
-    email: result.user.email || "",
-  });
-});
+);
 
 app.get("/api/auth/session", (req, res) => {
   const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {

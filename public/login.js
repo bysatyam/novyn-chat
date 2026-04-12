@@ -72,6 +72,8 @@
   const signUpEmailInput = document.getElementById("signupEmail");
   const signUpPasswordInput = document.getElementById("signupPassword");
   const signUpBtn = document.getElementById("signUpBtn");
+  const googleSignInBtn = document.getElementById("googleSignInBtn");
+  const googleSignUpBtn = document.getElementById("googleSignUpBtn");
 
   const authMessage = document.getElementById("authMessage");
   const statUsers = document.getElementById("statUsers");
@@ -196,10 +198,36 @@
   function setLoading(isLoading) {
     if (signInBtn) signInBtn.disabled = isLoading;
     if (signUpBtn) signUpBtn.disabled = isLoading;
+    if (googleSignInBtn) googleSignInBtn.disabled = isLoading;
+    if (googleSignUpBtn) googleSignUpBtn.disabled = isLoading;
   }
 
   function redirectToDashboard() {
     window.location.replace(DASHBOARD_PATH);
+  }
+
+  async function handleGoogleAuth(event) {
+    if (event?.preventDefault) event.preventDefault();
+    setLoading(true);
+    setMessage("");
+    try {
+      const result = await signInWithGoogle();
+      const idToken = result?.idToken;
+      if (!idToken) {
+        throw new Error("Google sign-in failed. Please try again.");
+      }
+      const remember = Boolean(rememberCheckbox && rememberCheckbox.checked);
+      const response = await postAuth("/api/auth/google", { idToken, remember });
+      if (!response?.ok) {
+        throw new Error(response?.data?.message || "Google authentication failed.");
+      }
+      setMessage("Signed in with Google. Redirecting...", "success");
+      redirectToDashboard();
+    } catch (err) {
+      setMessage(err?.message || "Google sign-in failed.", "error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function getValue(input) {
@@ -415,11 +443,19 @@
     });
   }
 
+  if (googleSignInBtn) {
+    googleSignInBtn.addEventListener("click", handleGoogleAuth);
+  }
+
   if (signUpBtn) {
     signUpBtn.addEventListener("click", (event) => {
       event.preventDefault();
       handleAuth("signup");
     });
+  }
+
+  if (googleSignUpBtn) {
+    googleSignUpBtn.addEventListener("click", handleGoogleAuth);
   }
 
   async function hasValidSession() {
