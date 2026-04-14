@@ -4246,7 +4246,10 @@ app.post(
   requireCsrf,
   async (req, res) => {
     if (!firebaseAdmin) {
-      res.status(503).json({ message: "Firebase authentication is not configured." });
+      res.status(503).json({
+        message:
+          "Firebase authentication is not configured on server. Set FIREBASE_SERVICE_ACCOUNT_JSON (or FIREBASE_SERVICE_ACCOUNT_FILE) in your deployment environment.",
+      });
       return;
     }
 
