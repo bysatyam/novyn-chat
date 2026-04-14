@@ -797,6 +797,63 @@ body[data-rail="contacts"] .contacts-label {
   color:var(--mint-2);
   border-color:rgba(0,201,122,0.25);
 }
+.orbit-contacts-btn {
+  width:38px;
+  height:38px;
+  border-radius:12px;
+  padding:0;
+}
+.orbit-contacts-btn svg {
+  width:30px;
+  height:30px;
+}
+.orbit-contacts-btn .ring1,
+.orbit-contacts-btn .ring2 {
+  stroke:#34d399;
+}
+.orbit-contacts-btn .dp1 {
+  fill:#10b981;
+}
+.orbit-contacts-btn .dp2 {
+  fill:#6ee7b7;
+}
+.orbit-contacts-btn .orbit-cw {
+  animation:orbit-cw 3.2s linear infinite;
+  transform-origin:19px 19px;
+}
+.orbit-contacts-btn .orbit-ccw {
+  animation:orbit-ccw 2.6s linear infinite;
+  transform-origin:19px 19px;
+}
+@keyframes orbit-cw {
+  from { transform:rotate(0deg); }
+  to { transform:rotate(360deg); }
+}
+@keyframes orbit-ccw {
+  from { transform:rotate(0deg); }
+  to { transform:rotate(-360deg); }
+}
+@keyframes pulse-ring {
+  0% { r:13; opacity:.7; }
+  100% { r:22; opacity:0; }
+}
+@keyframes dot-pop {
+  0%,100% { r:3.2; }
+  50% { r:5; }
+}
+.orbit-contacts-btn .ring1,
+.orbit-contacts-btn .ring2 {
+  animation: pulse-ring 2s ease-out infinite;
+}
+.orbit-contacts-btn .ring2 {
+  animation-delay: .7s;
+}
+.orbit-contacts-btn .dp1 {
+  animation: dot-pop 1.4s ease-in-out infinite;
+}
+.orbit-contacts-btn .dp2 {
+  animation: dot-pop 1.4s ease-in-out infinite .45s;
+}
 .requests-badge {
   position:absolute;
   top:-6px; right:-6px;
