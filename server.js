@@ -573,6 +573,7 @@ app.get("/api/stats", (req, res) => {
 
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "chat-state.json");
+const AUTH_STATE_FILE = path.join(DATA_DIR, "auth-state.json");
 const ABUSE_REPORT_FILE = path.join(DATA_DIR, "abuse-reports.log");
 const MONGODB_URI = toDisplayName(process.env.MONGODB_URI);
 const MONGODB_DB = toDisplayName(process.env.MONGODB_DB) || "novyn";
@@ -750,6 +751,8 @@ let mongoMessagesCollection = null;
 
 let persistTimer = null;
 let persistInFlight = Promise.resolve();
+let authPersistTimer = null;
+let authPersistInFlight = Promise.resolve();
 
 function normalizeName(name) {
   return String(name || "").trim().toLowerCase();
@@ -1148,6 +1151,7 @@ function linkAuthAlias(oldKey, newKey) {
     newKey: next,
     expiresAt: Date.now() + AUTH_ALIAS_TTL_MS,
   });
+  scheduleAuthStatePersist();
 }
 
 function resolveCurrentUserKey(rawKey) {
@@ -1180,6 +1184,7 @@ function trackRefreshSession(userKey, jti, expiresAt, remember) {
     refreshByUser.set(key, new Set());
   }
   refreshByUser.get(key).add(tokenId);
+  scheduleAuthStatePersist();
 }
 
 function revokeRefreshSession(rawTokenId) {
@@ -1193,6 +1198,7 @@ function revokeRefreshSession(rawTokenId) {
     ownerSet.delete(tokenId);
     if (!ownerSet.size) refreshByUser.delete(existing.userKey);
   }
+  scheduleAuthStatePersist();
   return true;
 }
 
@@ -1212,20 +1218,24 @@ function moveRefreshSessionsToUser(oldUserKey, nextUserKey) {
     nextSet.add(tokenId);
   }
   refreshByUser.delete(oldKey);
+  scheduleAuthStatePersist();
 }
 
 function pruneExpiredAuthState() {
   const now = Date.now();
+  let touched = false;
   for (const [oldKey, alias] of authUserAliases.entries()) {
     if (!alias || Number(alias.expiresAt) <= now) {
       authUserAliases.delete(oldKey);
+      touched = true;
     }
   }
   for (const [tokenId, entry] of refreshSessions.entries()) {
     if (!entry || Number(entry.expiresAt) <= now) {
-      revokeRefreshSession(tokenId);
+      touched = revokeRefreshSession(tokenId) || touched;
     }
   }
+  if (touched) scheduleAuthStatePersist();
 }
 
 function issueAuthTokensForUser(userKey, remember) {
@@ -1255,21 +1265,20 @@ function applyAuthCookies(res, issuedTokens) {
     ...shared,
     maxAge: AUTH_ACCESS_TTL_MS,
   });
+  const refreshTtlMs = issuedTokens.remember
+    ? AUTH_REFRESH_REMEMBER_TTL_MS
+    : AUTH_REFRESH_SESSION_TTL_MS;
   const refreshOptions = {
     ...shared,
+    maxAge: refreshTtlMs,
   };
-  if (issuedTokens.remember) {
-    refreshOptions.maxAge = AUTH_REFRESH_REMEMBER_TTL_MS;
-  }
   res.cookie(AUTH_REFRESH_COOKIE, issuedTokens.refreshToken, refreshOptions);
   const csrfOptions = {
     sameSite: "lax",
     secure: AUTH_COOKIE_SECURE,
     path: "/",
+    maxAge: refreshTtlMs,
   };
-  if (issuedTokens.remember) {
-    csrfOptions.maxAge = AUTH_REFRESH_REMEMBER_TTL_MS;
-  }
   res.cookie(AUTH_CSRF_COOKIE, createCsrfToken(), csrfOptions);
 }
 
@@ -1460,10 +1469,73 @@ function serializeState() {
   };
 }
 
+function serializeAuthRuntimeState() {
+  return {
+    refreshSessions: Array.from(refreshSessions.entries()).map(([tokenId, entry]) => ({
+      tokenId: toDisplayName(tokenId),
+      userKey: normalizeName(entry?.userKey),
+      expiresAt: Number(entry?.expiresAt) || 0,
+      remember: Boolean(entry?.remember),
+    })),
+    authUserAliases: Array.from(authUserAliases.entries()).map(([oldKey, entry]) => ({
+      oldKey: normalizeName(oldKey),
+      newKey: normalizeName(entry?.newKey),
+      expiresAt: Number(entry?.expiresAt) || 0,
+    })),
+    savedAt: nowIso(),
+  };
+}
+
+function applyLoadedAuthRuntimeState(parsed) {
+  refreshSessions.clear();
+  refreshByUser.clear();
+  authUserAliases.clear();
+
+  const now = Date.now();
+  const rawSessions = Array.isArray(parsed?.refreshSessions) ? parsed.refreshSessions : [];
+  for (const rawEntry of rawSessions) {
+    const tokenId = toDisplayName(rawEntry?.tokenId || rawEntry?.jti || rawEntry?.id || rawEntry?.key);
+    const userKey = normalizeName(rawEntry?.userKey || rawEntry?.sub || "");
+    const expiresAt = Number(rawEntry?.expiresAt);
+    if (!tokenId || !userKey || !users.has(userKey) || !Number.isFinite(expiresAt) || expiresAt <= now) {
+      continue;
+    }
+    const entry = {
+      userKey,
+      expiresAt,
+      remember: Boolean(rawEntry?.remember),
+    };
+    refreshSessions.set(tokenId, entry);
+    if (!refreshByUser.has(userKey)) {
+      refreshByUser.set(userKey, new Set());
+    }
+    refreshByUser.get(userKey).add(tokenId);
+  }
+
+  const rawAliases = Array.isArray(parsed?.authUserAliases) ? parsed.authUserAliases : [];
+  for (const rawAlias of rawAliases) {
+    const oldKey = normalizeName(rawAlias?.oldKey || rawAlias?.key || rawAlias?.from || "");
+    const newKey = normalizeName(rawAlias?.newKey || rawAlias?.to || "");
+    const expiresAt = Number(rawAlias?.expiresAt);
+    if (!oldKey || !newKey || !users.has(newKey) || !Number.isFinite(expiresAt) || expiresAt <= now) {
+      continue;
+    }
+    authUserAliases.set(oldKey, { newKey, expiresAt });
+  }
+
+  pruneExpiredAuthState();
+}
+
 async function persistFileNow() {
   const payload = JSON.stringify(serializeState(), null, 2);
   await fsp.mkdir(DATA_DIR, { recursive: true });
   await fsp.writeFile(DATA_FILE, payload, "utf8");
+}
+
+async function persistAuthStateNow() {
+  const payload = JSON.stringify(serializeAuthRuntimeState(), null, 2);
+  await fsp.mkdir(DATA_DIR, { recursive: true });
+  await fsp.writeFile(AUTH_STATE_FILE, payload, "utf8");
 }
 
 function hasMongoStorage() {
@@ -1645,6 +1717,21 @@ function schedulePersist() {
         console.error("Failed to persist chat state:", err);
       });
   }, 180);
+}
+
+function scheduleAuthStatePersist() {
+  if (authPersistTimer) {
+    clearTimeout(authPersistTimer);
+  }
+
+  authPersistTimer = setTimeout(() => {
+    authPersistTimer = null;
+    authPersistInFlight = authPersistInFlight
+      .then(() => persistAuthStateNow())
+      .catch((err) => {
+        console.error("Failed to persist auth session state:", err);
+      });
+  }, 120);
 }
 
 function createResetToken() {
@@ -2198,6 +2285,21 @@ async function loadStateFromFile() {
   }
 }
 
+async function loadAuthStateFromFile() {
+  if (!fs.existsSync(AUTH_STATE_FILE)) {
+    return false;
+  }
+  try {
+    const raw = await fsp.readFile(AUTH_STATE_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    applyLoadedAuthRuntimeState(parsed);
+    return true;
+  } catch (err) {
+    console.error("Failed to load persisted auth session state:", err);
+    return false;
+  }
+}
+
 function toSerializedUserEntry(doc) {
   const key = normalizeName(doc?._id || doc?.key || doc?.username);
   if (!key) return null;
@@ -2395,6 +2497,8 @@ async function loadState() {
       console.log(`Pruned expired messages older than ${CHAT_RETENTION_DAYS} day(s).`);
     }
   }
+
+  await loadAuthStateFromFile();
 }
 
 function getOrCreateUser(username) {
@@ -6874,6 +6978,10 @@ async function shutdown() {
     clearTimeout(persistTimer);
     persistTimer = null;
   }
+  if (authPersistTimer) {
+    clearTimeout(authPersistTimer);
+    authPersistTimer = null;
+  }
   for (const timer of scheduledMessageTimers.values()) {
     clearTimeout(timer);
   }
@@ -6881,7 +6989,9 @@ async function shutdown() {
 
   try {
     await persistInFlight.catch(() => {});
+    await authPersistInFlight.catch(() => {});
     await persistNow();
+    await persistAuthStateNow();
   } catch (err) {
     console.error("Failed to persist state during shutdown:", err);
   } finally {

@@ -6,8 +6,7 @@
 <title>Novyn | Private Real-Time Chat</title>
 <meta name="description" content="Novyn is a private real-time chat app with secure messaging, voice and video calls, and live presence.">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
-<meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
-<meta name="theme-color" content="#0A0C10" id="themeColorMeta">
+<meta name="theme-color" content="#060910" id="themeColorMeta">
 <link rel="canonical" href="https://novyn-live.onrender.com/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Novyn | Private Real-Time Chat">
@@ -22,7 +21,7 @@
 <meta name="application-name" content="Novyn">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500;1,600&family=Figtree:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="/icons/novyn-badge.svg">
 <link rel="stylesheet" href="login.css">
 <script type="application/ld+json">
@@ -67,165 +66,204 @@
   </svg>
 </button>
 
-<div class="page">
+<div class="root-layout">
 
-  <!-- Background canvas -->
-  <div class="brand" aria-hidden="true"></div>
+  <!-- ══════════════════════════════════════════════════
+       ART PANEL — desktop left side
+  ══════════════════════════════════════════════════ -->
+  <div class="art-panel" aria-hidden="true">
 
-  <!-- Mobile brand (shown on small screens only) -->
-  <div class="mobile-brand" aria-hidden="true">
-    <div class="mobile-logo-icon">
-      <svg class="login-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <g class="portal-ring-bg"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/></g>
-        <g class="portal-outer"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/></g>
-        <g class="portal-inner"><circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/></g>
-        <g class="portal-dot"><circle cx="24" cy="24" r="3" fill="currentColor"/></g>
-      </svg>
-    </div>
-    <span class="mobile-brand-name">Novyn</span>
-  </div>
-  <div class="mobile-brand-tag">Private real-time chat</div>
+    <!-- Background orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="orb orb-4"></div>
+    <div class="orb orb-5"></div>
 
-  <div class="auth-shell">
+    <!-- Grid texture -->
+    <div class="art-grid"></div>
 
-    <!-- Hero pane (tablet / desktop) -->
-    <section class="hero-pane" aria-label="Novyn highlights">
-      <div class="hero-inner">
-
-        <div class="hero-brand">
-          <span class="hero-mark">
-            <svg class="login-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <g class="portal-ring-bg"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/></g>
-              <g class="portal-outer"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/></g>
-              <g class="portal-inner"><circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/></g>
-              <g class="portal-dot"><circle cx="24" cy="24" r="3" fill="currentColor"/></g>
-            </svg>
-          </span>
-          <div>
-            <div class="hero-kicker">Novyn</div>
-            <div class="hero-subkicker">Private by default</div>
-          </div>
-        </div>
-
-        <h1 class="hero-title">Chat that feels alive.</h1>
-        <p class="hero-copy">
-          Move fast with real-time messaging, crystal clear calls, and presence that actually feels human.
-          End-to-end encrypted, always on, and designed to stay out of your way.
-        </p>
-
-        <div class="hero-pills">
-          <span>End-to-end encrypted</span>
-          <span>Voice &amp; video</span>
-          <span>Smart presence</span>
-        </div>
-
-        <div class="hero-live">
-          <span class="live-dot" aria-hidden="true"></span>
-          Live stats
-        </div>
-
-        <div class="hero-stats" aria-live="polite">
-          <div class="hero-stat">
-            <div class="hero-stat-num" id="statUsers">—</div>
-            <div class="hero-stat-label">Registered users</div>
-          </div>
-          <div class="hero-stat">
-            <div class="hero-stat-num" id="statOnline">—</div>
-            <div class="hero-stat-label">Online now</div>
-          </div>
-          <div class="hero-stat">
-            <div class="hero-stat-num" id="statMessages">—</div>
-            <div class="hero-stat-label">Messages sent</div>
-          </div>
-          <div class="hero-stat">
-            <div class="hero-stat-num" id="statNewUsers">—</div>
-            <div class="hero-stat-label">New users today</div>
-          </div>
-        </div>
-
-        <div class="hero-features">
-          <div class="hero-feature">
-            <span class="feature-dot"></span>
-            <div>
-              <div class="feature-title">Instant sync</div>
-              <div class="feature-sub">Your chats update everywhere in milliseconds.</div>
-            </div>
-          </div>
-          <div class="hero-feature">
-            <span class="feature-dot"></span>
-            <div>
-              <div class="feature-title">Built for focus</div>
-              <div class="feature-sub">Clean UI, quick actions, and fewer distractions.</div>
-            </div>
-          </div>
-          <div class="hero-feature">
-            <span class="feature-dot"></span>
-            <div>
-              <div class="feature-title">Own your handle</div>
-              <div class="feature-sub">Create a username that's uniquely yours.</div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- Auth card -->
-    <div class="form-side">
-    <div class="form-inner">
-
-      <!-- Logo -->
-      <div class="card-logo">
-        <div class="card-logo-icon">
-          <svg class="login-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <g class="portal-ring-bg"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/></g>
-            <g class="portal-outer"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/></g>
-            <g class="portal-inner"><circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/></g>
-            <g class="portal-dot"><circle cx="24" cy="24" r="3" fill="currentColor"/></g>
+    <!-- Ring focal art -->
+    <div class="ring-art">
+      <div class="ring ring-r1"></div>
+      <div class="ring ring-r2"></div>
+      <div class="ring ring-r3"></div>
+      <div class="ring ring-r4"></div>
+      <div class="ring-core">
+        <div class="ring-core-inner">
+          <svg class="portal-svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="17" stroke="currentColor" stroke-width="2.2" stroke-dasharray="22 90" stroke-linecap="round" fill="none"/>
+            <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.6" stroke-dasharray="12 52" stroke-linecap="round" fill="none" opacity="0.6"/>
+            <circle cx="24" cy="24" r="3.2" fill="currentColor"/>
           </svg>
         </div>
-        <span class="card-logo-name">Novyn</span>
+      </div>
+      <!-- Orbit dot -->
+      <div class="orbit-ring">
+        <div class="orbit-dot"></div>
+      </div>
+    </div>
+
+    <!-- Brand & copy content -->
+    <div class="art-content">
+      <div class="art-brand-row">
+        <div class="art-logo-icon">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="17" stroke="currentColor" stroke-width="2.4" stroke-dasharray="22 90" stroke-linecap="round" fill="none"/>
+            <circle cx="24" cy="24" r="3.2" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="art-brand-name">Novyn</span>
+        <span class="art-brand-badge">beta</span>
       </div>
 
-      <!-- Tab switcher -->
-      <div class="auth-tabs" id="authTabs">
-        <div class="tab-glider"></div>
-        <button class="auth-tab-btn active" id="tabSignIn" onclick="go('si')">Sign in</button>
-        <button class="auth-tab-btn" id="tabSignUp" onclick="go('su')">Create account</button>
+      <h1 class="art-headline">
+        Messages<br>
+        <em>that feel</em><br>
+        alive.
+      </h1>
+
+      <p class="art-sub">
+        Real-time messaging, crystal clear calls,<br>
+        and presence that actually feels human.
+      </p>
+
+      <div class="art-pills">
+        <span class="art-pill">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          E2E encrypted
+        </span>
+        <span class="art-pill">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.42 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          Voice &amp; video
+        </span>
+        <span class="art-pill">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z" opacity=".4"/><path d="M12 6v2M12 16v2M6 12H4M20 12h-2"/></svg>
+          Smart presence
+        </span>
       </div>
 
-      <!-- Hidden heading track (login.js compat) -->
-      <div class="slider" style="display:none;">
-        <div class="track" id="h-track">
-          <div class="slide"><div class="f-head"><h2>Sign in</h2></div></div>
-          <div class="slide"><div class="f-head"><h2>Create account</h2></div></div>
+      <!-- Live stats row -->
+      <div class="art-stats-section">
+        <div class="live-badge">
+          <span class="live-dot"></span>
+          Live network
+        </div>
+        <div class="art-stats-grid">
+          <div class="art-stat">
+            <span class="art-stat-num" id="statUsers">--</span>
+            <span class="art-stat-label">Members</span>
+          </div>
+          <div class="art-stat-sep"></div>
+          <div class="art-stat">
+            <span class="art-stat-num" id="statOnline">--</span>
+            <span class="art-stat-label">Online now</span>
+          </div>
+          <div class="art-stat-sep"></div>
+          <div class="art-stat">
+            <span class="art-stat-num" id="statMessages">--</span>
+            <span class="art-stat-label">Messages</span>
+          </div>
+          <div class="art-stat-sep"></div>
+          <div class="art-stat">
+            <span class="art-stat-num" id="statNewUsers">--</span>
+            <span class="art-stat-label">New today</span>
+          </div>
         </div>
       </div>
 
-      <!-- Fields slider -->
-      <div class="slider">
-        <div class="track" id="f-track">
+    </div><!-- /art-content -->
 
-          <!-- ── SIGN IN ── -->
-          <div class="slide">
+  </div><!-- /art-panel -->
+
+
+  <!-- ══════════════════════════════════════════════════
+       FORM PANEL — right on desktop, full on mobile/tablet
+  ══════════════════════════════════════════════════ -->
+  <div class="form-panel">
+
+    <!-- Mobile / tablet background orbs (shown when art-panel is hidden) -->
+    <div class="mob-orb mob-orb-1" aria-hidden="true"></div>
+    <div class="mob-orb mob-orb-2" aria-hidden="true"></div>
+    <div class="mob-orb mob-orb-3" aria-hidden="true"></div>
+    <div class="mob-grid" aria-hidden="true"></div>
+
+    <!-- ── Mobile header bar (hidden on desktop) ── -->
+    <header class="mobile-header" aria-label="Novyn">
+      <div class="mh-brand">
+        <div class="mh-logo-icon">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="17" stroke="currentColor" stroke-width="2.4" stroke-dasharray="22 90" stroke-linecap="round" fill="none"/>
+            <circle cx="24" cy="24" r="3.2" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="mh-name">Novyn</span>
+      </div>
+      <span class="mh-tagline">Private real-time chat</span>
+    </header>
+
+    <!-- ── Auth card ── -->
+    <div class="auth-card">
+
+      <!-- Emerald top accent strip -->
+      <div class="card-accent-strip"></div>
+
+      <!-- Tab switcher -->
+      <div class="tab-bar" id="authTabs">
+        <button class="tab-btn active" id="tabSignIn" type="button" onclick="go('si')">Sign in</button>
+        <button class="tab-btn" id="tabSignUp" type="button" onclick="go('su')">Sign up</button>
+        <div class="tab-glider"></div>
+      </div>
+
+      <!-- Sliding heading -->
+      <div class="h-track-outer">
+        <div class="h-track" id="h-track">
+          <div class="h-slide">Welcome back 👋</div>
+          <div class="h-slide">Create your account</div>
+        </div>
+      </div>
+
+      <!-- Sliding form panels -->
+      <div class="f-track-outer">
+        <div class="f-track" id="f-track">
+
+          <!-- ─────── SIGN IN ─────── -->
+          <div class="f-slide">
+
+            <button class="btn-google" id="googleSignInBtn" type="button" onclick="ripple(event,this)">
+              <span class="google-badge" aria-hidden="true">
+                <svg class="google-logo" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                  <path fill="#EA4335" d="M9 3.48c1.69 0 2.84.73 3.49 1.34l2.54-2.47C13.48.91 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l2.95 2.29C4.62 5.22 6.62 3.48 9 3.48z"/>
+                  <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.56 2.69-3.86 2.69-6.62z"/>
+                  <path fill="#FBBC05" d="M3.91 10.74a5.41 5.41 0 0 1 0-3.48V5L.96 2.7a9 9 0 0 0 0 12.6l2.95-2.29v-2.27z"/>
+                  <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.55-1.84.88-3.05.88-2.38 0-4.39-1.61-5.11-3.78H.96v2.38A9 9 0 0 0 9 18z"/>
+                </svg>
+              </span>
+              <span class="google-label">Continue with Google</span>
+              <span class="google-arrow" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none">
+                  <path d="M7 10h6M10 7l3 3-3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </button>
+
+            <div class="divider"><span>or sign in with email</span></div>
 
             <div class="field">
-              <label>Email or username</label>
               <div class="input-wrap">
-                <span class="ico">
+                <span class="ico" aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/>
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                   </svg>
                 </span>
-                <input id="loginIdentifier" name="identifier" type="text" placeholder=" " autocomplete="username">
+                <input id="loginIdentifier" name="username" type="text" placeholder=" " autocomplete="username">
                 <label class="float-label" for="loginIdentifier">Email or username</label>
               </div>
             </div>
 
             <div class="field">
-              <label>Password</label>
               <div class="input-wrap">
-                <span class="ico">
+                <span class="ico" aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                     <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
@@ -241,12 +279,24 @@
             </div>
 
             <div class="meta">
-              <label><input type="checkbox" id="rememberMe" name="remember"> Remember me</label>
-              <a href="#" id="forgotPasswordLink">Forgot password?</a>
+              <label class="remember-row">
+                <input type="checkbox" id="rememberMe">
+                <span class="check-box" aria-hidden="true"></span>
+                Remember me
+              </label>
+              <a href="#" id="forgotPasswordLink" class="forgot-link">Forgot password?</a>
             </div>
 
-            <!-- Google sign in — prominent position -->
-            <button class="btn-google" id="googleSignInBtn" type="button" onclick="ripple(event,this)">
+            <button class="btn-primary" id="signInBtn" type="button" onclick="ripple(event,this)">
+              Sign in to Novyn
+            </button>
+
+          </div><!-- /f-slide signin -->
+
+          <!-- ─────── SIGN UP ─────── -->
+          <div class="f-slide">
+
+            <button class="btn-google" id="googleSignUpBtn" type="button" onclick="ripple(event,this)">
               <span class="google-badge" aria-hidden="true">
                 <svg class="google-logo" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                   <path fill="#EA4335" d="M9 3.48c1.69 0 2.84.73 3.49 1.34l2.54-2.47C13.48.91 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l2.95 2.29C4.62 5.22 6.62 3.48 9 3.48z"/>
@@ -256,57 +306,46 @@
                 </svg>
               </span>
               <span class="google-label">Continue with Google</span>
-              <span class="google-cta-arrow" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path d="M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                  <path d="M13 7l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <span class="google-arrow" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none">
+                  <path d="M7 10h6M10 7l3 3-3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </span>
             </button>
 
-            <div class="divider"><span>or sign in with email</span></div>
+            <div class="divider"><span>or create with email</span></div>
 
-            <button class="btn-primary" id="signInBtn" type="button" onclick="ripple(event,this)">
-              Sign in
-            </button>
-          </div>
+            <div class="field-row">
+              <div class="field">
+                <div class="input-wrap">
+                  <span class="ico" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                    </svg>
+                  </span>
+                  <input id="signupName" name="name" type="text" placeholder=" " autocomplete="name">
+                  <label class="float-label" for="signupName">Full name</label>
+                </div>
+              </div>
 
-          <!-- ── SIGN UP ── -->
-          <div class="slide">
-
-            <div class="field">
-              <label>Full name</label>
-              <div class="input-wrap">
-                <span class="ico">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                  </svg>
-                </span>
-                <input id="signupName" type="text" placeholder=" " autocomplete="name">
-                <label class="float-label" for="signupName">Full name</label>
+              <div class="field">
+                <div class="input-wrap">
+                  <span class="ico" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+                    </svg>
+                  </span>
+                  <input id="signupHandle" name="username" type="text" placeholder=" " autocomplete="username">
+                  <label class="float-label" for="signupHandle">Username</label>
+                </div>
               </div>
             </div>
 
             <div class="field">
-              <label>Username</label>
               <div class="input-wrap">
-                <span class="ico">
+                <span class="ico" aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <circle cx="12" cy="8" r="4"/><path d="M6 20v-1a6 6 0 0 1 12 0v1"/>
-                    <path d="M17 14l1.5 1.5L21 13" stroke-linejoin="round"/>
-                  </svg>
-                </span>
-                <input id="signupHandle" type="text" placeholder=" " autocomplete="username">
-                <label class="float-label" for="signupHandle">Username</label>
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Email address</label>
-              <div class="input-wrap">
-                <span class="ico">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/>
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
                   </svg>
                 </span>
                 <input id="signupEmail" name="email" type="email" placeholder=" " autocomplete="email">
@@ -315,9 +354,8 @@
             </div>
 
             <div class="field">
-              <label>Password</label>
               <div class="input-wrap">
-                <span class="ico">
+                <span class="ico" aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                     <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
@@ -338,57 +376,49 @@
               </div>
             </div>
 
-            <!-- Google sign up — prominent position -->
-            <button class="btn-google" id="googleSignUpBtn" type="button" onclick="ripple(event,this)">
-              <span class="google-badge" aria-hidden="true">
-                <svg class="google-logo" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                  <path fill="#EA4335" d="M9 3.48c1.69 0 2.84.73 3.49 1.34l2.54-2.47C13.48.91 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l2.95 2.29C4.62 5.22 6.62 3.48 9 3.48z"/>
-                  <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.56 2.69-3.86 2.69-6.62z"/>
-                  <path fill="#FBBC05" d="M3.91 10.74a5.41 5.41 0 0 1 0-3.48V5L.96 2.7a9 9 0 0 0 0 12.6l2.95-2.29v-2.27z"/>
-                  <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.55-1.84.88-3.05.88-2.38 0-4.39-1.61-5.11-3.78H.96v2.38A9 9 0 0 0 9 18z"/>
-                </svg>
-              </span>
-              <span class="google-label">Continue with Google</span>
-              <span class="google-cta-arrow" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path d="M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                  <path d="M13 7l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </span>
-            </button>
-
-            <div class="divider"><span>or create with email</span></div>
-
             <button class="btn-primary" id="signUpBtn" type="button" onclick="ripple(event,this)">
               Create account
             </button>
 
             <div class="terms">By signing up you agree to our <a href="#">Terms</a> &amp; <a href="#">Privacy Policy</a></div>
-          </div>
 
-        </div>
-      </div>
+          </div><!-- /f-slide signup -->
+
+        </div><!-- /f-track -->
+      </div><!-- /f-track-outer -->
 
       <div class="auth-message" id="authMessage" role="status" aria-live="polite"></div>
 
       <div class="card-footer">
         <span class="card-footer-dot"></span>
-        End-to-end encrypted · 2,400+ on the network
+        End-to-end encrypted &middot; 2,400+ on the network
       </div>
 
-    </div>
-    </div>
-  </div>
+    </div><!-- /auth-card -->
 
-</div>
+  </div><!-- /form-panel -->
 
-<!-- Reset password modal -->
+</div><!-- /root-layout -->
+
+
+<!-- ══════════ Reset Password Modal ══════════ -->
 <div id="resetModal" class="reset-modal hidden" role="dialog" aria-modal="true" aria-labelledby="resetTitle">
   <div class="reset-backdrop" data-reset-close></div>
   <div class="reset-card" role="document">
     <div class="reset-header">
-      <span id="resetTitle">Reset password</span>
-      <button class="reset-close" type="button" data-reset-close aria-label="Close">✕</button>
+      <div class="reset-title-row">
+        <div class="reset-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+          </svg>
+        </div>
+        <span id="resetTitle">Reset password</span>
+      </div>
+      <button class="reset-close" type="button" data-reset-close aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
     </div>
     <div class="reset-body">
       <div class="reset-step" data-reset-step="request">
@@ -412,6 +442,7 @@
   </div>
 </div>
 
+
 <script src="/socket.io/socket.io.js"></script>
 <script src="auth-session.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -419,7 +450,7 @@
 <script src="google-auth.js"></script>
 
 <script>
-  // ─── Theme toggle ───────────────────────────────────────────
+  // ─── Theme toggle ──────────────────────────────────────
   (function() {
     var THEME_KEY = 'novyn-theme';
     var root = document.documentElement;
@@ -428,15 +459,14 @@
     function applyTheme(theme) {
       if (theme === 'light') {
         root.setAttribute('data-theme', 'light');
-        if (metaThemeColor) metaThemeColor.content = '#F2F4FA';
+        if (metaThemeColor) metaThemeColor.content = '#f0f4ef';
       } else {
         root.removeAttribute('data-theme');
-        if (metaThemeColor) metaThemeColor.content = '#0A0C10';
+        if (metaThemeColor) metaThemeColor.content = '#060910';
       }
       try { localStorage.setItem(THEME_KEY, theme); } catch(_) {}
     }
 
-    // Restore saved preference
     var saved;
     try { saved = localStorage.getItem(THEME_KEY); } catch(_) {}
     applyTheme(saved === 'light' ? 'light' : 'dark');
@@ -451,11 +481,11 @@
     });
   })();
 
-  // ─── Tab logic ───────────────────────────────────────────────
+  // ─── Tab logic ─────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', function() {
-    var tabs   = document.getElementById('authTabs');
-    var btnSI  = document.getElementById('tabSignIn');
-    var btnSU  = document.getElementById('tabSignUp');
+    var tabs  = document.getElementById('authTabs');
+    var btnSI = document.getElementById('tabSignIn');
+    var btnSU = document.getElementById('tabSignUp');
 
     window.go = function(t) {
       var su = t === 'su';
@@ -468,6 +498,6 @@
   });
 </script>
 
-<script src="login.js"></script>
+<script src="login.js?v=20260414a"></script>
 </body>
 </html>

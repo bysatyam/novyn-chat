@@ -2,6 +2,7 @@ node_modules/
 .envdata/
 uploads/
 data/chat-state.json
+data/auth-state.json
 .env
 novynchat-firebase-adminsdk.json
 

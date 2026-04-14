@@ -147,10 +147,20 @@
   }
 
   try {
-    if (rememberCheckbox && localStorage.getItem(REMEMBER_KEY) === "1") {
-      rememberCheckbox.checked = true;
+    if (rememberCheckbox) {
+      const savedRemember = localStorage.getItem(REMEMBER_KEY);
+      if (savedRemember === "1") {
+        rememberCheckbox.checked = true;
+      } else if (savedRemember === "0") {
+        rememberCheckbox.checked = false;
+      } else {
+        // Default to keeping users signed in across app/browser restarts.
+        rememberCheckbox.checked = true;
+      }
     }
-  } catch (_) {}
+  } catch (_) {
+    if (rememberCheckbox) rememberCheckbox.checked = true;
+  }
 
   function showResetMessage(text, type) {
     if (!resetMessage) return;
@@ -310,11 +320,7 @@
     }
     const remember = Boolean(rememberCheckbox && rememberCheckbox.checked);
     try {
-      if (remember) {
-        localStorage.setItem(REMEMBER_KEY, "1");
-      } else {
-        localStorage.removeItem(REMEMBER_KEY);
-      }
+      localStorage.setItem(REMEMBER_KEY, remember ? "1" : "0");
     } catch (_) {}
 
     setLoading(true);
@@ -510,6 +516,14 @@
     } catch (_) {
       return false;
     }
+  }
+
+  if (!forceLoggedOut) {
+    hasValidSession().then((valid) => {
+      if (valid) {
+        redirectToDashboard();
+      }
+    }).catch(() => {});
   }
 
   if (forceLoggedOut) {

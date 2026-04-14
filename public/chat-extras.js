@@ -722,9 +722,9 @@
 
 /* ── Mobile panel switching ─────────────────────────────────────────────────── */
 (function () {
-  // Phone-only mode: treat all viewport widths as mobile.
-  var BP      = 100000;
-  var THEME_BP = 100000;
+  // Shared mobile breakpoints for panel behavior and theme optimizations.
+  var BP      = 979;
+  var THEME_BP = 979;
   var sidebar = document.getElementById('mobileSidebar');
   var chat    = document.getElementById('mobileChat');
   var backBtn = document.getElementById('mobBackBtn');
@@ -1009,7 +1009,7 @@
     if (window._novynPanels && typeof window._novynPanels.isMobile === 'function') {
       return window._novynPanels.isMobile();
     }
-    return window.innerWidth <= 100000;
+    return window.innerWidth <= 979;
   }
 
   function setPullOffset(px) {

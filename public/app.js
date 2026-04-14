@@ -173,8 +173,8 @@ const MESSAGE_DRAFTS_KEY = "novyn-message-drafts";
 const PENDING_STATE_KEY = "novyn-pending-v2";
 const LOGIN_PATH        = "/login.html";
 const isDashboardPage   = Boolean(chatLayout) && !document.body.classList.contains("auth-page");
-// Phone-only mode: treat all viewport widths as mobile.
-const MOBILE_BP         = 100000;
+// Mobile layout breakpoint (desktop enhancements activate above this).
+const MOBILE_BP         = 979;
 const INCOMING_CALLS_ENABLED = true;
 const GLOBAL_SEARCH_MIN_QUERY_LENGTH = 2;
 const PRESENCE_IDLE_AWAY_MS = 5 * 60 * 1000;
@@ -319,6 +319,16 @@ let lastPresenceActivityEventAt = 0;
 let presenceAutoAwayActive = false;
 let restoredPendingToastShown = false;
 window._novynProfile = myProfile;
+let novynLabsState = {
+  branchByChat: {},
+  branchFilterByChat: {},
+  defaultIntentByChat: {},
+  intentFilterByChat: {},
+  trustByChat: {},
+  moodByChat: {},
+  contextAwareDelivery: true,
+  lastViewedByChat: {},
+};
 
 const localTyping = {
   active:    false,
@@ -353,6 +363,11 @@ const BAD_CALL_STATUSES = new Set(["cancelled", "declined", "missed", "busy", "u
 const MISSED_CALL_FILTER_STATUSES = new Set(["missed", "declined", "busy", "unavailable", "cancelled"]);
 const ATTACHMENT_EXT_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp|svg|mp4|mov|webm|mp3|wav|ogg|m4a|aac|pdf|txt|csv|zip|rar|7z|docx?|pptx?|xlsx?)(?:[?#].*)?$/i;
 const IMAGE_ATTACHMENT_EXT_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp|svg)(?:[?#].*)?$/i;
+const NOVYN_LABS_STORAGE_KEY = "novyn-labs-v1";
+const NOVYN_META_PREFIX = "[[novyn:";
+const NOVYN_META_SUFFIX = "]]";
+const NOVYN_INTENT_TYPES = new Set(["question", "decision", "action", "fyi", "urgent"]);
+const NOVYN_MOOD_TYPES = new Set(["auto", "calm", "focus", "hype", "off"]);
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Utilities Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
@@ -378,6 +393,423 @@ function normalizePresenceMode(value, fallback = "online") {
     return fallbackMode;
   }
   return "online";
+}
+
+function normalizeLabsBranch(value) {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return raw.slice(0, 32);
+}
+
+function normalizeLabsIntent(value) {
+  const intent = String(value || "").trim().toLowerCase();
+  return NOVYN_INTENT_TYPES.has(intent) ? intent : "";
+}
+
+function normalizeLabsMood(value) {
+  const mood = String(value || "").trim().toLowerCase();
+  return NOVYN_MOOD_TYPES.has(mood) ? mood : "auto";
+}
+
+function getLabsChatKey(username = activeFriend, kind = activeChatKind) {
+  const key = normalizeName(username);
+  if (!key) return "";
+  return `${normalizeChatKind(kind)}:${key}`;
+}
+
+function loadNovynLabsState() {
+  try {
+    const raw = localStorage.getItem(NOVYN_LABS_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return;
+    novynLabsState = {
+      ...novynLabsState,
+      branchByChat: parsed.branchByChat && typeof parsed.branchByChat === "object" ? parsed.branchByChat : {},
+      branchFilterByChat: parsed.branchFilterByChat && typeof parsed.branchFilterByChat === "object" ? parsed.branchFilterByChat : {},
+      defaultIntentByChat: parsed.defaultIntentByChat && typeof parsed.defaultIntentByChat === "object" ? parsed.defaultIntentByChat : {},
+      intentFilterByChat: parsed.intentFilterByChat && typeof parsed.intentFilterByChat === "object" ? parsed.intentFilterByChat : {},
+      trustByChat: parsed.trustByChat && typeof parsed.trustByChat === "object" ? parsed.trustByChat : {},
+      moodByChat: parsed.moodByChat && typeof parsed.moodByChat === "object" ? parsed.moodByChat : {},
+      contextAwareDelivery: parsed.contextAwareDelivery !== false,
+      lastViewedByChat: parsed.lastViewedByChat && typeof parsed.lastViewedByChat === "object" ? parsed.lastViewedByChat : {},
+    };
+  } catch (_) {
+    // Ignore malformed labs state.
+  }
+}
+
+function persistNovynLabsState() {
+  try {
+    localStorage.setItem(NOVYN_LABS_STORAGE_KEY, JSON.stringify(novynLabsState));
+  } catch (_) {
+    // Ignore storage failures.
+  }
+}
+
+function getLabsBranchForChat(chatKey = getLabsChatKey()) {
+  if (!chatKey) return "";
+  return normalizeLabsBranch(novynLabsState.branchByChat?.[chatKey] || "");
+}
+
+function getLabsBranchFilterForChat(chatKey = getLabsChatKey()) {
+  if (!chatKey) return "";
+  const filter = normalizeLabsBranch(novynLabsState.branchFilterByChat?.[chatKey] || "");
+  return filter || "all";
+}
+
+function getLabsDefaultIntentForChat(chatKey = getLabsChatKey()) {
+  if (!chatKey) return "";
+  return normalizeLabsIntent(novynLabsState.defaultIntentByChat?.[chatKey] || "");
+}
+
+function getLabsIntentFilterForChat(chatKey = getLabsChatKey()) {
+  if (!chatKey) return "all";
+  const filter = normalizeLabsIntent(novynLabsState.intentFilterByChat?.[chatKey] || "");
+  return filter || "all";
+}
+
+function getLabsTrustModeForChat(chatKey = getLabsChatKey()) {
+  if (!chatKey) return false;
+  return Boolean(novynLabsState.trustByChat?.[chatKey]);
+}
+
+function getLabsMoodForChat(chatKey = getLabsChatKey()) {
+  if (!chatKey) return "auto";
+  return normalizeLabsMood(novynLabsState.moodByChat?.[chatKey] || "auto");
+}
+
+function setLabsBranchForChat(branch, chatKey = getLabsChatKey()) {
+  if (!chatKey) return;
+  const nextBranch = normalizeLabsBranch(branch);
+  if (nextBranch) {
+    novynLabsState.branchByChat[chatKey] = nextBranch;
+  } else {
+    delete novynLabsState.branchByChat[chatKey];
+  }
+  persistNovynLabsState();
+}
+
+function setLabsBranchFilterForChat(branchFilter, chatKey = getLabsChatKey()) {
+  if (!chatKey) return;
+  const normalized = String(branchFilter || "").trim().toLowerCase();
+  if (!normalized || normalized === "all") {
+    novynLabsState.branchFilterByChat[chatKey] = "all";
+  } else {
+    novynLabsState.branchFilterByChat[chatKey] = normalizeLabsBranch(normalized);
+  }
+  persistNovynLabsState();
+}
+
+function setLabsDefaultIntentForChat(intent, chatKey = getLabsChatKey()) {
+  if (!chatKey) return;
+  const normalized = normalizeLabsIntent(intent);
+  if (normalized) {
+    novynLabsState.defaultIntentByChat[chatKey] = normalized;
+  } else {
+    delete novynLabsState.defaultIntentByChat[chatKey];
+  }
+  persistNovynLabsState();
+}
+
+function setLabsIntentFilterForChat(intentFilter, chatKey = getLabsChatKey()) {
+  if (!chatKey) return;
+  const normalized = normalizeLabsIntent(intentFilter);
+  if (normalized) {
+    novynLabsState.intentFilterByChat[chatKey] = normalized;
+  } else {
+    novynLabsState.intentFilterByChat[chatKey] = "all";
+  }
+  persistNovynLabsState();
+}
+
+function setLabsTrustModeForChat(enabled, chatKey = getLabsChatKey()) {
+  if (!chatKey) return;
+  if (enabled) {
+    novynLabsState.trustByChat[chatKey] = true;
+  } else {
+    delete novynLabsState.trustByChat[chatKey];
+  }
+  persistNovynLabsState();
+}
+
+function setLabsMoodForChat(mood, chatKey = getLabsChatKey()) {
+  if (!chatKey) return;
+  novynLabsState.moodByChat[chatKey] = normalizeLabsMood(mood);
+  persistNovynLabsState();
+}
+
+function updateLabsLastViewedForChat(chatKey = getLabsChatKey(), iso = new Date().toISOString()) {
+  if (!chatKey) return;
+  novynLabsState.lastViewedByChat[chatKey] = String(iso || new Date().toISOString());
+  persistNovynLabsState();
+}
+
+function getLabsLastViewedForChat(chatKey = getLabsChatKey()) {
+  if (!chatKey) return "";
+  return String(novynLabsState.lastViewedByChat?.[chatKey] || "");
+}
+
+function extractLabsMetaFromText(rawText) {
+  const text = String(rawText || "");
+  const result = {
+    text,
+    meta: {},
+  };
+  if (!text.startsWith(NOVYN_META_PREFIX)) return result;
+  const closeIndex = text.indexOf(NOVYN_META_SUFFIX);
+  if (closeIndex <= NOVYN_META_PREFIX.length) return result;
+  const rawMeta = text.slice(NOVYN_META_PREFIX.length, closeIndex);
+  const nextText = text.slice(closeIndex + NOVYN_META_SUFFIX.length).trimStart();
+  const parsed = {};
+  rawMeta.split(";").forEach((chunk) => {
+    const piece = String(chunk || "").trim();
+    if (!piece || !piece.includes("=")) return;
+    const [keyRaw, ...rest] = piece.split("=");
+    const key = String(keyRaw || "").trim().toLowerCase();
+    const value = rest.join("=").trim();
+    if (!key || !value) return;
+    if (key === "branch") {
+      const branch = normalizeLabsBranch(value);
+      if (branch) parsed.branch = branch;
+      return;
+    }
+    if (key === "intent") {
+      const intent = normalizeLabsIntent(value);
+      if (intent) parsed.intent = intent;
+      return;
+    }
+    if (key === "sensitive") {
+      parsed.sensitive = value === "1" || value === "true";
+      return;
+    }
+  });
+  result.text = nextText;
+  result.meta = parsed;
+  return result;
+}
+
+function injectLabsMetaIntoText(rawText, meta = {}) {
+  const base = String(rawText || "").trim();
+  const parts = [];
+  const branch = normalizeLabsBranch(meta.branch);
+  const intent = normalizeLabsIntent(meta.intent);
+  if (branch) parts.push(`branch=${branch}`);
+  if (intent) parts.push(`intent=${intent}`);
+  if (meta.sensitive) parts.push("sensitive=1");
+  if (!parts.length) return base;
+  return `${NOVYN_META_PREFIX}${parts.join(";")}${NOVYN_META_SUFFIX} ${base}`.trim();
+}
+
+function getMessageLabsMeta(message) {
+  if (!message || typeof message !== "object") return {};
+  if (message.novynMeta && typeof message.novynMeta === "object") {
+    return message.novynMeta;
+  }
+  const parsed = extractLabsMetaFromText(message.text);
+  return parsed.meta || {};
+}
+
+function applyLabsMoodForActiveChat() {
+  if (!document.body) return;
+  if (!activeFriend) {
+    delete document.body.dataset.chatMood;
+    return;
+  }
+  const chatKey = getLabsChatKey(activeFriend, activeChatKind);
+  const mood = getLabsMoodForChat(chatKey);
+  if (!mood || mood === "auto" || mood === "off") {
+    delete document.body.dataset.chatMood;
+    return;
+  }
+  document.body.dataset.chatMood = mood;
+}
+
+function appendLabsInsightMessage(text) {
+  const content = String(text || "").trim();
+  if (!content || !activeFriend) return;
+  const chatType = normalizeChatKind(activeChatKind);
+  const item = {
+    id: `labs-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    from: "Novyn Labs",
+    to: activeFriend,
+    toType: chatType,
+    kind: chatType,
+    groupId: chatType === "group" ? activeFriend : "",
+    text: content,
+    timestamp: new Date().toISOString(),
+    deliveredAt: null,
+    seenAt: null,
+    pending: false,
+    failed: false,
+    novynMeta: { intent: "fyi" },
+    reactions: {},
+  };
+  conversationMessages.push(item);
+  const currentWindowSize = getCurrentMessageWindowSize();
+  messageWindowEnd = conversationMessages.length;
+  messageWindowStart = Math.max(0, messageWindowEnd - currentWindowSize);
+  renderMessageWindow({ skipSearch: true, maxVisible: currentWindowSize });
+  applyMessageSearch();
+  pinConversationToBottom();
+}
+
+function getLabsCatchupSummary() {
+  const incoming = conversationMessages.filter((entry) => (
+    entry
+    && typeof entry === "object"
+    && !entry.deletedAt
+    && normalizeName(entry.from) !== normalizeName(me)
+  ));
+  const recent = incoming.slice(-20);
+  if (!recent.length) {
+    return "No incoming messages yet in this chat.";
+  }
+  const questions = recent.filter((entry) => /\?/.test(String(entry.text || ""))).length;
+  const actionItems = recent.filter((entry) =>
+    /\b(?:please|can you|todo|to-do|need to|asap|urgent)\b/i.test(String(entry.text || ""))
+  ).length;
+  return `Catch-up: ${recent.length} recent incoming messages, ${questions} questions, ${actionItems} likely action items.`;
+}
+
+function handleNovynLabsCommand(rawInput, chatKey = getLabsChatKey()) {
+  const value = String(rawInput || "").trim();
+  if (!value.startsWith("/")) return false;
+  const parts = value.split(/\s+/).filter(Boolean);
+  if (!parts.length) return false;
+  const cmd = String(parts[0] || "").toLowerCase();
+  const arg = String(parts[1] || "").trim().toLowerCase();
+
+  if (cmd === "/labs" || cmd === "/help") {
+    if (!arg || arg === "help") {
+      appendLabsInsightMessage(
+        "Labs commands: /branch, /branchfilter, /intent, /intentfilter, /smart on|off, /trust on|off, /mood, /catchup, /memory."
+      );
+      return true;
+    }
+    return false;
+  }
+
+  if (cmd === "/branch") {
+    if (!chatKey) return true;
+    if (!arg || arg === "off" || arg === "none" || arg === "clear") {
+      setLabsBranchForChat("", chatKey);
+      showToast("Labs branch cleared for this chat.", "success");
+      return true;
+    }
+    const normalized = normalizeLabsBranch(arg);
+    if (!normalized) {
+      showToast("Invalid branch. Use letters/numbers, up to 32 chars.", "error");
+      return true;
+    }
+    setLabsBranchForChat(normalized, chatKey);
+    showToast(`Labs branch set to "${normalized}".`, "success");
+    return true;
+  }
+
+  if (cmd === "/branchfilter") {
+    if (!chatKey) return true;
+    setLabsBranchFilterForChat(arg || "all", chatKey);
+    const applied = getLabsBranchFilterForChat(chatKey);
+    showToast(
+      applied === "all"
+        ? "Branch filter: all messages."
+        : `Branch filter: ${applied}.`,
+      "success"
+    );
+    renderMessages(conversationMessages);
+    return true;
+  }
+
+  if (cmd === "/intent") {
+    if (!chatKey) return true;
+    if (!arg || arg === "off" || arg === "none" || arg === "clear") {
+      setLabsDefaultIntentForChat("", chatKey);
+      showToast("Default intent cleared.", "success");
+      return true;
+    }
+    const normalized = normalizeLabsIntent(arg);
+    if (!normalized) {
+      showToast("Invalid intent. Use question/decision/action/fyi/urgent.", "error");
+      return true;
+    }
+    setLabsDefaultIntentForChat(normalized, chatKey);
+    showToast(`Default intent set to "${normalized}".`, "success");
+    return true;
+  }
+
+  if (cmd === "/intentfilter") {
+    if (!chatKey) return true;
+    setLabsIntentFilterForChat(arg || "all", chatKey);
+    const applied = getLabsIntentFilterForChat(chatKey);
+    showToast(
+      applied === "all"
+        ? "Intent filter: all messages."
+        : `Intent filter: ${applied}.`,
+      "success"
+    );
+    renderMessages(conversationMessages);
+    return true;
+  }
+
+  if (cmd === "/smart") {
+    if (!arg || (arg !== "on" && arg !== "off")) {
+      showToast("Use /smart on or /smart off.", "error");
+      return true;
+    }
+    novynLabsState.contextAwareDelivery = arg === "on";
+    persistNovynLabsState();
+    showToast(
+      novynLabsState.contextAwareDelivery
+        ? "Context-aware delivery enabled."
+        : "Context-aware delivery disabled.",
+      "success"
+    );
+    return true;
+  }
+
+  if (cmd === "/trust") {
+    if (!chatKey) return true;
+    if (!arg || (arg !== "on" && arg !== "off")) {
+      showToast("Use /trust on or /trust off.", "error");
+      return true;
+    }
+    setLabsTrustModeForChat(arg === "on", chatKey);
+    showToast(arg === "on" ? "Trust mode enabled." : "Trust mode disabled.", "success");
+    return true;
+  }
+
+  if (cmd === "/mood") {
+    if (!chatKey) return true;
+    const mood = normalizeLabsMood(arg || "auto");
+    setLabsMoodForChat(mood, chatKey);
+    applyLabsMoodForActiveChat();
+    showToast(`Chat mood set to "${mood}".`, "success");
+    return true;
+  }
+
+  if (cmd === "/catchup") {
+    appendLabsInsightMessage(getLabsCatchupSummary());
+    updateLabsLastViewedForChat(chatKey);
+    return true;
+  }
+
+  if (cmd === "/memory") {
+    const branch = getLabsBranchForChat(chatKey) || "none";
+    const intent = getLabsDefaultIntentForChat(chatKey) || "none";
+    const mood = getLabsMoodForChat(chatKey) || "auto";
+    const trust = getLabsTrustModeForChat(chatKey) ? "on" : "off";
+    const smart = novynLabsState.contextAwareDelivery ? "on" : "off";
+    appendLabsInsightMessage(
+      `Labs memory: branch=${branch}, intent=${intent}, mood=${mood}, trust=${trust}, smart=${smart}.`
+    );
+    return true;
+  }
+
+  return false;
 }
 
 function getPresenceLabel(mode, options = {}) {
@@ -686,6 +1118,12 @@ function sanitizeMessagePayload(rawMessage) {
   if (!rawMessage || typeof rawMessage !== "object") return null;
   const message = { ...rawMessage };
   message.text = normalizeMojibakeText(message.text);
+  const labsParsed = extractLabsMetaFromText(message.text);
+  message.text = labsParsed.text;
+  message.novynMeta = {
+    ...(message.novynMeta && typeof message.novynMeta === "object" ? message.novynMeta : {}),
+    ...(labsParsed.meta || {}),
+  };
   message.from = normalizeMojibakeText(message.from);
   message.to = normalizeMojibakeText(message.to);
   message.groupId = normalizeMojibakeText(message.groupId);
@@ -1977,6 +2415,12 @@ function clearSidebarSearch() {
   friendSearchQuery = "";
 }
 
+function isMobileViewportLayout() {
+  const hasPanelsApi = window._novynPanels && typeof window._novynPanels.isMobile === "function";
+  if (hasPanelsApi) return window._novynPanels.isMobile();
+  return window.innerWidth <= MOBILE_BP;
+}
+
 function syncViewportLayoutMetrics() {
   const root = document.documentElement;
   if (!root) return;
@@ -1989,10 +2433,38 @@ function syncViewportLayoutMetrics() {
     root.style.setProperty("--app-vh", `${Math.round(viewportHeight)}px`);
   }
 
+  let keyboardInset = 0;
+  if (vv && Number.isFinite(vv.height)) {
+    const layoutHeight = Number.isFinite(window.innerHeight) ? window.innerHeight : viewportHeight;
+    const offsetTop = Number.isFinite(vv.offsetTop) ? vv.offsetTop : 0;
+    keyboardInset = Math.max(0, Math.round(layoutHeight - vv.height - offsetTop));
+  }
+  root.style.setProperty("--keyboard-inset", `${keyboardInset}px`);
+
+  const composerFocused = Boolean(
+    isMobileViewportLayout()
+    && messageInput
+    && !messageInput.disabled
+    && document.activeElement === messageInput
+  );
+  if (document.body) {
+    document.body.classList.toggle("composer-focused", composerFocused);
+    document.body.classList.toggle("keyboard-open", composerFocused && keyboardInset > 0);
+  }
+
   if (!bottomTabBar) return;
+
+  const tabPosition = window.getComputedStyle(bottomTabBar).position;
+  const usingBottomTabs = tabPosition === "fixed";
+  if (!usingBottomTabs) {
+    root.style.setProperty("--tab-safe-h", "60px");
+    return;
+  }
+
   const tabHeight = bottomTabBar.getBoundingClientRect().height;
   if (Number.isFinite(tabHeight) && tabHeight > 0) {
-    root.style.setProperty("--tab-safe-h", `${Math.round(tabHeight)}px`);
+    const clampedHeight = Math.round(Math.min(110, Math.max(52, tabHeight)));
+    root.style.setProperty("--tab-safe-h", `${clampedHeight}px`);
   }
 }
 
@@ -2620,7 +3092,7 @@ function syncActiveConversationAccess() {
     } else if (safety.blockedYou) {
       messageInput.placeholder = "This user blocked you.";
     } else {
-      messageInput.placeholder = "Type a message...";
+      messageInput.placeholder = "Message";
     }
   }
   syncSafetyActionButtons();
@@ -5837,6 +6309,9 @@ function buildMessageElement(message, skipAnimation = false) {
   const rawText = isDeleted ? DELETED_MESSAGE_TEXT : message.text;
   const attachment = !isDeleted ? normalizeAttachmentPayload(message.attachment, rawText) : null;
   const callLog = !isDeleted ? parseCallLogPayload(rawText) : null;
+  const labsMeta = !isDeleted ? getMessageLabsMeta(message) : {};
+  const labsBranch = normalizeLabsBranch(labsMeta.branch || "");
+  const labsIntent = normalizeLabsIntent(labsMeta.intent || "");
   const displayText = callLog ? formatCallLogPreview(rawText, mine) : rawText;
   const searchableText = attachment ? `${attachment.name || ""} ${attachment.url || rawText || ""}` : displayText;
   const dateKey = getLocalDateKey(message.timestamp);
@@ -5859,6 +6334,15 @@ function buildMessageElement(message, skipAnimation = false) {
     message.replyTo?.text || "",
     message.replyTo?.from || "",
   ].join(" ");
+  if (labsBranch) row.dataset.labsBranch = labsBranch;
+  if (labsIntent) row.dataset.labsIntent = labsIntent;
+  const branchFilter = getLabsBranchFilterForChat(getLabsChatKey(activeFriend, activeChatKind));
+  const intentFilter = getLabsIntentFilterForChat(getLabsChatKey(activeFriend, activeChatKind));
+  const branchVisible = !labsBranch || branchFilter === "all" || labsBranch === branchFilter;
+  const intentVisible = !labsIntent || intentFilter === "all" || labsIntent === intentFilter;
+  if (!branchVisible || !intentVisible) {
+    row.classList.add("labs-filter-hidden");
+  }
   if (attachment) {
     row.dataset.hasAttachment = "1";
   } else {
@@ -5946,6 +6430,29 @@ function buildMessageElement(message, skipAnimation = false) {
 
   const body        = document.createElement("div");
   body.className    = "message-body";
+  if (!isDeleted && (labsBranch || labsIntent || labsMeta.sensitive)) {
+    const labsMetaRow = document.createElement("div");
+    labsMetaRow.className = "message-labs-meta";
+    if (labsBranch) {
+      const branchChip = document.createElement("span");
+      branchChip.className = "message-labs-chip branch";
+      branchChip.textContent = `Branch: ${labsBranch}`;
+      labsMetaRow.append(branchChip);
+    }
+    if (labsIntent) {
+      const intentChip = document.createElement("span");
+      intentChip.className = "message-labs-chip intent";
+      intentChip.textContent = `Intent: ${labsIntent}`;
+      labsMetaRow.append(intentChip);
+    }
+    if (labsMeta.sensitive) {
+      const sensitiveChip = document.createElement("span");
+      sensitiveChip.className = "message-labs-chip sensitive";
+      sensitiveChip.textContent = "Sensitive";
+      labsMetaRow.append(sensitiveChip);
+    }
+    row.append(labsMetaRow);
+  }
   if (isDeleted) {
     body.textContent = DELETED_MESSAGE_TEXT;
     body.classList.add("message-body-deleted");
@@ -6528,7 +7035,7 @@ function setComposerEnabled(isEnabled) {
   }
 
   syncAttachButtonState();
-  messageInput.placeholder = "Type a message...";
+  messageInput.placeholder = "Message";
 }
 
 function scrollToUnreadStart() {
@@ -7770,6 +8277,9 @@ async function requestClearActiveChat() {
 function clearActiveFriendSelection() {
   persistActiveMessageDraft();
   if (activeFriend) stopLocalTyping(activeFriend);
+  if (activeFriend) {
+    updateLabsLastViewedForChat(getLabsChatKey(activeFriend, activeChatKind));
+  }
   closeScheduleMenu();
   setScheduledPanelExpanded(false);
   activeFriend = "";
@@ -7798,6 +8308,7 @@ function clearActiveFriendSelection() {
     sendButton.classList.remove("ready");
   }
   renderMessagesEmptyState(EMPTY_CONVERSATION_HINT);
+  applyLabsMoodForActiveChat();
   syncInfoMediaGrid();
   renderScheduledPanel();
   renderFriends();
@@ -7808,6 +8319,12 @@ function setActiveFriend(username, kind = "friend") {
   closeScheduleMenu();
   setScheduledPanelExpanded(false);
   const nextKind = normalizeChatKind(kind);
+  if (
+    activeFriend
+    && (normalizeName(activeFriend) !== normalizeName(username) || normalizeChatKind(activeChatKind) !== nextKind)
+  ) {
+    updateLabsLastViewedForChat(getLabsChatKey(activeFriend, activeChatKind));
+  }
   if (
     activeFriend &&
     (normalizeName(activeFriend) !== normalizeName(username) || normalizeChatKind(activeChatKind) !== nextKind)
@@ -7847,6 +8364,7 @@ function setActiveFriend(username, kind = "friend") {
   if (nextKind === "group") requestGroupInfo(resolveGroupChatId(username, "group"), { kind: "group", force: true });
   requestScheduledMessagesForActiveChat();
   renderFriends();
+  applyLabsMoodForActiveChat();
 
   // Focus input after selecting friend (better UX, especially on desktop)
   if (messageInput) {
@@ -10167,6 +10685,8 @@ function queuePendingMessage(payload, options = {}) {
   const shouldUpdateFriends = options.updateFriends !== false;
   const tempId = payload.clientTempId || createClientTempId();
   const timestamp = new Date().toISOString();
+  const labsParsed = extractLabsMetaFromText(payload.text);
+  const sanitizedText = labsParsed.text;
   const targetIsActiveThread = Boolean(
     activeFriend && isSameChatTarget(payload.to, payloadType, activeFriend, activeChatKind)
   );
@@ -10180,14 +10700,15 @@ function queuePendingMessage(payload, options = {}) {
     toType: payloadType,
     kind: payloadType,
     groupId: payloadType === "group" ? payload.to : "",
-    text: payload.text,
+    text: sanitizedText,
     timestamp,
     deliveredAt: null,
     seenAt: null,
     pending: true,
     failed: false,
+    novynMeta: labsParsed.meta || {},
     replyTo: payload.replyTo || null,
-    attachment: normalizeAttachmentPayload(payload.attachment, payload.text),
+    attachment: normalizeAttachmentPayload(payload.attachment, sanitizedText),
     reactions: {},
   };
 
@@ -10197,7 +10718,7 @@ function queuePendingMessage(payload, options = {}) {
   if (shouldUpdateFriends) {
     friends = friends.map((f) =>
       isSameChatTarget(f.username, f.kind || "friend", payload.to, payloadType)
-        ? { ...f, lastMessage: payload.text, lastFrom: me, lastTimestamp: timestamp }
+        ? { ...f, lastMessage: sanitizedText, lastFrom: me, lastTimestamp: timestamp }
         : f
     );
     renderFriends();
@@ -10373,6 +10894,16 @@ function sendMessagePayload(payload, options = {}) {
 function sendActiveMessage() {
   const text = messageInput.value.trim();
   if (!activeFriend) { showToast("Choose a friend first.", "error"); return; }
+  const chatKey = getLabsChatKey(activeFriend, activeChatKind);
+  if (handleNovynLabsCommand(text, chatKey)) {
+    messageInput.value = "";
+    messageInput.dispatchEvent(new Event("input", { bubbles: true }));
+    removeMessageDraft(activeFriend);
+    if (sendButton) sendButton.classList.remove("ready");
+    clearReply();
+    keepComposerFocused();
+    return;
+  }
   if (normalizeChatKind(activeChatKind) === "friend") {
     const safety = getFriendSafety(activeFriend, "friend");
     if (safety.blockedByMe) {
@@ -10391,7 +10922,50 @@ function sendActiveMessage() {
     showLatestMessages();
   }
   stopLocalTyping();
-  const payload = { to: activeFriend, toType: activeChatKind, text };
+  const branch = getLabsBranchForChat(chatKey);
+  const intent = getLabsDefaultIntentForChat(chatKey);
+  const trustMode = getLabsTrustModeForChat(chatKey);
+  const sensitive = trustMode
+    && /\b(?:password|passcode|otp|token|secret|upi|pin|cvv)\b/i.test(text);
+  const outgoingText = injectLabsMetaIntoText(text, { branch, intent, sensitive });
+
+  const activeEntry = getActiveChatEntry();
+  const presenceMode = resolveFriendPresenceMode(activeEntry);
+  const smartDelay = Boolean(
+    novynLabsState.contextAwareDelivery
+    && normalizeChatKind(activeChatKind) === "friend"
+    && intent !== "urgent"
+    && (presenceMode === "away" || presenceMode === "offline")
+  );
+  if (smartDelay && socketAvailable && socket.connected) {
+    const resolvedTo = resolveOutgoingTarget(activeFriend, activeChatKind);
+    if (!resolvedTo) {
+      showToast("Unable to resolve this chat.", "error");
+      return;
+    }
+    const sendAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+    const scheduledPayload = {
+      to: resolvedTo,
+      toType: normalizeChatKind(activeChatKind),
+      text: outgoingText,
+      sendAt,
+    };
+    if (replyTo) scheduledPayload.replyTo = replyTo;
+    socket.emit("schedule_message", scheduledPayload);
+    messageInput.value = "";
+    messageInput.dispatchEvent(new Event("input", { bubbles: true }));
+    removeMessageDraft(activeFriend);
+    if (sendButton) sendButton.classList.remove("ready");
+    clearReply();
+    showToast("Recipient looks unavailable, so this was smart-scheduled (+2m).", "info");
+    scrollToBottom(true);
+    scrollState.pinnedToBottom = true;
+    keepComposerFocused();
+    updateLabsLastViewedForChat(chatKey);
+    return;
+  }
+
+  const payload = { to: activeFriend, toType: activeChatKind, text: outgoingText };
   if (replyTo) payload.replyTo = replyTo;
   const sentTempId = sendMessagePayload(payload);
   if (!sentTempId) return;
@@ -10405,6 +10979,7 @@ function sendActiveMessage() {
   scrollToBottom(true);
   scrollState.pinnedToBottom = true;
   keepComposerFocused();
+  updateLabsLastViewedForChat(chatKey);
 }
 
 function requestScheduledMessagesForActiveChat() {
@@ -10998,7 +11573,14 @@ document.addEventListener("keydown", (e) => {
 
 // Stop typing indicator when input loses focus
 if (messageInput) {
-  messageInput.addEventListener("blur", () => stopLocalTyping());
+  messageInput.addEventListener("focus", () => {
+    syncViewportLayoutMetrics();
+    setTimeout(syncViewportLayoutMetrics, 40);
+  });
+  messageInput.addEventListener("blur", () => {
+    stopLocalTyping();
+    setTimeout(syncViewportLayoutMetrics, 80);
+  });
 
   // Allow Shift+Enter to send (optional quality-of-life)
   messageInput.addEventListener("keydown", (e) => {
@@ -12138,6 +12720,9 @@ socket.on("message_deleted", (payload) => {
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Init Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 syncViewportLayoutMetrics();
+if (isDashboardPage) {
+  loadNovynLabsState();
+}
 setComposerEnabled(false);
 renderActiveFriendPresence();
 syncRemoveFriendButton();
@@ -12177,6 +12762,9 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener("scroll", syncViewportLayoutMetrics, { passive: true });
 }
 window.addEventListener("beforeunload", () => {
+  if (activeFriend) {
+    updateLabsLastViewedForChat(getLabsChatKey(activeFriend, activeChatKind));
+  }
   persistActiveMessageDraft();
   persistPendingStateNow();
 });
