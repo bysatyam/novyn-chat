@@ -6890,19 +6890,59 @@ async function shutdown() {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
+function parsePort(value, fallback = 3000) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function listenWithPortFallback(preferredPort, options = {}) {
+  const maxRetries = Number.isFinite(Number(options.maxRetries))
+    ? Math.max(0, Math.floor(Number(options.maxRetries)))
+    : 0;
+  const startPort = parsePort(preferredPort, 3000);
+
+  return new Promise((resolve, reject) => {
+    const tryListen = (port, retriesLeft) => {
+      const onError = (err) => {
+        if (err?.code === "EADDRINUSE" && retriesLeft > 0) {
+          const nextPort = port + 1;
+          console.warn(`Port ${port} is already in use. Retrying on ${nextPort}...`);
+          tryListen(nextPort, retriesLeft - 1);
+          return;
+        }
+        reject(err);
+      };
+
+      server.once("error", onError);
+      server.listen(port, () => {
+        server.off("error", onError);
+        resolve(port);
+      });
+    };
+
+    tryListen(startPort, maxRetries);
+  });
+}
+
 async function bootstrap() {
   await loadState();
   queueAllScheduledMessages();
   startRetentionMaintenanceLoop();
 
-  const PORT = process.env.PORT || 3000;
-  server.listen(PORT, () => {
-    const usingMongo = hasMongoStorage();
-    const mediaStorage = hasCloudinaryConfig ? "cloudinary" : `local(${uploadsDir})`;
-    console.log(
-      `Chat app running on http://localhost:${PORT} | retention=${CHAT_RETENTION_DAYS} day(s) | storage=${usingMongo ? "mongodb(collections)" : "file"} | media=${mediaStorage}`
-    );
+  const hasExplicitPort = typeof process.env.PORT === "string" && process.env.PORT.trim() !== "";
+  const preferredPort = parsePort(process.env.PORT, 3000);
+  const activePort = await listenWithPortFallback(preferredPort, {
+    maxRetries: hasExplicitPort ? 0 : 20,
   });
+
+  const usingMongo = hasMongoStorage();
+  const mediaStorage = hasCloudinaryConfig ? "cloudinary" : `local(${uploadsDir})`;
+  console.log(
+    `Chat app running on http://localhost:${activePort} | retention=${CHAT_RETENTION_DAYS} day(s) | storage=${usingMongo ? "mongodb(collections)" : "file"} | media=${mediaStorage}`
+  );
 }
 
 bootstrap().catch((err) => {

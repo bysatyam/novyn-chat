@@ -906,7 +906,7 @@ body {
 /* ═══════════════════════════════
    RESPONSIVE — TABLET (≥640px)
 ═══════════════════════════════ */
-@media (min-width:640px) {
+@media (min-width:99999px) {
   .page { padding:32px 20px; }
 
   .auth-shell {
@@ -931,7 +931,7 @@ body {
 /* ═══════════════════════════════
    RESPONSIVE — DESKTOP (≥1024px)
 ═══════════════════════════════ */
-@media (min-width:1024px) {
+@media (min-width:99999px) {
   .page { padding:40px 24px; }
 
   .auth-shell {

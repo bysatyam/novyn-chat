@@ -1133,7 +1133,7 @@ body.friend-selected .chat-window {
   opacity:1 !important;
 }
 /* On desktop — show side by side */
-@media (min-width:769px) {
+@media (min-width:99999px) {
   .sidebar {
     position:relative;
     width:var(--sidebar-w);
@@ -1156,7 +1156,7 @@ body.friend-selected .chat-window {
   }
 }
 
-@media (max-width:768px) {
+@media (max-width:99999px) {
   .sidebar,
   .chat-window {
     bottom:var(--tab-safe-h);
@@ -1224,7 +1224,7 @@ body.friend-selected .chat-window {
 
 /* Back button */
 .mob-back-btn { display:none; }
-@media (max-width:768px) { .mob-back-btn { display:inline-flex !important; } }
+@media (max-width:99999px) { .mob-back-btn { display:inline-flex !important; } }
 
 /* Chat search panel */
 .chat-search-panel {
@@ -5346,7 +5346,7 @@ body.dark #toast.success { background:var(--mint-2); color:#000; }
 /* ═══════════════════════════════════════════
    DESKTOP LAYOUT ADJUSTMENTS
 ═══════════════════════════════════════════ */
-@media (min-width:769px) {
+@media (min-width:99999px) {
   .bottom-tab-bar {
     position:relative;
     width:64px;
@@ -5387,7 +5387,7 @@ body.dark #toast.success { background:var(--mint-2); color:#000; }
 
 /* ── Misc compat ── */
 .mob-close-btn { display:none; }
-@media (max-width:720px) { .mob-close-btn { display:inline-flex; } }
+@media (max-width:99999px) { .mob-close-btn { display:inline-flex; } }
 .call-remote-audio { display:none; }
 .nav-rail { display:none; }
 .topbar-brand, .topbar-nav, .topbar-flex, .topbar-search,

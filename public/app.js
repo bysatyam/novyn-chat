@@ -173,7 +173,8 @@ const MESSAGE_DRAFTS_KEY = "novyn-message-drafts";
 const PENDING_STATE_KEY = "novyn-pending-v2";
 const LOGIN_PATH        = "/login.html";
 const isDashboardPage   = Boolean(chatLayout) && !document.body.classList.contains("auth-page");
-const MOBILE_BP         = 768;
+// Phone-only mode: treat all viewport widths as mobile.
+const MOBILE_BP         = 100000;
 const INCOMING_CALLS_ENABLED = true;
 const GLOBAL_SEARCH_MIN_QUERY_LENGTH = 2;
 const PRESENCE_IDLE_AWAY_MS = 5 * 60 * 1000;
