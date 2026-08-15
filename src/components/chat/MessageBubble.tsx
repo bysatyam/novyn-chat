@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Message } from '../../types';
 import {
@@ -10,7 +10,7 @@ import {
   Edit2,
   Trash2,
   Reply,
-  Heart,
+  Smile,
 } from 'lucide-react';
 import { VoicePlayer } from './VoicePlayer';
 import { triggerHaptic } from '../../services/capacitor';
@@ -40,7 +40,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [showReactions, setShowReactions] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text || '');
+  const containerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
+
+  // Keep menu open stably: close only on outside clicks
+  useEffect(() => {
+    if (!showActionsMenu && !showReactions) return;
+
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowActionsMenu(false);
+        setShowReactions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [showActionsMenu, showReactions]);
 
   const formatTime = (ts: string | number) => {
     try {
@@ -75,16 +96,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const audioUrl = message.attachment?.url;
 
-  const handleDoubleClick = () => {
+  const handleDoubleClick = (e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) e.stopPropagation();
     triggerHaptic('medium');
     setShowReactions((prev) => !prev);
     setShowActionsMenu(false);
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e: React.TouchEvent) => {
     const now = Date.now();
     if (now - lastTapRef.current < 320) {
-      handleDoubleClick();
+      handleDoubleClick(e);
     }
     lastTapRef.current = now;
   };
@@ -102,14 +124,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   return (
     <div
+      ref={containerRef}
       className={`bubble-row ${isMe ? 'me' : 'other'}`}
-      onMouseLeave={() => {
-        setShowActionsMenu(false);
-        setShowReactions(false);
-      }}
       style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}
     >
-      {/* 3-Dots Action Trigger Button on Left of 'Me' / Right of 'Other' */}
+      {/* 3-Dots Action Trigger Button on Left of 'Me' */}
       {isMe && (
         <button
           type="button"
@@ -131,7 +150,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
           }}
-          title="Message actions (Reply, Edit, Unsend)"
+          title="Message actions"
         >
           <MoreHorizontal style={{ width: '16px', height: '16px' }} />
         </button>
@@ -152,23 +171,25 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         <AnimatePresence>
           {showReactions && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.8, y: 4 }}
+              initial={{ opacity: 0, scale: 0.85, y: 6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.8, y: 4 }}
+              exit={{ opacity: 0, scale: 0.85, y: 6 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
               style={{
                 position: 'absolute',
-                top: '-42px',
+                top: '-46px',
                 right: isMe ? '0' : 'auto',
                 left: isMe ? 'auto' : '0',
                 background: '#161f30',
-                border: '1px solid var(--border)',
+                border: '1px solid rgba(255, 255, 255, 0.18)',
                 borderRadius: '9999px',
-                padding: '4px 10px',
+                padding: '5px 12px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-                zIndex: 40,
+                gap: '8px',
+                boxShadow: '0 12px 32px rgba(0,0,0,0.7)',
+                zIndex: 50,
               }}
             >
               {COMMON_REACTIONS.map((emoji) => (
@@ -184,13 +205,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   style={{
                     background: 'none',
                     border: 'none',
-                    fontSize: '1.15rem',
+                    fontSize: '1.2rem',
                     cursor: 'pointer',
-                    padding: '2px',
+                    padding: '2px 4px',
                     lineHeight: 1,
-                    transition: 'transform 0.1s ease',
+                    transition: 'transform 0.12s ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.25)')}
+                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.3)')}
                   onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                 >
                   {emoji}
@@ -200,29 +221,58 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
         </AnimatePresence>
 
-        {/* 2. Floating 3-Dots Action Dropdown Menu (Reply, Edit, Unsend) */}
+        {/* 2. Floating 3-Dots Action Dropdown Menu (Reply, Edit, Unsend, React) */}
         <AnimatePresence>
           {showActionsMenu && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 4 }}
+              initial={{ opacity: 0, scale: 0.9, y: 6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 4 }}
+              exit={{ opacity: 0, scale: 0.9, y: 6 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
               style={{
                 position: 'absolute',
-                top: '-40px',
+                top: '-44px',
                 right: isMe ? '0' : 'auto',
                 left: isMe ? 'auto' : '0',
                 background: '#161f30',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.18)',
+                borderRadius: '14px',
                 padding: '4px 8px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-                zIndex: 40,
+                gap: '6px',
+                boxShadow: '0 12px 32px rgba(0,0,0,0.7)',
+                zIndex: 50,
               }}
             >
+              {/* React button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  triggerHaptic('light');
+                  setShowActionsMenu(false);
+                  setShowReactions(true);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#fbbf24',
+                  cursor: 'pointer',
+                  padding: '5px 8px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '0.76rem',
+                  fontWeight: 600,
+                }}
+                title="React"
+              >
+                <Smile style={{ width: '13px', height: '13px' }} /> React
+              </button>
+
               {/* Reply */}
               <button
                 type="button"
@@ -237,12 +287,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   border: 'none',
                   color: '#ffffff',
                   cursor: 'pointer',
-                  padding: '4px 8px',
-                  borderRadius: '6px',
+                  padding: '5px 8px',
+                  borderRadius: '8px',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '5px',
-                  fontSize: '0.75rem',
+                  fontSize: '0.76rem',
                   fontWeight: 600,
                 }}
                 title="Reply"
@@ -264,12 +314,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     border: 'none',
                     color: '#ffffff',
                     cursor: 'pointer',
-                    padding: '4px 8px',
-                    borderRadius: '6px',
+                    padding: '5px 8px',
+                    borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '5px',
-                    fontSize: '0.75rem',
+                    fontSize: '0.76rem',
                     fontWeight: 600,
                   }}
                   title="Edit"
@@ -293,12 +343,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     border: 'none',
                     color: '#f87171',
                     cursor: 'pointer',
-                    padding: '4px 8px',
-                    borderRadius: '6px',
+                    padding: '5px 8px',
+                    borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '5px',
-                    fontSize: '0.75rem',
+                    fontSize: '0.76rem',
                     fontWeight: 600,
                   }}
                   title="Unsend for everyone"
@@ -482,7 +532,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
           }}
-          title="Reply"
+          title="Message actions (Reply, React)"
         >
           <MoreHorizontal style={{ width: '16px', height: '16px' }} />
         </button>

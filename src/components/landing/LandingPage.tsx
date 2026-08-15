@@ -61,44 +61,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* Top Navbar */}
       <nav
         className="landing-navbar"
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-          backdropFilter: 'blur(20px)',
-          background: 'rgba(9, 13, 22, 0.85)',
-          borderBottom: '1px solid var(--border)',
-          padding: '0 32px',
-          height: '70px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div
               style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '12px',
+                width: '38px',
+                height: '38px',
+                borderRadius: '11px',
                 background: 'linear-gradient(135deg, var(--primary) 0%, #059669 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 boxShadow: '0 4px 14px var(--primary-glow)',
+                flexShrink: 0,
               }}
             >
-              <MessageSquare style={{ width: '22px', height: '22px', color: '#ffffff' }} />
+              <MessageSquare style={{ width: '20px', height: '20px', color: '#ffffff' }} />
             </div>
-            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em' }}>
+            <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em' }}>
               Novyn
             </span>
           </div>
 
-          {/* Platform Navigation Menu */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Platform Navigation Menu (Hidden on Mobile) */}
+          <div className="landing-platform-menu">
             {/* 1. Web */}
             <div
               style={{
@@ -221,7 +209,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
         </div>
 
         {/* Right CTA Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             type="button"
             onClick={() => {
@@ -229,7 +217,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               onOpenAuth('signin');
             }}
             className="btn btn-secondary"
-            style={{ padding: '9px 20px', fontSize: '0.86rem', borderRadius: '12px' }}
+            style={{ padding: '8px 16px', fontSize: '0.84rem', borderRadius: '10px' }}
           >
             Sign In
           </button>
@@ -240,23 +228,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               onOpenAuth('signup');
             }}
             className="btn btn-primary"
-            style={{ padding: '9px 20px', fontSize: '0.86rem', borderRadius: '12px' }}
+            style={{ padding: '8px 16px', fontSize: '0.84rem', borderRadius: '10px' }}
           >
-            Get Started <ArrowRight style={{ width: '15px', height: '15px' }} />
+            Get Started <ArrowRight style={{ width: '14px', height: '14px' }} />
           </button>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="landing-hero" style={{ padding: '60px 24px 40px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <section className="landing-hero">
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
           className="hero-badge"
         >
-          <Sparkles style={{ width: '14px', height: '14px' }} />
-          <span>Universal Real-Time Communication Platform</span>
+          <Sparkles style={{ width: '14px', height: '14px', flexShrink: 0 }} />
+          <span>Universal Real-Time Communication</span>
         </motion.div>
 
         <motion.h1
@@ -275,7 +263,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           transition={{ duration: 0.5, delay: 0.2 }}
           className="hero-subtitle"
         >
-          Experience instant messaging with multi-session synchronization, crystal-clear voice notes, encrypted audio & video calls, and haptic feedback.
+          Experience instant messaging with multi-session sync, voice waveforms, encrypted calling, and hardware haptics.
         </motion.p>
 
         <motion.div
@@ -291,7 +279,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               onOpenAuth('signup');
             }}
             className="btn btn-primary"
-            style={{ padding: '16px 32px', fontSize: '1rem', borderRadius: '16px' }}
+            style={{ borderRadius: '14px' }}
           >
             Start Chatting Now <ArrowRight style={{ width: '18px', height: '18px' }} />
           </button>
@@ -303,7 +291,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               onOpenAuth('signin');
             }}
             className="btn btn-secondary"
-            style={{ padding: '16px 28px', fontSize: '1rem', borderRadius: '16px' }}
+            style={{ borderRadius: '14px' }}
           >
             Sign In with Existing Account
           </button>
@@ -316,15 +304,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           className="hero-pills"
         >
           <div className="hero-pill-item">
-            <ShieldCheck style={{ width: '16px', height: '16px', color: 'var(--primary)' }} />
+            <ShieldCheck style={{ width: '16px', height: '16px', color: 'var(--primary)', flexShrink: 0 }} />
             <span>End-to-End Encryption</span>
           </div>
           <div className="hero-pill-item">
-            <Radio style={{ width: '16px', height: '16px', color: 'var(--primary)' }} />
+            <Radio style={{ width: '16px', height: '16px', color: 'var(--primary)', flexShrink: 0 }} />
             <span>Ultra-low Latency WebSockets</span>
           </div>
           <div className="hero-pill-item">
-            <Smartphone style={{ width: '16px', height: '16px', color: 'var(--primary)' }} />
+            <Smartphone style={{ width: '16px', height: '16px', color: 'var(--primary)', flexShrink: 0 }} />
             <span>Native Android + Web</span>
           </div>
         </motion.div>

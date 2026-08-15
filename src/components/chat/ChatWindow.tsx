@@ -125,6 +125,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 name={activeContact?.displayName || activeChat}
                 avatarUrl={activeContact?.avatarId}
                 online={activeContact?.online}
+                presence={activeContact?.presence}
                 size="md"
               />
 
@@ -135,8 +136,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 <div className={`chat-header-status ${activeContact?.online ? 'online' : ''}`}>
                   {isTyping ? (
                     <span style={{ color: '#10b981', fontWeight: 700 }}>typing...</span>
+                  ) : activeContact?.presence === 'away' ? (
+                    <span style={{ color: '#f59e0b', fontWeight: 600 }}>Away</span>
                   ) : activeContact?.online ? (
-                    'Online'
+                    <span style={{ color: '#10b981', fontWeight: 600 }}>Online</span>
                   ) : (
                     'Offline'
                   )}

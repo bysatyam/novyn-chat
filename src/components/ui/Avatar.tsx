@@ -5,6 +5,7 @@ interface AvatarProps {
   avatarUrl?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   online?: boolean;
+  presence?: 'online' | 'away' | 'dnd' | 'offline';
   className?: string;
 }
 
@@ -44,6 +45,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   avatarUrl,
   size = 'md',
   online,
+  presence,
 }) => {
   const [imgError, setImgError] = React.useState(false);
 
@@ -57,6 +59,18 @@ export const Avatar: React.FC<AvatarProps> = ({
   const dotS = dotSizeStyles[size] || dotSizeStyles.md;
 
   const showImage = Boolean(avatarUrl && !imgError);
+
+  const effectivePresence = presence || (online ? 'online' : online === false ? 'offline' : undefined);
+  const dotColor =
+    effectivePresence === 'online'
+      ? '#10b981'
+      : effectivePresence === 'away'
+      ? '#f59e0b'
+      : effectivePresence === 'dnd'
+      ? '#ef4444'
+      : effectivePresence === 'offline'
+      ? '#64748b'
+      : undefined;
 
   return (
     <div
@@ -106,7 +120,7 @@ export const Avatar: React.FC<AvatarProps> = ({
         </div>
       )}
 
-      {online !== undefined && (
+      {dotColor && (
         <span
           style={{
             position: 'absolute',
@@ -115,9 +129,9 @@ export const Avatar: React.FC<AvatarProps> = ({
             width: dotS.width,
             height: dotS.height,
             borderRadius: '50%',
-            background: online ? '#10b981' : '#64748b',
+            background: dotColor,
             border: '2px solid #090d16',
-            boxShadow: online ? '0 0 6px rgba(16, 185, 129, 0.6)' : 'none',
+            boxShadow: effectivePresence === 'online' ? '0 0 6px rgba(16, 185, 129, 0.6)' : 'none',
           }}
         />
       )}

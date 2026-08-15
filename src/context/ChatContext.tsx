@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Message, Conversation, FriendRequest, CallState, CallLog } from '../types';
+import { Message, MessageStatus, Conversation, FriendRequest, CallState, CallLog } from '../types';
 import { getSocket } from '../services/socket';
 import { useAuth } from './AuthContext';
 import { WebRTCManager, playRingtone, playCallRing, stopRingtone, playCallEndSound } from '../services/webrtc';
@@ -70,6 +70,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const activeChatRef = useRef<string | null>(null);
   activeChatRef.current = activeChat;
 
+  const conversationsRef = useRef<Conversation[]>(conversations);
+  conversationsRef.current = conversations;
+
   const webrtcManagerRef = useRef<WebRTCManager | null>(null);
   const callStateRef = useRef<CallState>(callState);
   callStateRef.current = callState;
@@ -121,6 +124,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       callStartTimeRef.current = Date.now();
     };
 
+    const handleLocalStream = (stream: MediaStream) => {
+      setCallState((prev) => ({ ...prev, localStream: stream }));
+    };
+
+    const handleScreenShareEnded = () => {
+      setCallState((prev) => ({ ...prev, isScreenSharing: false }));
+    };
+
     const handleSignal = (signal: any) => {
       const socket = getSocket();
       if (socket && callStateRef.current.remoteUser) {
@@ -128,7 +139,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    webrtcManagerRef.current = new WebRTCManager(handleRemoteStream, handleSignal);
+    webrtcManagerRef.current = new WebRTCManager(
+      handleRemoteStream,
+      handleSignal,
+      handleLocalStream,
+      handleScreenShareEnded
+    );
 
     return () => {
       webrtcManagerRef.current?.cleanup();
@@ -150,6 +166,85 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       prev.map((c) => (c.username.toLowerCase() === activeChat.toLowerCase() ? { ...c, unreadCount: 0 } : c))
     );
   }, [activeChat, user]);
+
+  // Auto-Away & Background Tab Visibility Presence Sync
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    // Request notification permission once on user session start
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+
+    let awayTimer: any = null;
+    let isAway = false;
+
+    const setAway = () => {
+      if (!isAway) {
+        isAway = true;
+        socket.emit('set_presence_mode', { mode: 'away' });
+      }
+    };
+
+    const setOnline = () => {
+      if (awayTimer) clearTimeout(awayTimer);
+      if (isAway) {
+        isAway = false;
+        socket.emit('set_presence_mode', { mode: 'online' });
+      }
+      // Trigger away after 3 minutes of inactivity
+      awayTimer = setTimeout(setAway, 180000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Tab went to background: mark away after 45s
+        if (awayTimer) clearTimeout(awayTimer);
+        awayTimer = setTimeout(setAway, 45000);
+      } else {
+        // Tab returned to active foreground: immediately restore online and sync active chat
+        setOnline();
+        if (activeChatRef.current) {
+          socket.emit('set_active_chat', { to: activeChatRef.current, kind: 'friend' });
+          socket.emit('get_history', { to: activeChatRef.current, kind: 'friend' });
+        }
+      }
+    };
+
+    const handleWindowFocus = () => {
+      setOnline();
+      if (activeChatRef.current) {
+        socket.emit('set_active_chat', { to: activeChatRef.current, kind: 'friend' });
+        socket.emit('get_history', { to: activeChatRef.current, kind: 'friend' });
+      }
+    };
+
+    const handleUserActivity = () => {
+      if (document.visibilityState === 'visible') {
+        setOnline();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('mousemove', handleUserActivity);
+    window.addEventListener('keydown', handleUserActivity);
+    window.addEventListener('touchstart', handleUserActivity);
+
+    // Initial activity timer
+    awayTimer = setTimeout(setAway, 180000);
+
+    return () => {
+      if (awayTimer) clearTimeout(awayTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('touchstart', handleUserActivity);
+    };
+  }, [user]);
 
   // End Call Helper
   const endCall = useCallback(
@@ -226,7 +321,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         username: item.username || item.key,
         displayName: item.displayName || item.username || item.key,
         avatarId: item.avatarId,
-        online: Boolean(item.online),
+        online: Boolean(item.online && item.presence !== 'offline'),
+        presence: item.presence || (item.online ? 'online' : 'offline'),
         lastSeenAt: item.lastSeenAt,
         unreadCount: item.unreadCount || 0,
         lastMessage: item.lastMessage
@@ -333,6 +429,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           presenceMode: updated.presenceMode || prev.presenceMode,
         } : prev));
       }
+      if (activeChatRef.current) {
+        socket.emit('get_history', { to: activeChatRef.current, kind: 'friend' });
+      }
     });
 
     socket.on('friend_removed', ({ username }: { username: string }) => {
@@ -378,7 +477,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             receiver: m.to || m.receiver || m.toKey,
             text: m.text || '',
             timestamp: m.timestamp,
-            status: m.status || 'delivered',
+            status: (m.seenAt ? 'seen' : m.deliveredAt ? 'delivered' : m.status || 'sent') as MessageStatus,
             attachment: m.attachment,
             replyTo: m.replyTo,
             reactions: m.reactions || {},
@@ -390,12 +489,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     socket.on('history', handleHistory);
 
+    // Message delivery & seen status updates
+    socket.on('message_status', (data: any) => {
+      const msgId = data?.id;
+      if (!msgId) return;
+      const newStatus: MessageStatus = data.seenAt ? 'seen' : data.deliveredAt ? 'delivered' : 'sent';
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, status: newStatus } : m))
+      );
+    });
+
     // Private Message Incoming
     socket.on('private_message', (rawMsg: any) => {
       const sender = rawMsg.from || rawMsg.sender || rawMsg.fromKey;
       const receiver = rawMsg.to || rawMsg.receiver || rawMsg.toKey;
       const clientTempId = rawMsg.clientTempId;
       const msgId = rawMsg.id || rawMsg.messageId || clientTempId || String(Date.now());
+      const status: MessageStatus = rawMsg.seenAt ? 'seen' : rawMsg.deliveredAt ? 'delivered' : rawMsg.status || 'sent';
 
       const msg: Message = {
         id: msgId,
@@ -403,7 +513,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         receiver,
         text: rawMsg.text || '',
         timestamp: rawMsg.timestamp || new Date().toISOString(),
-        status: 'delivered',
+        status,
         attachment: rawMsg.attachment,
         replyTo: rawMsg.replyTo,
         reactions: rawMsg.reactions || {},
@@ -459,6 +569,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (sender?.toLowerCase() !== user.username.toLowerCase()) {
         playMessageNotification();
+
+        // Show visual desktop notification when tab is in background or another chat is active
+        if (
+          typeof Notification !== 'undefined' &&
+          Notification.permission === 'granted' &&
+          (document.hidden || activeChatRef.current?.toLowerCase() !== sender?.toLowerCase())
+        ) {
+          try {
+            const partnerConv = conversationsRef.current.find(
+              (c) => c.username.toLowerCase() === sender.toLowerCase()
+            );
+            const senderName = partnerConv?.displayName || sender;
+            const notifBody = msg.text || (msg.isVoice ? '🎤 Voice message' : '📎 Attachment');
+            const notif = new Notification(senderName, {
+              body: notifBody,
+              icon: '/favicon.ico',
+              badge: '/favicon.ico',
+              tag: `novyn-${sender}`,
+            });
+            notif.onclick = () => {
+              window.focus();
+              setActiveChat(sender);
+              notif.close();
+            };
+          } catch (e) {
+            console.warn('[Notification] Failed to show desktop notification:', e);
+          }
+        }
       }
       triggerHaptic('light');
     });
@@ -474,9 +612,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     // User presence
-    socket.on('user_status', ({ username, online, lastSeenAt }: any) => {
+    socket.on('user_status', ({ username, online, presence, lastSeenAt }: any) => {
       setConversations((prev) =>
-        prev.map((c) => (c.username.toLowerCase() === username?.toLowerCase() ? { ...c, online, lastSeenAt } : c))
+        prev.map((c) =>
+          c.username.toLowerCase() === username?.toLowerCase()
+            ? {
+                ...c,
+                online: Boolean(online && presence !== 'offline'),
+                presence: presence || (online ? 'online' : 'offline'),
+                lastSeenAt: lastSeenAt || c.lastSeenAt,
+              }
+            : c
+        )
       );
     });
 
@@ -529,14 +676,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    socket.on('webrtc_signal', async ({ signal }: { from: string; signal: any }) => {
-      if (!webrtcManagerRef.current) return;
+    socket.on('webrtc_signal', async ({ from, signal }: { from: string; signal: any }) => {
+      if (!webrtcManagerRef.current || !signal) return;
 
+      const targetUser = callStateRef.current.remoteUser || from;
       try {
         if (signal.type === 'offer') {
           const answer = await webrtcManagerRef.current.handleOffer(signal.sdp);
           socket.emit('webrtc_signal', {
-            to: callStateRef.current.remoteUser,
+            to: targetUser,
             signal: { type: 'answer', sdp: answer },
           });
         } else if (signal.type === 'answer') {
@@ -572,6 +720,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       socket.off('mute_updated');
       socket.off('block_updated');
       socket.off('history', handleHistory);
+      socket.off('message_status');
       socket.off('private_message');
       socket.off('typing');
       socket.off('user_status');

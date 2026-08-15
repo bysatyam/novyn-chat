@@ -806,18 +806,25 @@ html, body {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(7, 10, 17, 0.8);
-  backdrop-filter: blur(16px);
+  background: rgba(7, 10, 17, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
   padding: 0 24px;
-  height: 72px;
+  height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
+.landing-platform-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .landing-hero {
-  padding: 80px 24px 60px;
+  padding: 64px 24px 50px;
   max-width: 1100px;
   margin: 0 auto;
   text-align: center;
@@ -830,53 +837,64 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 16px;
+  padding: 6px 14px;
   border-radius: 9999px;
   background: rgba(16, 185, 129, 0.1);
   border: 1px solid rgba(16, 185, 129, 0.25);
   color: #34d399;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.15);
 }
 
 .hero-title {
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-size: clamp(2.2rem, 6.5vw, 4.2rem);
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1.15;
   letter-spacing: -0.04em;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+  color: #ffffff;
 }
 
 .hero-subtitle {
-  font-size: clamp(1rem, 2vw, 1.25rem);
+  font-size: clamp(0.92rem, 2vw, 1.15rem);
   color: var(--text-muted);
-  max-width: 680px;
-  margin-bottom: 40px;
+  max-width: 620px;
+  margin-bottom: 34px;
   line-height: 1.6;
 }
 
 .hero-cta-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 14px;
   justify-content: center;
-  margin-bottom: 36px;
+  align-items: center;
+  margin-bottom: 32px;
+  width: 100%;
 }
 
 .hero-pills {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 24px;
-  font-size: 0.85rem;
+  gap: 12px;
+  font-size: 0.84rem;
   color: var(--text-muted);
-  margin-bottom: 60px;
+  margin-bottom: 48px;
+  width: 100%;
+  max-width: 860px;
 }
+
 .hero-pill-item {
   display: flex;
   align-items: center;
   gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 12px;
 }
 
 /* Chat Mockup Card */
@@ -889,6 +907,7 @@ html, body {
   padding: 24px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   text-align: left;
 }
 
@@ -897,8 +916,8 @@ html, body {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 16px;
-  margin-bottom: 20px;
+  padding-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .mockup-dots {
@@ -914,14 +933,14 @@ html, body {
 .mockup-messages {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .mockup-msg {
   max-width: 480px;
-  padding: 14px 18px;
+  padding: 13px 16px;
   border-radius: var(--radius-lg);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   line-height: 1.5;
 }
 .mockup-msg-in {
@@ -941,23 +960,23 @@ html, body {
 /* Features Grid */
 .features-section {
   max-width: 1100px;
-  margin: 40px auto 100px;
+  margin: 30px auto 70px;
   padding: 0 24px;
 }
 .features-header {
   text-align: center;
-  margin-bottom: 48px;
+  margin-bottom: 40px;
 }
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
 }
 .feature-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 32px 28px;
+  padding: 28px 24px;
   transition: all 0.3s ease;
 }
 .feature-card:hover {
@@ -965,8 +984,8 @@ html, body {
   transform: translateY(-4px);
 }
 .feature-icon-box {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
   border-radius: var(--radius-md);
   background: rgba(16, 185, 129, 0.1);
   border: 1px solid rgba(16, 185, 129, 0.2);
@@ -974,10 +993,81 @@ html, body {
   align-items: center;
   justify-content: center;
   color: #34d399;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 /* Responsive Rules */
+@media (max-width: 768px) {
+  .landing-platform-menu {
+    display: none !important;
+  }
+  .landing-navbar {
+    padding: 0 16px;
+    height: 60px;
+  }
+  .landing-hero {
+    padding: 36px 16px 30px;
+  }
+  .hero-badge {
+    font-size: 0.72rem;
+    padding: 5px 12px;
+    margin-bottom: 16px;
+  }
+  .hero-title {
+    font-size: clamp(1.85rem, 8vw, 2.75rem);
+    margin-bottom: 16px;
+  }
+  .hero-subtitle {
+    font-size: 0.9rem;
+    margin-bottom: 26px;
+    padding: 0 4px;
+  }
+  .hero-cta-group {
+    flex-direction: column;
+    width: 100%;
+    max-width: 380px;
+    gap: 10px;
+  }
+  .hero-cta-group .btn {
+    width: 100% !important;
+    padding: 14px 20px !important;
+    font-size: 0.95rem !important;
+  }
+  .hero-pills {
+    flex-direction: column;
+    max-width: 380px;
+    gap: 8px;
+    margin-bottom: 40px;
+  }
+  .hero-pill-item {
+    width: 100%;
+    justify-content: center;
+    font-size: 0.78rem;
+    padding: 8px 12px;
+  }
+  .mockup-container {
+    padding: 16px 14px;
+    border-radius: 18px;
+  }
+  .mockup-msg {
+    max-width: 90%;
+    font-size: 0.84rem;
+    padding: 10px 14px;
+  }
+  .features-section {
+    padding: 0 16px;
+    margin: 20px auto 50px;
+  }
+  .features-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .feature-card {
+    padding: 22px 18px;
+    border-radius: 18px;
+  }
+}
+
 @media (max-width: 640px) {
   .desktop-sidebar {
     display: none;

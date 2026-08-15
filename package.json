@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "start": "node server.js",
     "migrate:state": "node scripts/migrate-state-to-mongo.js",
+    "clear:data": "node scripts/clear-users.js",
     "cap:sync": "npm run build && npx cap sync",
     "cap:sync:android": "npm run build && npx cap sync android",
     "cap:android": "npx cap open android",

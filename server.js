@@ -5157,20 +5157,56 @@ io.on("connection", (socket) => {
     onlineUsers.delete(userKey);
     onlineUsers.set(newKey, socket.id);
 
-    // Update friends mappings & conversation keys
+    // Update friends, requests, blocks and conversation keys
+    for (const other of users.values()) {
+      if (other.friends && other.friends.has(userKey)) {
+        other.friends.delete(userKey);
+        other.friends.add(newKey);
+      }
+      if (other.requests && other.requests.has(userKey)) {
+        other.requests.delete(userKey);
+        other.requests.add(newKey);
+      }
+      if (other.blockedUsers && other.blockedUsers.has(userKey)) {
+        other.blockedUsers.delete(userKey);
+        other.blockedUsers.add(newKey);
+      }
+      if (other.mutedUsers && other.mutedUsers.has(userKey)) {
+        other.mutedUsers.delete(userKey);
+        other.mutedUsers.add(newKey);
+      }
+    }
+
+    // Update conversations and message records
+    const convEntries = Array.from(conversations.entries());
+    for (const [convKey, history] of convEntries) {
+      if (!Array.isArray(history)) continue;
+
+      let modified = false;
+      for (const msg of history) {
+        if (normalizeName(msg.from) === userKey || normalizeName(msg.sender) === userKey) {
+          msg.from = requested;
+          msg.sender = requested;
+          modified = true;
+        }
+        if (normalizeName(msg.to) === userKey || normalizeName(msg.receiver) === userKey) {
+          msg.to = requested;
+          msg.receiver = requested;
+          modified = true;
+        }
+      }
+
+      if (convKey.includes(userKey)) {
+        const parts = convKey.split(":");
+        const newConvKey = parts.map((p) => (normalizeName(p) === userKey ? newKey : p)).sort().join(":");
+        if (newConvKey !== convKey) {
+          conversations.delete(convKey);
+          conversations.set(newConvKey, history);
+        }
+      }
+    }
+
     for (const friendKey of user.friends) {
-      const friend = users.get(friendKey);
-      if (friend && friend.friends) {
-        friend.friends.delete(userKey);
-        friend.friends.add(newKey);
-      }
-      const oldConvKey = getConversationKey(userKey, friendKey);
-      const newConvKey = getConversationKey(newKey, friendKey);
-      if (conversations.has(oldConvKey)) {
-        const history = conversations.get(oldConvKey);
-        conversations.delete(oldConvKey);
-        conversations.set(newConvKey, history);
-      }
       emitFriendList(friendKey);
     }
 
@@ -6303,196 +6339,6 @@ io.on("connection", (socket) => {
         to: me.username,
       });
     }
-  });
-
-  socket.on("call_invite", (payload) => {
-    const userKey = socket.data.userKey;
-    if (!userKey) return;
-    if (normalizeChatKind(payload?.toType) === "group") {
-      socket.emit("error_message", { message: "Group calls are not available yet." });
-      return;
-    }
-
-    const to = toDisplayName(payload?.to);
-    const toKey = normalizeName(to);
-    if (!toKey) return;
-
-    const me = users.get(userKey);
-    const friend = users.get(toKey);
-    if (!me || !friend || !me.friends.has(toKey)) {
-      socket.emit("error_message", { message: "You can call only friends." });
-      return;
-    }
-    if (usersAreBlocked(userKey, toKey)) {
-      socket.emit("call_blocked", { to: friend.username || toKey });
-      return;
-    }
-
-    if (activeCalls.has(userKey) || activeCalls.has(toKey)) {
-      socket.emit("call_busy", { to: friend.username });
-      return;
-    }
-
-    const friendPresence = getEffectivePresence(toKey);
-    if (friendPresence === "busy") {
-      socket.emit("call_busy", { to: friend.username });
-      return;
-    }
-    if (friendPresence === "offline") {
-      socket.emit("call_unavailable", { to: friend.username });
-      return;
-    }
-
-    const friendSocketId = onlineUsers.get(toKey);
-    if (!friendSocketId) {
-      socket.emit("call_unavailable", { to: friend.username });
-      return;
-    }
-
-    setCallPair(userKey, toKey, "ringing");
-    io.to(friendSocketId).emit("call_invite", {
-      from: me.username,
-      type: payload?.type || "audio",
-    });
-    socket.emit("call_ringing", { to: friend.username });
-  });
-
-  socket.on("call_answer", (payload) => {
-    const userKey = socket.data.userKey;
-    if (!userKey) return;
-
-    const toKey = normalizeName(payload?.to);
-    const state = activeCalls.get(userKey);
-    if (!state || (toKey && state.peerKey !== toKey)) return;
-
-    const peerKey = state.peerKey;
-    setCallPair(userKey, peerKey, "active");
-
-    const peerSocketId = onlineUsers.get(peerKey);
-    if (peerSocketId) {
-      io.to(peerSocketId).emit("call_answer", {
-        from: users.get(userKey)?.username || userKey,
-      });
-    }
-  });
-
-  socket.on("call_reject", (payload) => {
-    const userKey = socket.data.userKey;
-    if (!userKey) return;
-
-    const toKey = normalizeName(payload?.to);
-    const state = activeCalls.get(userKey);
-    if (!state || (toKey && state.peerKey !== toKey)) return;
-
-    const peerKey = clearCallPair(userKey);
-    if (!peerKey) return;
-
-    const peerSocketId = onlineUsers.get(peerKey);
-    if (peerSocketId) {
-      io.to(peerSocketId).emit("call_reject", {
-        from: users.get(userKey)?.username || userKey,
-      });
-    }
-  });
-
-  socket.on("call_cancel", (payload) => {
-    const userKey = socket.data.userKey;
-    if (!userKey) return;
-
-    const toKey = normalizeName(payload?.to);
-    const state = activeCalls.get(userKey);
-    if (!state || (toKey && state.peerKey !== toKey)) return;
-
-    const peerKey = clearCallPair(userKey);
-    if (!peerKey) return;
-
-    const peerSocketId = onlineUsers.get(peerKey);
-    if (peerSocketId) {
-      io.to(peerSocketId).emit("call_cancelled", {
-        from: users.get(userKey)?.username || userKey,
-      });
-    }
-  });
-
-  socket.on("call_end", (payload) => {
-    const userKey = socket.data.userKey;
-    if (!userKey) return;
-
-    const toKey = normalizeName(payload?.to);
-    const state = activeCalls.get(userKey);
-    if (!state || (toKey && state.peerKey !== toKey)) return;
-
-    const peerKey = clearCallPair(userKey);
-    if (!peerKey) return;
-
-    const peerSocketId = onlineUsers.get(peerKey);
-    if (peerSocketId) {
-      io.to(peerSocketId).emit("call_end", {
-        from: users.get(userKey)?.username || userKey,
-      });
-    }
-  });
-
-  socket.on("call_signal", (payload) => {
-    const userKey = socket.data.userKey;
-    if (!userKey) return;
-
-    const toKey = normalizeName(payload?.to);
-    if (!toKey) return;
-
-    const state = activeCalls.get(userKey);
-    if (!state || state.peerKey !== toKey) return;
-
-    const friendSocketId = onlineUsers.get(toKey);
-    if (!friendSocketId) return;
-
-    const me = users.get(userKey);
-    io.to(friendSocketId).emit("call_signal", {
-      from: me?.username || userKey,
-      type: payload?.type,
-      sdp: payload?.sdp || null,
-      candidate: payload?.candidate || null,
-    });
-  });
-
-  socket.on("update_profile", (payload) => {
-    const userKey = socket.data.userKey;
-    if (!userKey) return;
-    const user = users.get(userKey);
-    if (!user) return;
-    if (payload?.email !== undefined) {
-      const currentEmail = normalizeEmail(user.email || "");
-      const attemptedEmail = normalizeEmail(payload.email || "");
-      if (attemptedEmail !== currentEmail) {
-        socket.emit("error_message", {
-          message: "Verify your new email with a code before saving.",
-        });
-        return;
-      }
-    }
-    if (payload?.avatarId !== undefined) user.avatarId = toDisplayName(payload.avatarId).slice(0, 32);
-    if (payload?.age !== undefined) user.age = toDisplayName(payload.age).slice(0, 3);
-    if (payload?.gender !== undefined) user.gender = toDisplayName(payload.gender).slice(0, 20);
-    if (payload?.displayName !== undefined) user.displayName = toDisplayName(payload.displayName).slice(0, 32);
-    if (payload?.bio !== undefined) user.bio = toDisplayName(payload.bio).slice(0, 120);
-    socket.emit("profile_updated", {
-      avatarId: user.avatarId,
-      age: user.age,
-      gender: user.gender,
-      displayName: user.displayName,
-      bio: user.bio,
-      email: user.email || "",
-    });
-    for (const friendKey of user.friends) {
-      const friendSocket = onlineUsers.get(friendKey);
-      if (friendSocket) {
-        io.to(friendSocket).emit("friend_profile_updated", {
-          username: user.username, avatarId: user.avatarId, displayName: user.displayName, bio: user.bio,
-        });
-      }
-    }
-    emitDiscoverOnlineToAll();
-    schedulePersist();
   });
 
   socket.on("react", (payload) => {

@@ -131,6 +131,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                   name={conv.displayName || conv.username}
                   avatarUrl={conv.avatarId}
                   online={conv.online}
+                  presence={conv.presence}
                   size="md"
                 />
 
@@ -222,6 +223,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                   name={conv.displayName || conv.username}
                   avatarUrl={conv.avatarId}
                   online={conv.online}
+                  presence={conv.presence}
                   size="md"
                 />
 

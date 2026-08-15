@@ -52,6 +52,7 @@ export interface Conversation {
   lastMessage?: Message;
   unreadCount: number;
   online: boolean;
+  presence?: 'online' | 'away' | 'dnd' | 'offline';
   lastSeenAt?: string;
   typing?: boolean;
   bio?: string;
