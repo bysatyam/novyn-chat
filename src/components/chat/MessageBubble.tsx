@@ -6,15 +6,19 @@ import {
   CheckCheck,
   FileText,
   CornerDownRight,
-  MoreHorizontal,
+  MoreVertical,
   Edit2,
   Trash2,
   Reply,
   Smile,
   Copy,
   Forward,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import { VoicePlayer } from './VoicePlayer';
+import { LinkPreviewCard, extractFirstUrl } from './LinkPreviewCard';
+import { PollMessageBubble } from './PollMessageBubble';
 import { triggerHaptic } from '../../services/capacitor';
 
 interface MessageBubbleProps {
@@ -24,9 +28,42 @@ interface MessageBubbleProps {
   onReaction: (messageId: string, emoji: string) => void;
   onMediaClick: (url: string) => void;
   onForward?: (message: Message) => void;
+  onPin?: (messageId: string) => void;
+  onUnpin?: (messageId: string) => void;
   onUnsend?: (messageId: string) => void;
   onEdit?: (messageId: string, newText: string) => void;
+  onVotePoll?: (messageId: string, optionId: string) => void;
+  currentUsername?: string;
+  searchQuery?: string;
 }
+
+const HighlightText: React.FC<{ text: string; query?: string }> = ({ text, query }) => {
+  if (!query || !query.trim()) return <>{text}</>;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.toLowerCase() ? (
+          <mark
+            key={i}
+            style={{
+              background: '#fef08a',
+              color: '#000000',
+              borderRadius: '2px',
+              padding: '0 2px',
+              fontWeight: 700,
+            }}
+          >
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+};
 
 const COMMON_REACTIONS = ['❤️', '👍', '😂', '🔥', '🎉', '😮'];
 
@@ -37,8 +74,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onReaction,
   onMediaClick,
   onForward,
+  onPin,
+  onUnpin,
   onUnsend,
   onEdit,
+  onVotePoll,
+  currentUsername,
+  searchQuery,
 }) => {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -153,6 +195,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   return (
     <div
       ref={containerRef}
+      id={`msg-${message.id}`}
       className={`bubble-row ${isMe ? 'me' : 'other'}`}
       style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}
     >
@@ -180,7 +223,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           }}
           title="Message actions"
         >
-          <MoreHorizontal style={{ width: '16px', height: '16px' }} />
+          <MoreVertical style={{ width: '16px', height: '16px' }} />
         </button>
       )}
 
@@ -436,6 +479,47 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 </button>
               )}
 
+              {/* Pin / Unpin */}
+              {(onPin || onUnpin) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerHaptic('light');
+                    if (message.pinnedAt) {
+                      onUnpin?.(message.id);
+                    } else {
+                      onPin?.(message.id);
+                    }
+                    setShowActionsMenu(false);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    padding: '5px 8px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                  }}
+                  title={message.pinnedAt ? 'Unpin message' : 'Pin message'}
+                >
+                  {message.pinnedAt ? (
+                    <>
+                      <PinOff style={{ width: '13px', height: '13px', color: '#f59e0b' }} /> Unpin
+                    </>
+                  ) : (
+                    <>
+                      <Pin style={{ width: '13px', height: '13px', color: '#f59e0b' }} /> Pin
+                    </>
+                  )}
+                </button>
+              )}
+
               {/* Edit (if sent by me and is text) */}
               {isMe && message.text && !isAudioMessage && (
                 <button
@@ -606,14 +690,34 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               </button>
             </div>
           </div>
+        ) : message.poll ? (
+          <PollMessageBubble
+            poll={message.poll}
+            messageId={message.id}
+            isMe={isMe}
+            currentUsername={currentUsername}
+            onVote={onVotePoll || (() => {})}
+          />
         ) : (
           message.text && (!isAudioMessage || message.text !== '[Voice Message]') && (
-            <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{message.text}</div>
+            <div>
+              <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                <HighlightText text={message.text} query={searchQuery} />
+              </div>
+              {extractFirstUrl(message.text) && (
+                <LinkPreviewCard url={extractFirstUrl(message.text)!} />
+              )}
+            </div>
           )
         )}
 
         {/* Footer */}
         <div className="bubble-footer">
+          {message.pinnedAt && (
+            <span title="Pinned message" style={{ display: 'flex', alignItems: 'center' }}>
+              <Pin style={{ width: '11px', height: '11px', color: '#f59e0b', marginRight: '2px' }} />
+            </span>
+          )}
           <span>{formatTime(message.timestamp)}</span>
           {renderStatus()}
         </div>
@@ -672,7 +776,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           }}
           title="Message actions (Reply, React)"
         >
-          <MoreHorizontal style={{ width: '16px', height: '16px' }} />
+          <MoreVertical style={{ width: '16px', height: '16px' }} />
         </button>
       )}
     </div>

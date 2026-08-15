@@ -33,6 +33,10 @@ interface ChatContextType {
   unfriendUser: (username: string) => void;
   clearChat: (username: string) => void;
   addReaction: (messageId: string, emoji: string) => void;
+  pinMessage: (messageId: string) => void;
+  unpinMessage: (messageId: string) => void;
+  createPoll: (question: string, options: string[]) => void;
+  votePoll: (messageId: string, optionId: string) => void;
   startCall: (remoteUser: string, isVideo?: boolean) => Promise<void>;
   answerCall: () => Promise<void>;
   endCall: (reason?: string) => void;
@@ -389,6 +393,27 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m)));
     });
 
+    socket.on('message_pinned', ({ messageId, pinnedAt, pinnedBy }: any) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, pinnedAt, pinnedBy } : m))
+      );
+      triggerHaptic('light');
+    });
+
+    socket.on('message_unpinned', ({ messageId }: any) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, pinnedAt: null, pinnedBy: '' } : m))
+      );
+      triggerHaptic('light');
+    });
+
+    socket.on('poll_updated', ({ messageId, poll }: any) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId || m.poll?.id === poll.id ? { ...m, poll } : m))
+      );
+      triggerHaptic('light');
+    });
+
     socket.on('friend_request_received', ({ from }: { from: string }) => {
       triggerHaptic('success');
       setFriendRequests((prev) => {
@@ -482,6 +507,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             replyTo: m.replyTo,
             reactions: m.reactions || {},
             isVoice: Boolean(m.isVoice || m.attachment?.kind === 'audio'),
+            pinnedAt: m.pinnedAt || null,
+            pinnedBy: m.pinnedBy || '',
+            poll: m.poll || null,
           }))
         );
       }
@@ -518,6 +546,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         replyTo: rawMsg.replyTo,
         reactions: rawMsg.reactions || {},
         isVoice: Boolean(rawMsg.isVoice || rawMsg.attachment?.kind === 'audio'),
+        pinnedAt: rawMsg.pinnedAt || null,
+        pinnedBy: rawMsg.pinnedBy || '',
+        poll: rawMsg.poll || null,
       };
 
       const current = activeChatRef.current?.toLowerCase();
@@ -899,6 +930,60 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [activeChat]
   );
 
+  const pinMessage = useCallback(
+    (messageId: string) => {
+      if (!activeChat) return;
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('pin_message', { messageId, to: activeChat });
+      triggerHaptic('light');
+    },
+    [activeChat]
+  );
+
+  const unpinMessage = useCallback(
+    (messageId: string) => {
+      if (!activeChat) return;
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('unpin_message', { messageId, to: activeChat });
+      triggerHaptic('light');
+    },
+    [activeChat]
+  );
+
+  const createPoll = useCallback(
+    (question: string, options: string[]) => {
+      if (!activeChat) return;
+      const socket = getSocket();
+      if (!socket) return;
+      const clientTempId = `tmp_poll_${Date.now()}`;
+      socket.emit('create_poll', {
+        to: activeChat,
+        question,
+        options,
+        clientTempId,
+      });
+      triggerHaptic('success');
+    },
+    [activeChat]
+  );
+
+  const votePoll = useCallback(
+    (messageId: string, optionId: string) => {
+      if (!activeChat) return;
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('poll_vote', {
+        messageId,
+        optionId,
+        to: activeChat,
+      });
+      triggerHaptic('light');
+    },
+    [activeChat]
+  );
+
   // WebRTC Call Triggers
   const startCall = useCallback(async (remoteUser: string, isVideo = false) => {
     const socket = getSocket();
@@ -1008,6 +1093,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         unfriendUser,
         clearChat,
         addReaction,
+        pinMessage,
+        unpinMessage,
+        createPoll,
+        votePoll,
         startCall,
         answerCall,
         endCall,

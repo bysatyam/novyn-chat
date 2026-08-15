@@ -12,8 +12,20 @@ import {
   Monitor,
   Minimize2,
   Maximize2,
+  Sparkles,
 } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
+
+type VideoFilter = 'normal' | 'studio' | 'warm' | 'cyberpunk' | 'noir' | 'blur';
+
+const FILTER_PRESETS: { id: VideoFilter; label: string; css: string }[] = [
+  { id: 'normal', label: 'Normal', css: 'none' },
+  { id: 'studio', label: 'Studio', css: 'contrast(1.08) brightness(1.05) saturate(1.15)' },
+  { id: 'warm', label: 'Warm', css: 'sepia(0.25) saturate(1.2) hue-rotate(-10deg)' },
+  { id: 'cyberpunk', label: 'Cyberpunk', css: 'contrast(1.2) saturate(1.45) hue-rotate(20deg)' },
+  { id: 'noir', label: 'Noir', css: 'grayscale(1) contrast(1.25)' },
+  { id: 'blur', label: 'Soft Glow', css: 'brightness(1.06) contrast(1.02)' },
+];
 
 export const CallModal: React.FC = () => {
   const {
@@ -27,6 +39,8 @@ export const CallModal: React.FC = () => {
 
   const [seconds, setSeconds] = useState(0);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [videoFilter, setVideoFilter] = useState<VideoFilter>('normal');
+  const [showFilterPicker, setShowFilterPicker] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -262,6 +276,8 @@ export const CallModal: React.FC = () => {
                   objectFit: 'cover',
                   transform: callState.isScreenSharing ? 'none' : 'scaleX(-1)',
                   display: callState.localStream && !callState.isCameraOff ? 'block' : 'none',
+                  filter: FILTER_PRESETS.find((p) => p.id === videoFilter)?.css || 'none',
+                  transition: 'filter 0.3s ease',
                 }}
               />
               {(!callState.localStream || callState.isCameraOff) && (
@@ -366,7 +382,32 @@ export const CallModal: React.FC = () => {
                 }}
                 title={callState.isCameraOff ? 'Turn Camera On' : 'Turn Camera Off'}
               >
-                {callState.isCameraOff ? <VideoOff style={{ width: '20px', height: '20px' }} /> : <Video style={{ width: '20px', height: '20px' }} />}
+                  {callState.isCameraOff ? <VideoOff style={{ width: '20px', height: '20px' }} /> : <Video style={{ width: '20px', height: '20px' }} />}
+              </button>
+
+              {/* Video Filters Toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setShowFilterPicker((prev) => !prev);
+                }}
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  background: showFilterPicker || videoFilter !== 'normal' ? 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)' : 'rgba(255, 255, 255, 0.08)',
+                  border: 'none',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: videoFilter !== 'normal' ? '0 4px 14px rgba(236, 72, 153, 0.4)' : 'none',
+                }}
+                title="Camera Video Filters"
+              >
+                <Sparkles style={{ width: '19px', height: '19px' }} />
               </button>
 
               {/* Screen Share */}
@@ -412,6 +453,55 @@ export const CallModal: React.FC = () => {
                 <PhoneOff style={{ width: '22px', height: '22px' }} />
               </button>
             </div>
+
+            {/* Floating Filter Selector Pills Drawer */}
+            {showFilterPicker && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '100px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: 'rgba(15, 23, 42, 0.92)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '9999px',
+                  padding: '6px 10px',
+                  display: 'flex',
+                  gap: '6px',
+                  zIndex: 20,
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+                }}
+              >
+                {FILTER_PRESETS.map((preset) => {
+                  const isActive = videoFilter === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setVideoFilter(preset.id);
+                      }}
+                      style={{
+                        background: isActive ? 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)' : 'rgba(255, 255, 255, 0.05)',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        padding: '6px 12px',
+                        borderRadius: '9999px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

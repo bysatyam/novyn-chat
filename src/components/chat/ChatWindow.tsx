@@ -6,11 +6,17 @@ import { MessageInput } from './MessageInput';
 import { MediaViewerModal } from './MediaViewerModal';
 import { ContactDetailsSidebar } from './ContactDetailsSidebar';
 import { ForwardModal } from './ForwardModal';
+import { PinnedMessageBanner } from './PinnedMessageBanner';
+import { InChatSearch } from './InChatSearch';
+import { DropZoneOverlay } from './DropZoneOverlay';
+import { WallpaperPickerModal } from './WallpaperPickerModal';
+import { CommandPaletteModal } from '../layout/CommandPaletteModal';
 import { Avatar } from '../ui/Avatar';
 import { Message } from '../../types';
-import { Phone, Video, ChevronLeft, ShieldCheck, PanelLeftOpen, Info } from 'lucide-react';
+import { Phone, Video, ChevronLeft, ShieldCheck, PanelLeftOpen, Info, Search, Palette, Command } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
 import { getSocket } from '../../services/socket';
+import { uploadMediaFile } from '../../services/api';
 
 interface ChatWindowProps {
   isListCollapsed?: boolean;
@@ -30,6 +36,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     sendMessage,
     sendTyping,
     addReaction,
+    pinMessage,
+    unpinMessage,
+    createPoll,
+    votePoll,
     typingUsers,
     mutedUsers,
     blockedUsers,
@@ -46,6 +56,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
   const [selectedMedia, setSelectedMedia] = useState<string | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isWallpaperModalOpen, setIsWallpaperModalOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [wallpaper, setWallpaper] = useState<string>(() => localStorage.getItem('novyn_chat_wallpaper') || 'var(--bg-canvas)');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeContact = conversations.find((c) => c.username.toLowerCase() === activeChat?.toLowerCase()) || null;
@@ -56,6 +73,94 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleWallpaperChange = (newBg: string) => {
+    setWallpaper(newBg);
+    localStorage.setItem('novyn_chat_wallpaper', newBg);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    triggerHaptic('medium');
+    try {
+      const uploadRes = await uploadMediaFile(file);
+      if (uploadRes?.url) {
+        sendMessage('', {
+          attachment: {
+            url: uploadRes.url,
+            name: file.name,
+            size: file.size,
+            mime: file.type,
+            kind: file.type.startsWith('image/')
+              ? 'image'
+              : file.type.startsWith('video/')
+              ? 'video'
+              : file.type.startsWith('audio/')
+              ? 'audio'
+              : 'file',
+          },
+        });
+      }
+    } catch (err) {
+      console.error('[Chat] Drag-drop upload error:', err);
+    }
+  };
+
+  const pinnedMessages = messages.filter((m) => Boolean(m.pinnedAt));
+  const matchedMessages = searchQuery.trim()
+    ? messages.filter((m) => m.text?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : [];
+
+  const handleJumpToMessage = (msgId: string) => {
+    const el = document.getElementById(`msg-${msgId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'all 0.3s ease';
+      el.style.filter = 'drop-shadow(0 0 12px rgba(16, 185, 129, 0.8))';
+      setTimeout(() => {
+        el.style.filter = 'none';
+      }, 1500);
+    }
+  };
+
+  const handleNextMatch = () => {
+    if (matchedMessages.length === 0) return;
+    const nextIdx = (currentMatchIndex + 1) % matchedMessages.length;
+    setCurrentMatchIndex(nextIdx);
+    handleJumpToMessage(matchedMessages[nextIdx].id);
+  };
+
+  const handlePrevMatch = () => {
+    if (matchedMessages.length === 0) return;
+    const prevIdx = (currentMatchIndex - 1 + matchedMessages.length) % matchedMessages.length;
+    setCurrentMatchIndex(prevIdx);
+    handleJumpToMessage(matchedMessages[prevIdx].id);
+  };
 
   const handleForward = (targetUsername: string, msg: Message) => {
     const socket = getSocket();
@@ -155,8 +260,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           </div>
 
-          {/* Header Action Buttons (Audio, Video, and Contact Info Sidebar Toggle) */}
+          {/* Header Action Buttons (Search, Audio, Video, and Contact Info) */}
           <div className="chat-header-actions">
+            <button
+              type="button"
+              className="header-action-btn"
+              style={isSearchOpen ? { background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' } : {}}
+              onClick={() => {
+                triggerHaptic('light');
+                setIsSearchOpen((prev) => !prev);
+                if (isSearchOpen) setSearchQuery('');
+              }}
+              title="Search in conversation"
+            >
+              <Search style={{ width: '16px', height: '16px' }} />
+            </button>
+
             <button
               type="button"
               className="header-action-btn"
@@ -184,6 +303,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <button
               type="button"
               className="header-action-btn"
+              onClick={() => {
+                triggerHaptic('light');
+                setIsWallpaperModalOpen(true);
+              }}
+              title="Chat Wallpaper & Theme"
+            >
+              <Palette style={{ width: '16px', height: '16px', color: '#ec4899' }} />
+            </button>
+
+            <button
+              type="button"
+              className="header-action-btn"
+              onClick={() => {
+                triggerHaptic('light');
+                setIsCommandPaletteOpen(true);
+              }}
+              title="Quick Actions (Ctrl+K)"
+            >
+              <Command style={{ width: '16px', height: '16px', color: '#38bdf8' }} />
+            </button>
+
+            <button
+              type="button"
+              className="header-action-btn"
               style={isDetailsOpen ? { background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' } : {}}
               onClick={() => {
                 triggerHaptic('light');
@@ -196,8 +339,42 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         </div>
 
-        {/* Message Stream */}
-        <div className="messages-container">
+        {/* In-Chat Message Search Bar */}
+        <InChatSearch
+          isOpen={isSearchOpen}
+          query={searchQuery}
+          onQueryChange={(q) => {
+            setSearchQuery(q);
+            setCurrentMatchIndex(0);
+          }}
+          matchesCount={matchedMessages.length}
+          currentMatchIndex={currentMatchIndex}
+          onPrevMatch={handlePrevMatch}
+          onNextMatch={handleNextMatch}
+          onClose={() => {
+            setIsSearchOpen(false);
+            setSearchQuery('');
+          }}
+        />
+
+        {/* Top Pinned Message Banner */}
+        <PinnedMessageBanner
+          pinnedMessages={pinnedMessages}
+          onJumpToMessage={handleJumpToMessage}
+          onUnpin={(msgId) => unpinMessage(msgId)}
+        />
+
+        {/* Drag & Drop File Upload Overlay */}
+        <DropZoneOverlay isDragging={isDragging} onFileSelect={() => {}} />
+
+        {/* Message Stream with Custom Background Wallpaper */}
+        <div
+          className="messages-container"
+          style={{ background: wallpaper, position: 'relative' }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           {messages.length === 0 ? (
             <div style={{ margin: 'auto', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
               No messages yet. Send a message to start! 👋
@@ -212,8 +389,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onReaction={(id, emoji) => addReaction(id, emoji)}
                 onMediaClick={(url) => setSelectedMedia(url)}
                 onForward={(m) => setForwardMessage(m)}
+                onPin={(id) => pinMessage(id)}
+                onUnpin={(id) => unpinMessage(id)}
                 onUnsend={(id) => unsendMessage(id)}
                 onEdit={(id, text) => editMessage(id, text)}
+                onVotePoll={votePoll}
+                currentUsername={user?.username}
+                searchQuery={searchQuery}
               />
             ))
           )}
@@ -239,6 +421,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             onTyping={sendTyping}
             replyMessage={replyMessage}
             onCancelReply={() => setReplyMessage(null)}
+            onCreatePoll={createPoll}
           />
         </div>
       </div>
@@ -272,6 +455,33 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         conversations={conversations}
         onClose={() => setForwardMessage(null)}
         onForward={handleForward}
+      />
+
+      {/* Wallpaper Picker Modal */}
+      <WallpaperPickerModal
+        isOpen={isWallpaperModalOpen}
+        onClose={() => setIsWallpaperModalOpen(false)}
+        currentWallpaper={wallpaper}
+        onSelectWallpaper={handleWallpaperChange}
+      />
+
+      {/* Command Palette Modal (Ctrl+K) */}
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        conversations={conversations}
+        activeChat={activeChat}
+        onSelectChat={(u) => setActiveChat(u)}
+        onAudioCall={(u) => startCall(u, false)}
+        onVideoCall={(u) => startCall(u, true)}
+        onOpenPollModal={() => {
+          const el = document.querySelector('.input-actions') as HTMLElement;
+          if (el) el.scrollIntoView();
+        }}
+        onOpenWallpaperModal={() => setIsWallpaperModalOpen(true)}
+        onOpenQRModal={() => setIsDetailsOpen(true)}
+        onOpenExportModal={() => setIsDetailsOpen(true)}
+        onOpenSearch={() => setIsSearchOpen(true)}
       />
     </div>
   );

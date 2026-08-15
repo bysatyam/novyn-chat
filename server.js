@@ -645,9 +645,9 @@ const AUTH_REFRESH_COOKIE = "novyn_rt";
 const AUTH_CSRF_COOKIE = "novyn_csrf";
 const AUTH_CSRF_HEADER = "x-novyn-csrf";
 const AUTH_CSRF_TOKEN_BYTES = 24;
-const AUTH_ACCESS_TTL_MS = 15 * 60 * 1000;
-const AUTH_REFRESH_REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const AUTH_REFRESH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const AUTH_ACCESS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days (prevents premature logouts)
+const AUTH_REFRESH_REMEMBER_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+const AUTH_REFRESH_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 const AUTH_ALIAS_TTL_MS = AUTH_REFRESH_REMEMBER_TTL_MS;
 const AUTH_COOKIE_SECURE = process.env.NODE_ENV === "production";
 
@@ -4452,7 +4452,7 @@ app.post(
 
 app.get("/api/auth/session", (req, res) => {
   const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {
-    allowRefreshFallback: false,
+    allowRefreshFallback: true,
   });
   if (!auth.userKey) {
     res.status(401).json({ message: "Not signed in." });
@@ -4464,14 +4464,22 @@ app.get("/api/auth/session", (req, res) => {
     res.status(401).json({ message: "Session expired." });
     return;
   }
+  if (auth.via === "refresh") {
+    const tokens = issueAuthTokensForUser(auth.userKey, true);
+    if (tokens) applyAuthCookies(res, tokens);
+  }
   res.json({
     authenticated: true,
     username: user.username,
+    displayName: user.displayName || user.username,
     email: user.email || "",
+    avatarId: user.avatarId || "",
+    bio: user.bio || "",
+    presenceMode: user.presenceMode || "online",
   });
 });
 
-app.post("/api/auth/refresh", createIpRateLimiter("auth-refresh", 120, 15 * 60 * 1000), requireCsrf, (req, res) => {
+app.post("/api/auth/refresh", createIpRateLimiter("auth-refresh", 120, 15 * 60 * 1000), (req, res) => {
   const cookies = getAuthCookiesFromHeader(req.headers.cookie);
   const refreshPayload = verifyAuthToken(cookies.refreshToken, "refresh");
   if (!refreshPayload?.jti) {
@@ -4515,6 +4523,66 @@ app.post("/api/auth/logout", createIpRateLimiter("auth-logout", 120, 15 * 60 * 1
   }
   clearAuthCookies(res);
   res.json({ ok: true });
+});
+
+app.get("/api/link-preview", async (req, res) => {
+  const targetUrl = String(req.query?.url || "").trim();
+  if (!targetUrl || !targetUrl.startsWith("http")) {
+    res.status(400).json({ error: "Invalid URL" });
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const response = await fetch(targetUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      res.status(400).json({ error: "Failed to fetch URL" });
+      return;
+    }
+
+    const html = await response.text();
+    const titleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["'](.*?)["']/i) ||
+      html.match(/<title[^>]*>(.*?)<\/title>/i) ||
+      html.match(/<meta\s+name=["']title["']\s+content=["'](.*?)["']/i);
+    const descMatch = html.match(/<meta\s+property=["']og:description["']\s+content=["'](.*?)["']/i) ||
+      html.match(/<meta\s+name=["']description["']\s+content=["'](.*?)["']/i);
+    const imageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["'](.*?)["']/i) ||
+      html.match(/<meta\s+name=["']twitter:image["']\s+content=["'](.*?)["']/i);
+    const siteMatch = html.match(/<meta\s+property=["']og:site_name["']\s+content=["'](.*?)["']/i);
+
+    let parsedUrl = null;
+    try {
+      parsedUrl = new URL(targetUrl);
+    } catch (_) {}
+
+    const title = titleMatch ? titleMatch[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").slice(0, 120) : (parsedUrl?.hostname || targetUrl);
+    const description = descMatch ? descMatch[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").slice(0, 200) : "";
+    let image = imageMatch ? imageMatch[1] : "";
+    if (image && !image.startsWith("http") && parsedUrl) {
+      image = new URL(image, parsedUrl.origin).href;
+    }
+    const siteName = siteMatch ? siteMatch[1] : (parsedUrl?.hostname.replace(/^www\./, '') || "");
+
+    res.json({
+      url: targetUrl,
+      title,
+      description,
+      image,
+      siteName,
+      domain: parsedUrl?.hostname || "",
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to parse link preview" });
+  }
 });
 
 const distDir = path.join(__dirname, "dist");
@@ -6016,6 +6084,156 @@ io.on("connection", (socket) => {
     const friendSocket = onlineUsers.get(friendKey);
     if (friendSocket) {
       io.to(friendSocket).emit("reaction_updated", packet);
+    }
+  });
+
+  socket.on("pin_message", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    const messageId = String(payload?.messageId || payload?.id || "");
+    const to = toDisplayName(payload?.to);
+    if (!messageId || !to) return;
+
+    const friendKey = normalizeName(to);
+    const convKey = getConversationKey(userKey, friendKey);
+    const list = conversations.get(convKey);
+    let pinnedMessage = null;
+    if (list) {
+      const item = list.find((m) => String(m.id) === messageId || String(m.clientTempId) === messageId);
+      if (item) {
+        item.pinnedAt = nowIso();
+        item.pinnedBy = userKey;
+        pinnedMessage = item;
+        schedulePersist();
+      }
+    }
+
+    const packet = { messageId, pinnedAt: pinnedMessage?.pinnedAt || nowIso(), pinnedBy: userKey, to: to, from: userKey };
+    socket.emit("message_pinned", packet);
+    const friendSocket = onlineUsers.get(friendKey);
+    if (friendSocket) {
+      io.to(friendSocket).emit("message_pinned", packet);
+    }
+  });
+
+  socket.on("unpin_message", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    const messageId = String(payload?.messageId || payload?.id || "");
+    const to = toDisplayName(payload?.to);
+    if (!messageId || !to) return;
+
+    const friendKey = normalizeName(to);
+    const convKey = getConversationKey(userKey, friendKey);
+    const list = conversations.get(convKey);
+    if (list) {
+      const item = list.find((m) => String(m.id) === messageId || String(m.clientTempId) === messageId);
+      if (item) {
+        item.pinnedAt = null;
+        item.pinnedBy = "";
+        schedulePersist();
+      }
+    }
+
+    const packet = { messageId, to: to, from: userKey };
+    socket.emit("message_unpinned", packet);
+    const friendSocket = onlineUsers.get(friendKey);
+    if (friendSocket) {
+      io.to(friendSocket).emit("message_unpinned", packet);
+    }
+  });
+
+  socket.on("create_poll", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    const to = toDisplayName(payload?.to);
+    const question = String(payload?.question || "").trim();
+    const optionsRaw = Array.isArray(payload?.options) ? payload.options : [];
+    if (!to || !question || optionsRaw.length < 2) return;
+
+    const options = optionsRaw.slice(0, 8).map((opt, i) => ({
+      id: `opt_${i}_${Date.now()}`,
+      text: String(opt).trim(),
+      votes: [],
+    }));
+
+    const poll = {
+      id: `poll_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
+      question,
+      options,
+      totalVotes: 0,
+    };
+
+    const clientTempId = payload?.clientTempId || `tmp_poll_${Date.now()}`;
+    const friendKey = normalizeName(to);
+    const convKey = getConversationKey(userKey, friendKey);
+    let list = conversations.get(convKey);
+    if (!list) {
+      list = [];
+      conversations.set(convKey, list);
+    }
+
+    const msg = {
+      id: poll.id,
+      clientTempId,
+      from: userKey,
+      to: friendKey,
+      text: `📊 Poll: ${question}`,
+      timestamp: nowIso(),
+      poll,
+      status: "sent",
+    };
+
+    list.push(msg);
+    schedulePersist();
+
+    socket.emit("private_message", msg);
+    const friendSocket = onlineUsers.get(friendKey);
+    if (friendSocket) {
+      io.to(friendSocket).emit("private_message", msg);
+    }
+  });
+
+  socket.on("poll_vote", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    const messageId = String(payload?.messageId || "");
+    const optionId = String(payload?.optionId || "");
+    const to = toDisplayName(payload?.to);
+    if (!messageId || !optionId || !to) return;
+
+    const friendKey = normalizeName(to);
+    const convKey = getConversationKey(userKey, friendKey);
+    const list = conversations.get(convKey);
+    let updatedPoll = null;
+
+    if (list) {
+      const item = list.find((m) => String(m.id) === messageId || String(m.clientTempId) === messageId);
+      if (item && item.poll) {
+        let total = 0;
+        item.poll.options.forEach((opt) => {
+          const idx = opt.votes.indexOf(userKey);
+          if (opt.id === optionId) {
+            if (idx === -1) opt.votes.push(userKey);
+            else opt.votes.splice(idx, 1);
+          } else {
+            if (idx !== -1) opt.votes.splice(idx, 1);
+          }
+          total += opt.votes.length;
+        });
+        item.poll.totalVotes = total;
+        updatedPoll = item.poll;
+        schedulePersist();
+      }
+    }
+
+    if (updatedPoll) {
+      const packet = { messageId, poll: updatedPoll, to, from: userKey };
+      socket.emit("poll_updated", packet);
+      const friendSocket = onlineUsers.get(friendKey);
+      if (friendSocket) {
+        io.to(friendSocket).emit("poll_updated", packet);
+      }
     }
   });
 

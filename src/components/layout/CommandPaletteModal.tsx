@@ -1,0 +1,356 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Search,
+  MessageSquare,
+  Phone,
+  Video,
+  BarChart3,
+  Image as ImageIcon,
+  QrCode,
+  Download,
+  Lock,
+  Moon,
+  Sparkles,
+  X,
+  CornerDownLeft,
+} from 'lucide-react';
+import { Conversation } from '../../types';
+import { triggerHaptic } from '../../services/capacitor';
+
+interface CommandItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  category: 'Chats' | 'Actions' | 'Settings';
+  icon: React.ReactNode;
+  action: () => void;
+}
+
+interface CommandPaletteModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  conversations: Conversation[];
+  activeChat: string | null;
+  onSelectChat: (username: string) => void;
+  onAudioCall: (username: string) => void;
+  onVideoCall: (username: string) => void;
+  onOpenPollModal: () => void;
+  onOpenWallpaperModal: () => void;
+  onOpenQRModal: () => void;
+  onOpenExportModal: () => void;
+  onOpenSearch: () => void;
+}
+
+export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
+  isOpen,
+  onClose,
+  conversations,
+  activeChat,
+  onSelectChat,
+  onAudioCall,
+  onVideoCall,
+  onOpenPollModal,
+  onOpenWallpaperModal,
+  onOpenQRModal,
+  onOpenExportModal,
+  onOpenSearch,
+}) => {
+  const [query, setQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Build commands list
+  const commands: CommandItem[] = [];
+
+  // Active chat actions if in a conversation
+  if (activeChat) {
+    commands.push({
+      id: 'action_audio_call',
+      title: `Start Audio Call with ${activeChat}`,
+      subtitle: 'Voice call via WebRTC',
+      category: 'Actions',
+      icon: <Phone style={{ width: '16px', height: '16px', color: '#10b981' }} />,
+      action: () => onAudioCall(activeChat),
+    });
+    commands.push({
+      id: 'action_video_call',
+      title: `Start Video Call with ${activeChat}`,
+      subtitle: 'HD Video call with camera filters',
+      category: 'Actions',
+      icon: <Video style={{ width: '16px', height: '16px', color: '#60a5fa' }} />,
+      action: () => onVideoCall(activeChat),
+    });
+    commands.push({
+      id: 'action_create_poll',
+      title: 'Create Interactive Poll',
+      subtitle: 'Ask a question with multiple live vote choices',
+      category: 'Actions',
+      icon: <BarChart3 style={{ width: '16px', height: '16px', color: '#f59e0b' }} />,
+      action: () => onOpenPollModal(),
+    });
+    commands.push({
+      id: 'action_search_chat',
+      title: 'Search In Conversation',
+      subtitle: 'Jump to message keyword matches',
+      category: 'Actions',
+      icon: <Search style={{ width: '16px', height: '16px', color: '#a855f7' }} />,
+      action: () => onOpenSearch(),
+    });
+    commands.push({
+      id: 'action_export_chat',
+      title: 'Export Chat History',
+      subtitle: 'Download transcript as .txt or .json',
+      category: 'Actions',
+      icon: <Download style={{ width: '16px', height: '16px', color: '#10b981' }} />,
+      action: () => onOpenExportModal(),
+    });
+  }
+
+  // General Actions
+  commands.push({
+    id: 'action_wallpaper',
+    title: 'Customize Chat Wallpaper',
+    subtitle: 'Choose background theme or custom image',
+    category: 'Settings',
+    icon: <ImageIcon style={{ width: '16px', height: '16px', color: '#ec4899' }} />,
+    action: () => onOpenWallpaperModal(),
+  });
+  commands.push({
+    id: 'action_qr_code',
+    title: 'Show My Profile QR Code',
+    subtitle: 'Share your profile card for instant adding',
+    category: 'Settings',
+    icon: <QrCode style={{ width: '16px', height: '16px', color: '#38bdf8' }} />,
+    action: () => onOpenQRModal(),
+  });
+
+  // Chats list
+  conversations.forEach((c) => {
+    commands.push({
+      id: `chat_${c.username}`,
+      title: c.displayName || c.username,
+      subtitle: `@${c.username}${c.lastMessage ? ` • ${c.lastMessage}` : ''}`,
+      category: 'Chats',
+      icon: <MessageSquare style={{ width: '16px', height: '16px', color: '#94a3b8' }} />,
+      action: () => onSelectChat(c.username),
+    });
+  });
+
+  // Filter commands
+  const filtered = query.trim()
+    ? commands.filter(
+        (c) =>
+          c.title.toLowerCase().includes(query.toLowerCase()) ||
+          (c.subtitle && c.subtitle.toLowerCase().includes(query.toLowerCase())) ||
+          c.category.toLowerCase().includes(query.toLowerCase())
+      )
+    : commands;
+
+  useEffect(() => {
+    if (isOpen) {
+      setQuery('');
+      setSelectedIndex(0);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query]);
+
+  // Keyboard navigation inside command palette
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev < filtered.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : filtered.length - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filtered[selectedIndex]) {
+        triggerHaptic('light');
+        filtered[selectedIndex].action();
+        onClose();
+      }
+    } else if (e.key === 'Escape') {
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(12px)',
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          paddingTop: '12vh',
+          zIndex: 200,
+        }}
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: -20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: -20 }}
+          transition={{ duration: 0.16 }}
+          style={{
+            width: '100%',
+            maxWidth: '560px',
+            background: '#0f172a',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            borderRadius: '20px',
+            boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.9)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Search Header */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '14px 18px',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+              gap: '12px',
+            }}
+          >
+            <Search style={{ width: '20px', height: '20px', color: '#10b981', flexShrink: 0 }} />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type a command or search contacts..."
+              style={{
+                flex: 1,
+                background: 'transparent',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.98rem',
+                outline: 'none',
+              }}
+            />
+            <span
+              style={{
+                fontSize: '0.72rem',
+                color: '#64748b',
+                background: 'rgba(255, 255, 255, 0.08)',
+                padding: '3px 6px',
+                borderRadius: '6px',
+                fontFamily: 'monospace',
+              }}
+            >
+              ESC
+            </span>
+          </div>
+
+          {/* Results List */}
+          <div
+            style={{
+              maxHeight: '360px',
+              overflowY: 'auto',
+              padding: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+            }}
+          >
+            {filtered.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: '#64748b', fontSize: '0.88rem' }}>
+                No commands or contacts found
+              </div>
+            ) : (
+              filtered.map((item, idx) => {
+                const isSelected = idx === selectedIndex;
+                return (
+                  <div
+                    key={item.id}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      item.action();
+                      onClose();
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      background: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                      border: isSelected ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'all 0.1s ease',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {item.icon}
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.title}
+                      </div>
+                      {item.subtitle && (
+                        <div style={{ fontSize: '0.74rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.subtitle}
+                        </div>
+                      )}
+                    </div>
+
+                    {isSelected && (
+                      <CornerDownLeft style={{ width: '14px', height: '14px', color: '#10b981', flexShrink: 0 }} />
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer Info */}
+          <div
+            style={{
+              padding: '8px 16px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+              background: 'rgba(0, 0, 0, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.72rem',
+              color: '#64748b',
+            }}
+          >
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <span>↑↓ Navigate</span>
+              <span>↵ Select</span>
+            </div>
+            <span>Global Command Palette</span>
+          </div>
+        </motion.div>
+      </div>
+    </AnimatePresence>
+  );
+};

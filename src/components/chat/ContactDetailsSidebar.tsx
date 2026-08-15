@@ -15,8 +15,11 @@ import {
   Mic,
   Download,
   ExternalLink,
+  QrCode,
 } from 'lucide-react';
 import { SharedMediaModal } from './SharedMediaModal';
+import { ExportChatModal } from './ExportChatModal';
+import { QRCodeModal } from '../profile/QRCodeModal';
 import { triggerHaptic } from '../../services/capacitor';
 
 interface ContactDetailsSidebarProps {
@@ -52,6 +55,8 @@ export const ContactDetailsSidebar: React.FC<ContactDetailsSidebarProps> = ({
 }) => {
   const [activeMediaTab, setActiveMediaTab] = useState<'media' | 'docs' | 'voice'>('media');
   const [isSharedMediaModalOpen, setIsSharedMediaModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const [showConfirmUnfriend, setShowConfirmUnfriend] = useState(false);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
 
@@ -430,6 +435,54 @@ export const ContactDetailsSidebar: React.FC<ContactDetailsSidebarProps> = ({
               <span style={{ fontSize: '0.72rem', color: isMuted ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
                 {isMuted ? 'Muted' : 'Off'}
               </span>
+            </button>            {/* Export Chat History */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setIsExportModalOpen(true);
+              }}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '11px 14px',
+                borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border)',
+                color: '#ffffff',
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+              }}
+            >
+              <Download style={{ width: '16px', height: '16px', color: '#10b981' }} />
+              <span>Export Chat History</span>
+            </button>
+
+            {/* View Contact QR Code */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setIsQRModalOpen(true);
+              }}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '11px 14px',
+                borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border)',
+                color: '#ffffff',
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+              }}
+            >
+              <QrCode style={{ width: '16px', height: '16px', color: '#60a5fa' }} />
+              <span>Contact QR Code</span>
             </button>
 
             {/* Clear Chat History */}
@@ -445,7 +498,7 @@ export const ContactDetailsSidebar: React.FC<ContactDetailsSidebarProps> = ({
                   justifyContent: 'space-between',
                 }}
               >
-                <span style={{ fontSize: '0.76rem', color: '#f87171' }}>Clear messages?</span>
+                <span style={{ fontSize: '0.76rem', color: '#f87171' }}>Clear all messages?</span>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button
                     type="button"
@@ -587,6 +640,23 @@ export const ContactDetailsSidebar: React.FC<ContactDetailsSidebarProps> = ({
         contact={contact}
         messages={messages}
         onMediaClick={onMediaClick}
+      />
+
+      {/* Export Chat Modal */}
+      <ExportChatModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        messages={messages}
+        contactName={contact.displayName || contact.username}
+      />
+
+      {/* QR Code Modal */}
+      <QRCodeModal
+        isOpen={isQRModalOpen}
+        onClose={() => setIsQRModalOpen(false)}
+        username={contact.username}
+        displayName={contact.displayName}
+        avatarUrl={contact.avatarId}
       />
     </>
   );

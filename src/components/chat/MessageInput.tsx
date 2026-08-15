@@ -1,15 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, Mic, Camera, X, Smile } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Send, Paperclip, Mic, X, Smile, Sparkles, BarChart3 } from 'lucide-react';
 import { Message } from '../../types';
 import { VoiceRecorder } from './VoiceRecorder';
+import { GifPickerModal } from './GifPickerModal';
+import { CreatePollModal } from './CreatePollModal';
 import { uploadMediaFile } from '../../services/api';
-import { takeNativePhoto, triggerHaptic } from '../../services/capacitor';
+import { triggerHaptic } from '../../services/capacitor';
 
 interface MessageInputProps {
   onSendMessage: (text: string, options?: { attachment?: any; replyTo?: any; isVoice?: boolean }) => void;
   onTyping: (isTyping: boolean) => void;
   replyMessage: Message | null;
   onCancelReply: () => void;
+  onCreatePoll?: (question: string, options: string[]) => void;
 }
 
 const EMOJI_LIST = ['😀', '😂', '😍', '🔥', '👍', '🎉', '❤️', '🙌', '✨', '🚀'];
@@ -19,14 +23,43 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   onTyping,
   replyMessage,
   onCancelReply,
+  onCreatePoll,
 }) => {
   const [text, setText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showGifModal, setShowGifModal] = useState(false);
+  const [showPollModal, setShowPollModal] = useState(false);
   const typingTimerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const emojiBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Close emoji picker on click outside
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(e.target as Node) &&
+        emojiBtnRef.current &&
+        !emojiBtnRef.current.contains(e.target as Node)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [showEmojiPicker]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -106,21 +139,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }
   };
 
-  const handleNativeCamera = async () => {
-    const photoUrl = await takeNativePhoto();
-    if (photoUrl) {
-      onSendMessage('', {
-        attachment: {
-          url: photoUrl,
-          name: 'photo.jpg',
-          mime: 'image/jpeg',
-          size: 1024 * 500,
-          kind: 'image',
-        },
-      });
-    }
-  };
-
   const handleSendVoice = (voiceUrl: string) => {
     onSendMessage('', {
       attachment: {
@@ -172,39 +190,46 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         </div>
       )}
 
-      {/* Emoji Picker Popup */}
-      {showEmojiPicker && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: '100%',
-            marginBottom: '10px',
-            left: '0',
-            background: '#161f30',
-            border: '1px solid var(--border)',
-            borderRadius: '16px',
-            padding: '10px',
-            display: 'flex',
-            gap: '8px',
-            boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
-            zIndex: 30,
-          }}
-        >
-          {EMOJI_LIST.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              onClick={() => {
-                setText((prev) => prev + emoji);
-                setShowEmojiPicker(false);
-              }}
-              style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', padding: '2px' }}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Emoji Picker Popup with smooth fade & outside click dismiss */}
+      <AnimatePresence>
+        {showEmojiPicker && (
+          <motion.div
+            ref={emojiPickerRef}
+            initial={{ opacity: 0, scale: 0.92, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 8 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              marginBottom: '10px',
+              left: '0',
+              background: '#161f30',
+              border: '1px solid var(--border)',
+              borderRadius: '16px',
+              padding: '10px',
+              display: 'flex',
+              gap: '8px',
+              boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
+              zIndex: 30,
+            }}
+          >
+            {EMOJI_LIST.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => {
+                  setText((prev) => prev + emoji);
+                  setShowEmojiPicker(false);
+                }}
+                style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', padding: '2px' }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Input Bar */}
       <div
@@ -230,15 +255,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           </button>
 
           <button
-            type="button"
-            onClick={handleNativeCamera}
-            className="input-action-btn"
-            title="Camera"
-          >
-            <Camera style={{ width: '18px', height: '18px' }} />
-          </button>
-
-          <button
+            ref={emojiBtnRef}
             type="button"
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
             className="input-action-btn"
@@ -246,6 +263,32 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           >
             <Smile style={{ width: '18px', height: '18px' }} />
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setShowGifModal(true);
+            }}
+            className="input-action-btn"
+            title="Search GIFs & Memes"
+          >
+            <Sparkles style={{ width: '18px', height: '18px', color: '#ec4899' }} />
+          </button>
+
+          {onCreatePoll && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setShowPollModal(true);
+              }}
+              className="input-action-btn"
+              title="Create Poll"
+            >
+              <BarChart3 style={{ width: '18px', height: '18px', color: '#f59e0b' }} />
+            </button>
+          )}
         </div>
 
         <textarea
@@ -281,6 +324,40 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           )}
         </div>
       </div>
+
+      <GifPickerModal
+        isOpen={showGifModal}
+        onClose={() => setShowGifModal(false)}
+        onSelectGif={(url) => {
+          onSendMessage('', {
+            attachment: {
+              url,
+              name: 'GIF',
+              kind: 'image',
+              mime: 'image/gif',
+            },
+            replyTo: replyMessage
+              ? {
+                  id: replyMessage.id,
+                  sender: replyMessage.sender,
+                  text: replyMessage.text,
+                  attachment: replyMessage.attachment,
+                }
+              : undefined,
+          });
+          onCancelReply();
+        }}
+      />
+
+      {onCreatePoll && (
+        <CreatePollModal
+          isOpen={showPollModal}
+          onClose={() => setShowPollModal(false)}
+          onCreatePoll={(question, options) => {
+            onCreatePoll(question, options);
+          }}
+        />
+      )}
     </div>
   );
 };

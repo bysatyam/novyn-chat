@@ -13,6 +13,19 @@ export interface Reaction {
   username: string;
 }
 
+export interface PollOption {
+  id: string;
+  text: string;
+  votes: string[];
+}
+
+export interface Poll {
+  id: string;
+  question: string;
+  options: PollOption[];
+  totalVotes: number;
+}
+
 export interface Message {
   id: string;
   sender: string;
@@ -30,6 +43,10 @@ export interface Message {
   reactions?: Record<string, string[]>; // emoji -> [usernames]
   isVoice?: boolean;
   voiceDuration?: number;
+  pinnedAt?: string | null;
+  pinnedBy?: string;
+  expiresAt?: string | null;
+  poll?: Poll | null;
 }
 
 export interface UserProfile {
