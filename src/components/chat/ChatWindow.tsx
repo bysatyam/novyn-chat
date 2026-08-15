@@ -215,16 +215,37 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const handleForward = (targetUsername: string, msg: Message) => {
+    if (!targetUsername || !user) return;
+
+    if (activeChat && activeChat.toLowerCase() === targetUsername.toLowerCase()) {
+      sendMessage(msg.text || '', {
+        attachment: msg.attachment,
+        isVoice: msg.isVoice,
+      });
+      triggerHaptic('success');
+      return;
+    }
+
     const socket = getSocket();
-    if (!socket || !user) return;
+    if (!socket) return;
+
+    const targetConv = conversations.find(
+      (c) => c.username.toLowerCase() === targetUsername.toLowerCase()
+    );
+    const toType = targetConv?.isGroup ? 'group' : 'friend';
+
     const clientTempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    socket.emit('private_message', {
+    const payload = {
       to: targetUsername,
-      toType: 'friend',
+      toType,
       text: msg.text || (msg.attachment?.kind === 'image' ? '[Image]' : msg.isVoice ? '[Voice Message]' : '[File]'),
       attachment: msg.attachment || null,
+      replyTo: null,
       clientTempId,
-    });
+    };
+
+    socket.emit('private_message', payload);
+    triggerHaptic('success');
   };
 
   if (!activeChat) {

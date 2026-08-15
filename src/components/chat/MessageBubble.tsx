@@ -87,11 +87,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [openBelow, setOpenBelow] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text || '');
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
+
+  const toggleActionsMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    triggerHaptic('light');
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setOpenBelow(rect.top < 280);
+    }
+    setShowActionsMenu((prev) => !prev);
+    setShowReactions(false);
+  };
 
   // Keep menu open stably: close only on outside clicks
   useEffect(() => {
@@ -226,12 +238,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       {isMe && (
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            triggerHaptic('light');
-            setShowActionsMenu((prev) => !prev);
-            setShowReactions(false);
-          }}
+          onClick={toggleActionsMenu}
           className="msg-action-trigger"
           style={{
             background: 'none',
@@ -326,12 +333,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               onClick={(e) => e.stopPropagation()}
               style={{
                 position: 'absolute',
-                top: isMe ? 'auto' : '100%',
-                bottom: isMe ? '100%' : 'auto',
+                top: openBelow ? '100%' : 'auto',
+                bottom: openBelow ? 'auto' : '100%',
                 right: isMe ? '0' : 'auto',
                 left: isMe ? 'auto' : '0',
-                marginTop: isMe ? '0' : '6px',
-                marginBottom: isMe ? '6px' : '0',
+                marginTop: openBelow ? '6px' : '0',
+                marginBottom: openBelow ? '0' : '6px',
                 background: '#131b2e',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
                 borderRadius: '14px',
@@ -341,7 +348,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 gap: '2px',
                 minWidth: '160px',
                 boxShadow: '0 16px 36px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-                zIndex: 100,
+                zIndex: 1000,
                 backdropFilter: 'blur(16px)',
               }}
             >
@@ -795,12 +802,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       {!isMe && (
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            triggerHaptic('light');
-            setShowActionsMenu((prev) => !prev);
-            setShowReactions(false);
-          }}
+          onClick={toggleActionsMenu}
           className="msg-action-trigger"
           style={{
             background: 'none',
