@@ -87,15 +87,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }
 
   return (
-    <div className="chat-window-container">
-      {/* Main Chat Stream */}
-      <div className="chat-main-area">
+    <div style={{ display: 'flex', width: '100%', height: '100%', overflow: 'hidden' }}>
+      {/* Central Conversation Column */}
+      <div className="chat-window" style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <div className="chat-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button
               type="button"
-              className="chat-header-action-btn mobile-only-btn"
+              className="header-action-btn mobile-only-btn"
               onClick={() => {
                 triggerHaptic('light');
                 setActiveChat(null);
@@ -109,7 +109,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             {onToggleList && (
               <button
                 type="button"
-                className="chat-header-action-btn desktop-only-btn"
+                className="header-action-btn desktop-only-btn"
                 onClick={() => {
                   triggerHaptic('light');
                   onToggleList();
@@ -159,7 +159,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           <div className="chat-header-actions">
             <button
               type="button"
-              className="chat-header-action-btn"
+              className="header-action-btn"
               onClick={() => {
                 triggerHaptic('medium');
                 startCall(activeChat, false);
@@ -171,7 +171,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
             <button
               type="button"
-              className="chat-header-action-btn"
+              className="header-action-btn"
               onClick={() => {
                 triggerHaptic('medium');
                 startCall(activeChat, true);
@@ -183,7 +183,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
             <button
               type="button"
-              className={`chat-header-action-btn ${isDetailsOpen ? 'active' : ''}`}
+              className="header-action-btn"
+              style={isDetailsOpen ? { background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' } : {}}
               onClick={() => {
                 triggerHaptic('light');
                 setIsDetailsOpen((prev) => !prev);
