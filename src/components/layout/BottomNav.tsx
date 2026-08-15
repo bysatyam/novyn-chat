@@ -13,7 +13,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   onSelectTab,
 }) => {
-  const { friendRequests } = useChat();
+  const { friendRequests, activeChat } = useChat();
+
+  if (activeChat) return null;
 
   return (
     <nav className="mobile-bottom-nav">

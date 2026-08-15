@@ -37,6 +37,7 @@ interface ChatContextType {
   unpinMessage: (messageId: string) => void;
   createPoll: (question: string, options: string[]) => void;
   votePoll: (messageId: string, optionId: string) => void;
+  createGroup: (name: string, members: string[]) => void;
   chatWallpaper: string;
   setChatWallpaper: (to: string, wallpaper: string) => void;
   startCall: (remoteUser: string, isVideo?: boolean) => Promise<void>;
@@ -321,17 +322,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     socket.emit('resume_session');
 
-    // Friend list sync
+    // Friend & Group list sync
     const handleFriendList = (data: any) => {
       const list = Array.isArray(data) ? data : data?.friends || [];
       const formatted: Conversation[] = list.map((item: any) => ({
-        username: item.username || item.key,
-        displayName: item.displayName || item.username || item.key,
+        username: item.username || item.groupId || item.key,
+        displayName: item.displayName || item.name || item.username || item.key,
         avatarId: item.avatarId,
         online: Boolean(item.online && item.presence !== 'offline'),
         presence: item.presence || (item.online ? 'online' : 'offline'),
         lastSeenAt: item.lastSeenAt,
         unreadCount: item.unreadCount || 0,
+        isGroup: item.kind === 'group' || Boolean(item.groupId) || Boolean(item.memberCount && item.memberCount > 2),
+        groupId: item.groupId || (item.kind === 'group' ? item.username : undefined),
+        memberCount: item.memberCount || 2,
+        owner: item.owner,
+        members: item.members,
         lastMessage: item.lastMessage
           ? {
               id: item.lastMessage.id || '1',
@@ -345,6 +351,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
       setConversations(formatted);
     };
+
+    socket.on('group_created', ({ group }: any) => {
+      triggerHaptic('success');
+      if (group?.id) {
+        setActiveChat(group.id);
+      }
+    });
 
     const handleRequests = (data: any) => {
       const list = Array.isArray(data) ? data : data?.requests || [];
@@ -830,10 +843,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const socket = getSocket();
       if (!socket) return;
 
+      const activeConv = conversationsRef.current.find(
+        (c) => c.username.toLowerCase() === activeChat.toLowerCase()
+      );
+      const toType = activeConv?.isGroup ? 'group' : 'friend';
+
       const clientTempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const payload = {
         to: activeChat,
-        toType: 'friend',
+        toType,
         text: text || (options.attachment?.kind === 'image' ? '[Image]' : options.isVoice ? '[Voice Message]' : '[File]'),
         attachment: options.attachment || null,
         replyTo: options.replyTo || null,
@@ -865,7 +883,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!activeChat) return;
       const socket = getSocket();
       if (!socket) return;
-      socket.emit('typing', { to: activeChat, isTyping, toType: 'friend' });
+      const activeConv = conversationsRef.current.find(
+        (c) => c.username.toLowerCase() === activeChat.toLowerCase()
+      );
+      const toType = activeConv?.isGroup ? 'group' : 'friend';
+      socket.emit('typing', { to: activeChat, isTyping, toType });
     },
     [activeChat]
   );
@@ -1003,6 +1025,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       triggerHaptic('light');
     },
     [activeChat]
+  );
+
+  const createGroup = useCallback(
+    (name: string, members: string[]) => {
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('create_group', { name, members });
+      triggerHaptic('success');
+    },
+    []
   );
 
   const setChatWallpaper = useCallback(
@@ -1144,6 +1176,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         unpinMessage,
         createPoll,
         votePoll,
+        createGroup,
         chatWallpaper,
         setChatWallpaper,
         startCall,

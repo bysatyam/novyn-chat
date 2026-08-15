@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useChat } from '../../context/ChatContext';
 import { Avatar } from '../ui/Avatar';
-import { Search, UserPlus, MessageSquare } from 'lucide-react';
+import { Search, UserPlus, Users, MessageSquare } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
+import { CreateGroupModal } from './CreateGroupModal';
 
 interface ChatListProps {
   onOpenContacts: () => void;
@@ -15,6 +16,7 @@ export const ChatList: React.FC<ChatListProps> = ({
 }) => {
   const { conversations, activeChat, setActiveChat } = useChat();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
 
   const filteredConversations = conversations.filter((c) => {
     const query = searchQuery.toLowerCase();
@@ -166,17 +168,30 @@ export const ChatList: React.FC<ChatListProps> = ({
       {/* Top Header */}
       <div className="chat-list-header">
         <h2 className="chat-list-title">Chats</h2>
-        <button
-          type="button"
-          onClick={() => {
-            triggerHaptic('light');
-            onOpenContacts();
-          }}
-          className="header-action-btn"
-          title="Add Friend"
-        >
-          <UserPlus style={{ width: '18px', height: '18px' }} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setIsGroupModalOpen(true);
+            }}
+            className="header-action-btn"
+            title="Create New Group"
+          >
+            <Users style={{ width: '18px', height: '18px', color: '#10b981' }} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onOpenContacts();
+            }}
+            className="header-action-btn"
+            title="Add Friend"
+          >
+            <UserPlus style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -260,6 +275,12 @@ export const ChatList: React.FC<ChatListProps> = ({
           })
         )}
       </div>
+
+      {/* Create Group Modal */}
+      <CreateGroupModal
+        isOpen={isGroupModalOpen}
+        onClose={() => setIsGroupModalOpen(false)}
+      />
     </div>
   );
 };

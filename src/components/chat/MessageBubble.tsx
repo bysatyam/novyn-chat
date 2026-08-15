@@ -35,6 +35,7 @@ interface MessageBubbleProps {
   onVotePoll?: (messageId: string, optionId: string) => void;
   currentUsername?: string;
   searchQuery?: string;
+  isGroup?: boolean;
 }
 
 const HighlightText: React.FC<{ text: string; query?: string }> = ({ text, query }) => {
@@ -81,6 +82,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onVotePoll,
   currentUsername,
   searchQuery,
+  isGroup = false,
 }) => {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -602,6 +604,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Group Sender Name */}
+        {isGroup && !isMe && (
+          <div
+            style={{
+              fontSize: '0.74rem',
+              fontWeight: 800,
+              color: '#34d399',
+              marginBottom: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            @{message.sender}
+          </div>
+        )}
 
         {/* Reply Context Header */}
         {message.replyTo && (

@@ -1068,16 +1068,49 @@ html, body {
   }
 }
 
+.mobile-only-btn {
+  display: none !important;
+}
+
+.desktop-only-btn {
+  display: inline-flex !important;
+}
+
 @media (max-width: 640px) {
   .desktop-sidebar {
-    display: none;
+    display: none !important;
   }
   .chat-list-panel {
-    width: 100%;
-    border-right: none;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-right: none !important;
   }
   .mobile-bottom-nav {
-    display: flex;
+    display: flex !important;
+  }
+  .mobile-only-btn {
+    display: inline-flex !important;
+  }
+  .desktop-only-btn {
+    display: none !important;
+  }
+  .chat-header {
+    padding: 10px 14px !important;
+    height: 60px !important;
+  }
+  .chat-header-actions .header-action-btn {
+    width: 34px !important;
+    height: 34px !important;
+    padding: 0 !important;
+  }
+  .message-input-container {
+    padding: 8px 10px max(10px, env(safe-area-inset-bottom)) !important;
+  }
+  .messages-container {
+    padding: 14px 10px !important;
+  }
+  .msg-bubble {
+    max-width: 86% !important;
   }
 }
 

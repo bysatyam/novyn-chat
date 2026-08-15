@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useChat } from '../../context/ChatContext';
 import { Avatar } from '../ui/Avatar';
-import { Users, UserPlus, UserCheck, Search, MessageSquare, Phone, Video, Check, X } from 'lucide-react';
+import { Users, UserPlus, UserCheck, Search, MessageSquare, Phone, Video, Check, X, Plus } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
+import { CreateGroupModal } from '../chat/CreateGroupModal';
 
 interface ContactsPanelProps {
   isCompact?: boolean;
@@ -24,6 +25,7 @@ export const ContactsPanel: React.FC<ContactsPanelProps> = ({ isCompact = false 
   const [targetUsername, setTargetUsername] = useState('');
   const [statusMessage, setStatusMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
 
   const filteredFriends = conversations.filter((c) => {
     const q = searchQuery.toLowerCase();
@@ -112,19 +114,33 @@ export const ContactsPanel: React.FC<ContactsPanelProps> = ({ isCompact = false 
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            triggerHaptic('light');
-            setActiveSubTab(activeSubTab === 'add' ? 'all' : 'add');
-            setStatusMessage(null);
-          }}
-          className="header-action-btn"
-          style={activeSubTab === 'add' ? { background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' } : {}}
-          title={activeSubTab === 'add' ? 'View Friends' : 'Add Friend'}
-        >
-          <UserPlus style={{ width: '18px', height: '18px' }} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setIsGroupModalOpen(true);
+            }}
+            className="header-action-btn"
+            title="Create New Group"
+          >
+            <Plus style={{ width: '18px', height: '18px', color: '#10b981' }} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setActiveSubTab(activeSubTab === 'add' ? 'all' : 'add');
+              setStatusMessage(null);
+            }}
+            className="header-action-btn"
+            style={activeSubTab === 'add' ? { background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' } : {}}
+            title={activeSubTab === 'add' ? 'View Friends' : 'Add Friend'}
+          >
+            <UserPlus style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
       </div>
 
       {/* Sub-Tabs: All Friends | Requests (badge) | Add New */}
@@ -437,6 +453,12 @@ export const ContactsPanel: React.FC<ContactsPanelProps> = ({ isCompact = false 
           </div>
         </div>
       )}
+
+      {/* Create Group Modal */}
+      <CreateGroupModal
+        isOpen={isGroupModalOpen}
+        onClose={() => setIsGroupModalOpen(false)}
+      />
     </div>
   );
 };

@@ -208,7 +208,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 setActiveChat(null);
               }}
               title="Back to chats"
-              style={{ display: 'none' }}
             >
               <ChevronLeft style={{ width: '20px', height: '20px' }} />
             </button>
@@ -250,6 +249,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 <div className={`chat-header-status ${activeContact?.online ? 'online' : ''}`}>
                   {isTyping ? (
                     <span style={{ color: '#10b981', fontWeight: 700 }}>typing...</span>
+                  ) : activeContact?.isGroup ? (
+                    <span style={{ color: '#38bdf8', fontWeight: 600 }}>{activeContact.memberCount || 2} members</span>
                   ) : activeContact?.presence === 'away' ? (
                     <span style={{ color: '#f59e0b', fontWeight: 600 }}>Away</span>
                   ) : activeContact?.online ? (
@@ -278,29 +279,33 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               <Search style={{ width: '16px', height: '16px' }} />
             </button>
 
-            <button
-              type="button"
-              className="header-action-btn"
-              onClick={() => {
-                triggerHaptic('medium');
-                startCall(activeChat, false);
-              }}
-              title="Start Audio Call"
-            >
-              <Phone style={{ width: '16px', height: '16px' }} />
-            </button>
+            {!activeContact?.isGroup && (
+              <>
+                <button
+                  type="button"
+                  className="header-action-btn"
+                  onClick={() => {
+                    triggerHaptic('medium');
+                    startCall(activeChat, false);
+                  }}
+                  title="Start Audio Call"
+                >
+                  <Phone style={{ width: '16px', height: '16px' }} />
+                </button>
 
-            <button
-              type="button"
-              className="header-action-btn"
-              onClick={() => {
-                triggerHaptic('medium');
-                startCall(activeChat, true);
-              }}
-              title="Start Video Call"
-            >
-              <Video style={{ width: '16px', height: '16px' }} />
-            </button>
+                <button
+                  type="button"
+                  className="header-action-btn"
+                  onClick={() => {
+                    triggerHaptic('medium');
+                    startCall(activeChat, true);
+                  }}
+                  title="Start Video Call"
+                >
+                  <Video style={{ width: '16px', height: '16px' }} />
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -386,6 +391,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onVotePoll={votePoll}
                 currentUsername={user?.username}
                 searchQuery={searchQuery}
+                isGroup={Boolean(activeContact?.isGroup)}
               />
             ))
           )}

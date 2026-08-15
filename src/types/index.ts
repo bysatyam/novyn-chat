@@ -73,6 +73,11 @@ export interface Conversation {
   lastSeenAt?: string;
   typing?: boolean;
   bio?: string;
+  isGroup?: boolean;
+  groupId?: string;
+  memberCount?: number;
+  owner?: string;
+  members?: string[];
 }
 
 export interface FriendRequest {
