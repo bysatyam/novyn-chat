@@ -104,8 +104,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } else {
       const isNewLiveMessage = messages.length > prevMessagesCountRef.current;
       if (isNewLiveMessage) {
+        const lastMsg = messages[messages.length - 1];
+        const isSentByMe = lastMsg?.sender?.toLowerCase() === user?.username?.toLowerCase();
         const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 220;
-        if (isNearBottom) {
+        if (isSentByMe || isNearBottom) {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
       }
@@ -461,6 +463,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onUnsend={(id) => unsendMessage(id)}
                 onEdit={(id, text) => editMessage(id, text)}
                 onVotePoll={votePoll}
+                onJumpToMessage={handleJumpToMessage}
                 currentUsername={user?.username}
                 searchQuery={searchQuery}
                 isGroup={Boolean(activeContact?.isGroup)}

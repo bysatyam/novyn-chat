@@ -33,6 +33,7 @@ interface MessageBubbleProps {
   onUnsend?: (messageId: string) => void;
   onEdit?: (messageId: string, newText: string) => void;
   onVotePoll?: (messageId: string, optionId: string) => void;
+  onJumpToMessage?: (messageId: string) => void;
   currentUsername?: string;
   searchQuery?: string;
   isGroup?: boolean;
@@ -80,6 +81,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onUnsend,
   onEdit,
   onVotePoll,
+  onJumpToMessage,
   currentUsername,
   searchQuery,
   isGroup = false,
@@ -628,9 +630,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         )}
 
-        {/* Reply Context Header */}
+        {/* Reply Context Header (Click to jump to original message/image) */}
         {message.replyTo && (
           <div
+            onClick={(e) => {
+              e.stopPropagation();
+              triggerHaptic('light');
+              const targetId = message.replyTo?.id;
+              if (targetId) {
+                onJumpToMessage?.(targetId);
+              }
+            }}
             style={{
               padding: '6px 10px',
               borderRadius: '8px',
@@ -638,14 +648,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               background: 'rgba(0, 0, 0, 0.25)',
               fontSize: '0.75rem',
               marginBottom: '8px',
+              cursor: 'pointer',
+              transition: 'background 0.15s ease',
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.4)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.25)')}
+            title="Click to jump to original message"
           >
             <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
               <CornerDownRight style={{ width: '12px', height: '12px' }} />
               {message.replyTo.sender}
             </div>
-            <div style={{ opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {message.replyTo.text || 'Attachment'}
+            <div style={{ opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {message.replyTo.attachment?.kind === 'image'
+                ? '📷 [Image]'
+                : message.replyTo.attachment?.kind === 'audio'
+                ? '🎤 [Voice Message]'
+                : message.replyTo.text || '[Attachment]'}
             </div>
           </div>
         )}
