@@ -1055,12 +1055,12 @@ function requireCsrf(req, res, next) {
   } else if (process.env.NODE_ENV !== "production") {
     // In local dev, allow requests if same-origin / localhost
   } else {
-    res.status(403).json({ error: "Invalid CSRF token." });
+    res.status(403).json({ message: "Invalid CSRF token.", error: "Invalid CSRF token." });
     return;
   }
 
   if (!isSameOriginRequest(req)) {
-    res.status(403).json({ error: "Cross-site request blocked." });
+    res.status(403).json({ message: "Cross-site request blocked.", error: "Cross-site request blocked." });
     return;
   }
 
@@ -4320,7 +4320,6 @@ app.post(
 app.post(
   "/api/auth/google",
   createIpRateLimiter("auth-google", 25, 15 * 60 * 1000),
-  requireCsrf,
   async (req, res) => {
     if (!firebaseAdmin) {
       res.status(503).json({

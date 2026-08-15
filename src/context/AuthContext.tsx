@@ -83,7 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     triggerHaptic('error');
-    return { ok: false, error: res.data?.message || 'Login failed' };
+    return { ok: false, error: res.data?.message || res.data?.error || 'Login failed' };
   };
 
   const signup = async ({ name, username, email, password }: { name: string; username: string; email: string; password: string }) => {
@@ -104,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     triggerHaptic('error');
-    return { ok: false, error: res.data?.message || 'Registration failed' };
+    return { ok: false, error: res.data?.message || res.data?.error || 'Registration failed' };
   };
 
   const loginWithGoogle = async () => {
@@ -131,7 +131,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       triggerHaptic('error');
-      return { ok: false, error: res.data?.message || 'Google sign-in rejected' };
+      const errorMsg = res.data?.message || res.data?.error || (res.status === 503 ? 'Firebase Admin not configured on server' : `Google sign-in rejected (${res.status || 'server error'})`);
+      return { ok: false, error: errorMsg };
     } catch (err: any) {
       triggerHaptic('error');
       return { ok: false, error: err?.message || 'Google sign-in error' };
