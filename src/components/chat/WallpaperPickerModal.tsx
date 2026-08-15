@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Image as ImageIcon, Check, X, Sparkles, Upload, Link as LinkIcon, Loader2 } from 'lucide-react';
+import { Check, X, Sparkles, Upload, Link as LinkIcon, Loader2 } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
 import { uploadMediaFile } from '../../services/api';
 
@@ -12,12 +12,107 @@ export interface WallpaperPreset {
   preview: string;
 }
 
-// Doodle SVG patterns encoded as CSS background SVGs
-const WHATSAPP_DOODLE_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="20" cy="20" r="8"/><path d="M50 15h16v16H50z"/><path d="M15 55l10-10 10 10-10 10z"/><circle cx="60" cy="60" r="4"/><path d="M55 45l10 10m0-10l-10 10"/><path d="M10 35c5 0 5 10 10 10s5-10 10-10"/></svg>`;
-const COSMIC_DOODLE_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="90" height="90" viewBox="0 0 90 90" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1.2"><circle cx="45" cy="45" r="12"/><ellipse cx="45" cy="45" rx="22" ry="6" transform="rotate(-25 45 45)"/><circle cx="15" cy="20" r="2" fill="rgba(255,255,255,0.15)"/><circle cx="75" cy="70" r="1.5" fill="rgba(255,255,255,0.15)"/><path d="M20 70l4-4m-4 0l4 4"/><polygon points="70,20 72,25 77,25 73,28 75,33 70,30 65,33 67,28 63,25 68,25"/></svg>`;
-const TECH_DOODLE_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60" fill="none" stroke="rgba(16,185,129,0.12)" stroke-width="1.5"><rect x="10" y="10" width="16" height="16" rx="2"/><circle cx="45" cy="20" r="6"/><path d="M26 18h13"/><path d="M18 26v15h20"/><circle cx="40" cy="45" r="4"/><path d="M45 26v10"/></svg>`;
-const GEOMETRIC_DOODLE_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="70" height="70" viewBox="0 0 70 70" fill="none" stroke="rgba(96,165,250,0.12)" stroke-width="1.4"><polygon points="35,10 60,50 10,50"/><circle cx="35" cy="35" r="8"/><path d="M35 10v40"/></svg>`;
-const RETRO_ARCADE_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="75" height="75" viewBox="0 0 75 75" fill="none" stroke="rgba(236,72,153,0.12)" stroke-width="1.5"><rect x="15" y="15" width="20" height="14" rx="3"/><circle cx="55" cy="22" r="5"/><path d="M15 50h45"/><path d="M25 40v20m25-20v20"/></svg>`;
+// Helper to reliably encode SVG to data URI without breakage
+const encodeSvg = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.trim())}`;
+
+// 1. WhatsApp-style Chat Doodles (High contrast, clearly visible vector motifs)
+const WHATSAPP_DOODLES = encodeSvg(`
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Chat Bubble -->
+  <path d="M15 20h26a6 6 0 0 1 6 6v14a6 6 0 0 1-6 6H25l-7 6v-6h-3a6 6 0 0 1-6-6V26a6 6 0 0 1 6-6z"/>
+  <!-- Heart -->
+  <path d="M85 22c-3-4-8-4-11 0l-1 1-1-1c-3-4-8-4-11 0-4 4-2 10 3 14l9 8 9-8c5-4 7-10 3-14z"/>
+  <!-- Smiley -->
+  <circle cx="28" cy="85" r="14"/>
+  <circle cx="23" cy="82" r="1.5" fill="rgba(255,255,255,0.4)"/>
+  <circle cx="33" cy="82" r="1.5" fill="rgba(255,255,255,0.4)"/>
+  <path d="M22 89c2 3 10 3 12 0"/>
+  <!-- Coffee Cup -->
+  <path d="M75 75h22v14a6 6 0 0 1-6 6H81a6 6 0 0 1-6-6V75z"/>
+  <path d="M97 78h4a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3h-4"/>
+  <path d="M80 68c0-3 3-4 3-6m6 6c0-3 3-4 3-6"/>
+  <!-- Star & Sparkles -->
+  <polygon points="105,25 107,31 113,31 108,35 110,41 105,37 100,41 102,35 97,31 103,31" fill="rgba(255,255,255,0.15)"/>
+  <path d="M55 85l3-3m-3 0l3 3"/>
+  <!-- Paper Airplane -->
+  <path d="M70 45l30-15-12 28-6-8-12-5z"/>
+</svg>
+`);
+
+// 2. Cosmic Galaxy & Space Doodles
+const COSMIC_DOODLES = encodeSvg(`
+<svg xmlns="http://www.w3.org/2000/svg" width="130" height="130" viewBox="0 0 130 130" fill="none" stroke="rgba(168,85,247,0.3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Saturn Planet -->
+  <circle cx="40" cy="40" r="15"/>
+  <ellipse cx="40" cy="40" rx="26" ry="8" transform="rotate(-25 40 40)"/>
+  <!-- Moon Crescent -->
+  <path d="M95 20a14 14 0 1 0 14 14 11 11 0 0 1-14-14z"/>
+  <!-- Rocket -->
+  <path d="M35 105l8-8a15 15 0 0 0 4-11l-1-6-6-1a15 15 0 0 0-11 4l-8 8 3 8 3 3 8 3z"/>
+  <circle cx="38" cy="92" r="2" fill="rgba(168,85,247,0.5)"/>
+  <!-- Constellations & Stars -->
+  <polygon points="95,80 97,85 102,85 98,88 100,93 95,90 90,93 92,88 88,85 93,85" fill="rgba(168,85,247,0.25)"/>
+  <circle cx="80" cy="115" r="2" fill="rgba(255,255,255,0.5)"/>
+  <circle cx="115" cy="70" r="1.5" fill="rgba(255,255,255,0.5)"/>
+  <circle cx="15" cy="20" r="2" fill="rgba(255,255,255,0.5)"/>
+  <path d="M100 105l8-8m-8 0l8 8"/>
+</svg>
+`);
+
+// 3. Matrix & Cyber Tech Circuit Doodles
+const TECH_DOODLES = encodeSvg(`
+<svg xmlns="http://www.w3.org/2000/svg" width="110" height="110" viewBox="0 0 110 110" fill="none" stroke="rgba(16,185,129,0.32)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Microchip -->
+  <rect x="20" y="20" width="26" height="26" rx="4"/>
+  <path d="M26 14v6m8-6v6m8-6v6M26 46v6m8-6v6m8-6v6M14 26h6m-6 8h6m-6 8h6M46 26h6m-6 8h6m-6 8h6"/>
+  <!-- Circuit Nodes -->
+  <circle cx="85" cy="30" r="5"/>
+  <path d="M46 34h25l9-9"/>
+  <circle cx="80" cy="80" r="6"/>
+  <path d="M33 46v30h35"/>
+  <!-- Lightning Bolt -->
+  <polygon points="25,75 35,75 30,95 45,82 35,82 38,70" fill="rgba(16,185,129,0.2)"/>
+  <!-- Hexagon Node -->
+  <polygon points="90,55 98,60 98,70 90,75 82,70 82,60"/>
+</svg>
+`);
+
+// 4. Retro Arcade & 8-Bit Gaming Doodles
+const ARCADE_DOODLES = encodeSvg(`
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="rgba(236,72,153,0.32)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Gamepad Controller -->
+  <rect x="20" y="25" width="45" height="28" rx="8"/>
+  <path d="M28 39h10m-5-5v10"/>
+  <circle cx="53" cy="36" r="2" fill="rgba(236,72,153,0.5)"/>
+  <circle cx="58" cy="42" r="2" fill="rgba(236,72,153,0.5)"/>
+  <!-- Pixel Ghost -->
+  <path d="M80 40a12 12 0 0 1 24 0v16l-4-3-4 3-4-3-4 3-4-3-4 3V40z"/>
+  <circle cx="87" cy="38" r="1.5" fill="rgba(255,255,255,0.6)"/>
+  <circle cx="97" cy="38" r="1.5" fill="rgba(255,255,255,0.6)"/>
+  <!-- Gem Diamond -->
+  <polygon points="35,80 48,80 55,90 35,105 15,90 22,80"/>
+  <!-- Arcade Joystick -->
+  <rect x="80" y="90" width="24" height="16" rx="4"/>
+  <path d="M92 90V75"/>
+  <circle cx="92" cy="72" r="5" fill="rgba(236,72,153,0.3)"/>
+</svg>
+`);
+
+// 5. Minimal Geometric & Neon Doodles
+const GEOMETRIC_DOODLES = encodeSvg(`
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" fill="none" stroke="rgba(56,189,248,0.3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Isometric Cube -->
+  <path d="M30 20l20-10 20 10-20 10-20-10z"/>
+  <path d="M30 20v22l20 10V40L30 20z"/>
+  <path d="M70 20v22l-20 10V40l20-20z"/>
+  <!-- Concentric Rings -->
+  <circle cx="30" cy="75" r="14"/>
+  <circle cx="30" cy="75" r="6"/>
+  <!-- Geometric Prism -->
+  <polygon points="75,60 90,88 60,88"/>
+  <path d="M75 60v28"/>
+</svg>
+`);
 
 export const WALLPAPER_PRESETS: WallpaperPreset[] = [
   {
@@ -29,32 +124,32 @@ export const WALLPAPER_PRESETS: WallpaperPreset[] = [
   {
     id: 'whatsapp_doodle',
     name: 'Chat Doodles',
-    background: `#0b1120 url("${WHATSAPP_DOODLE_SVG}") repeat`,
-    preview: `#0b1120 url("${WHATSAPP_DOODLE_SVG}") repeat`,
+    background: `#0b1120 url("${WHATSAPP_DOODLES}") repeat`,
+    preview: `#0b1120 url("${WHATSAPP_DOODLES}") repeat`,
   },
   {
     id: 'cosmic_doodle',
-    name: 'Cosmic Galaxy',
-    background: `#0f172a url("${COSMIC_DOODLE_SVG}") repeat`,
-    preview: `#0f172a url("${COSMIC_DOODLE_SVG}") repeat`,
+    name: 'Cosmic Space',
+    background: `#0f0e21 url("${COSMIC_DOODLES}") repeat`,
+    preview: `#0f0e21 url("${COSMIC_DOODLES}") repeat`,
   },
   {
     id: 'emerald_tech',
-    name: 'Matrix Circuit',
-    background: `#021f17 url("${TECH_DOODLE_SVG}") repeat`,
-    preview: `#021f17 url("${TECH_DOODLE_SVG}") repeat`,
+    name: 'Matrix Tech',
+    background: `#021a14 url("${TECH_DOODLES}") repeat`,
+    preview: `#021a14 url("${TECH_DOODLES}") repeat`,
+  },
+  {
+    id: 'arcade_doodle',
+    name: 'Retro Arcade',
+    background: `#1b071e url("${ARCADE_DOODLES}") repeat`,
+    preview: `#1b071e url("${ARCADE_DOODLES}") repeat`,
   },
   {
     id: 'cyber_geometric',
     name: 'Neon Geometry',
-    background: `#170b24 url("${GEOMETRIC_DOODLE_SVG}") repeat`,
-    preview: `#170b24 url("${GEOMETRIC_DOODLE_SVG}") repeat`,
-  },
-  {
-    id: 'retro_arcade',
-    name: 'Retro Arcade',
-    background: `#1e081f url("${RETRO_ARCADE_SVG}") repeat`,
-    preview: `#1e081f url("${RETRO_ARCADE_SVG}") repeat`,
+    background: `#061224 url("${GEOMETRIC_DOODLES}") repeat`,
+    preview: `#061224 url("${GEOMETRIC_DOODLES}") repeat`,
   },
 ];
 
@@ -86,21 +181,22 @@ export const WallpaperPickerModal: React.FC<WallpaperPickerModalProps> = ({
     triggerHaptic('light');
 
     try {
-      // If user pasted a webpage (like Pinterest/Imgur/etc.), resolve actual image from preview API
-      let resolvedUrl = raw;
-      if (!raw.match(/\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i)) {
-        try {
-          const res = await fetch(`/api/link-preview?url=${encodeURIComponent(raw)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.image) {
-              resolvedUrl = data.image;
-            }
-          }
-        } catch (_) {}
+      // Call backend wallpaper resolver (handles Pinterest oEmbed, OpenGraph, and caches directly on server)
+      const res = await fetch('/api/import-wallpaper-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: raw }),
+      });
+
+      let finalImgUrl = raw;
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          finalImgUrl = data.url;
+        }
       }
 
-      const bg = `url("${resolvedUrl}") center/cover no-repeat`;
+      const bg = `url("${finalImgUrl}") center/cover no-repeat`;
       onSelectWallpaper(bg);
       setCustomUrl('');
       triggerHaptic('success');
@@ -227,8 +323,8 @@ export const WallpaperPickerModal: React.FC<WallpaperPickerModalProps> = ({
                       height: '84px',
                       borderRadius: '14px',
                       background: preset.preview,
-                      border: `2px solid ${isSelected ? '#10b981' : 'rgba(255, 255, 255, 0.1)'}`,
-                      boxShadow: isSelected ? '0 0 16px rgba(16, 185, 129, 0.4)' : 'none',
+                      border: `2px solid ${isSelected ? '#10b981' : 'rgba(255, 255, 255, 0.14)'}`,
+                      boxShadow: isSelected ? '0 0 16px rgba(16, 185, 129, 0.45)' : 'none',
                       cursor: 'pointer',
                       position: 'relative',
                       overflow: 'hidden',
@@ -238,7 +334,7 @@ export const WallpaperPickerModal: React.FC<WallpaperPickerModalProps> = ({
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#ffffff', textShadow: '0 2px 4px rgba(0,0,0,0.9)' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ffffff', textShadow: '0 2px 4px rgba(0,0,0,0.95)' }}>
                       {preset.name}
                     </span>
                     {isSelected && (
@@ -319,7 +415,7 @@ export const WallpaperPickerModal: React.FC<WallpaperPickerModalProps> = ({
                 type="url"
                 value={customUrl}
                 onChange={(e) => setCustomUrl(e.target.value)}
-                placeholder="Or paste image/pinterest link..."
+                placeholder="Or paste Pinterest, Imgur, or direct image link..."
                 style={{
                   flex: 1,
                   background: 'rgba(255, 255, 255, 0.05)',

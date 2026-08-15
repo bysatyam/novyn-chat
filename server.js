@@ -4586,6 +4586,75 @@ app.get("/api/link-preview", async (req, res) => {
   }
 });
 
+app.post("/api/import-wallpaper-url", async (req, res) => {
+  const targetUrl = String(req.body?.url || "").trim();
+  if (!targetUrl || !targetUrl.startsWith("http")) {
+    return res.status(400).json({ error: "Invalid URL" });
+  }
+
+  try {
+    let directImageUrl = targetUrl;
+
+    // 1. Pinterest oEmbed handler for pins
+    if (targetUrl.includes("pinterest.com/pin/") || targetUrl.includes("pin.it/")) {
+      try {
+        const oembedRes = await fetch(`https://www.pinterest.com/oembed.json?url=${encodeURIComponent(targetUrl)}`);
+        if (oembedRes.ok) {
+          const oembedData = await oembedRes.json();
+          if (oembedData.url || oembedData.thumbnail_url) {
+            directImageUrl = oembedData.url || oembedData.thumbnail_url;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. OpenGraph / Twitter Image fallback if not a direct image file
+    if (!directImageUrl.match(/\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i)) {
+      try {
+        const ogRes = await fetch(directImageUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+        });
+        if (ogRes.ok) {
+          const html = await ogRes.text();
+          const ogImage = html.match(/<meta\s+(?:property|name)=["'](?:og:image|twitter:image)["']\s+content=["'](.*?)["']/i);
+          if (ogImage && ogImage[1]) {
+            directImageUrl = ogImage[1];
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. Download the image and cache locally in uploads directory
+    try {
+      const imgRes = await fetch(directImageUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Referer: new URL(directImageUrl).origin,
+        },
+      });
+
+      if (imgRes.ok) {
+        const buffer = Buffer.from(await imgRes.arrayBuffer());
+        let ext = path.extname(new URL(directImageUrl).pathname) || ".jpg";
+        if (ext.length > 5 || !ext) ext = ".jpg";
+        const filename = `wallpaper-${Date.now()}-${crypto.randomBytes(3).toString("hex")}${ext}`;
+        const destPath = path.join(uploadsDir, filename);
+        fs.writeFileSync(destPath, buffer);
+        const token = signUploadToken(filename);
+        return res.json({ url: `/uploads/${filename}?token=${token}` });
+      }
+    } catch (_) {}
+
+    // Fallback to direct URL if fetch failed
+    res.json({ url: directImageUrl });
+  } catch (err) {
+    console.error("Import wallpaper error:", err);
+    res.json({ url: targetUrl });
+  }
+});
+
 const distDir = path.join(__dirname, "dist");
 const publicDir = path.join(__dirname, "public");
 
