@@ -5,10 +5,12 @@ import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
 import { MediaViewerModal } from './MediaViewerModal';
 import { ContactDetailsSidebar } from './ContactDetailsSidebar';
+import { ForwardModal } from './ForwardModal';
 import { Avatar } from '../ui/Avatar';
 import { Message } from '../../types';
 import { Phone, Video, ChevronLeft, ShieldCheck, PanelLeftOpen, Info } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
+import { getSocket } from '../../services/socket';
 
 interface ChatWindowProps {
   isListCollapsed?: boolean;
@@ -41,6 +43,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   } = useChat();
 
   const [replyMessage, setReplyMessage] = useState<Message | null>(null);
+  const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
   const [selectedMedia, setSelectedMedia] = useState<string | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -54,64 +57,68 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  const handleForward = (targetUsername: string, msg: Message) => {
+    const socket = getSocket();
+    if (!socket || !user) return;
+    const clientTempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    socket.emit('private_message', {
+      to: targetUsername,
+      toType: 'friend',
+      text: msg.text || (msg.attachment?.kind === 'image' ? '[Image]' : msg.isVoice ? '[Voice Message]' : '[File]'),
+      attachment: msg.attachment || null,
+      clientTempId,
+    });
+  };
+
   if (!activeChat) {
     return (
       <div className="empty-chat-screen" style={{ position: 'relative', padding: '32px' }}>
         <div className="empty-chat-icon">
-          <ShieldCheck style={{ width: '32px', height: '32px' }} />
+          <ShieldCheck style={{ width: '48px', height: '48px', color: '#10b981' }} />
         </div>
-        <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', marginBottom: '8px' }}>
-          Your Messages
-        </h3>
-        <p style={{ fontSize: '0.88rem', maxWidth: '360px', lineHeight: 1.6, color: '#94a3b8', marginBottom: isListCollapsed ? '24px' : '0' }}>
-          Select a contact or add a friend to start chatting in real time with end-to-end encryption.
+        <h2 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '8px', color: '#ffffff' }}>
+          Select a Conversation
+        </h2>
+        <p style={{ color: 'var(--text-dark)', maxWidth: '360px', lineHeight: 1.5, fontSize: '0.9rem' }}>
+          Choose a contact from the left sidebar to start chatting with end-to-end encryption.
         </p>
-
-        {isListCollapsed && (
-          <button
-            type="button"
-            onClick={onToggleList}
-            className="btn btn-primary"
-            style={{ padding: '10px 20px', fontSize: '0.85rem', borderRadius: '14px' }}
-          >
-            <PanelLeftOpen style={{ width: '16px', height: '16px' }} /> Show Chats Panel
-          </button>
-        )}
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', width: '100%', height: '100%', overflow: 'hidden' }}>
-      {/* Central Conversation Column */}
-      <div className="chat-window" style={{ flex: 1, minWidth: 0 }}>
+    <div className="chat-window-container">
+      {/* Main Chat Stream */}
+      <div className="chat-main-area">
         {/* Header */}
         <div className="chat-header">
-          <div className="chat-header-user">
-            {isListCollapsed && (
-              <button
-                type="button"
-                onClick={onToggleList}
-                className="header-action-btn"
-                style={{ marginRight: '4px' }}
-                title="Show chats panel"
-              >
-                <PanelLeftOpen style={{ width: '18px', height: '18px' }} />
-              </button>
-            )}
-
-            {/* Mobile Back button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button
               type="button"
+              className="chat-header-action-btn mobile-only-btn"
               onClick={() => {
                 triggerHaptic('light');
                 setActiveChat(null);
               }}
-              className="header-action-btn"
-              style={{ display: 'none' }} // Visible on mobile via CSS media
+              title="Back to chats"
+              style={{ display: 'none' }}
             >
               <ChevronLeft style={{ width: '20px', height: '20px' }} />
             </button>
+
+            {onToggleList && (
+              <button
+                type="button"
+                className="chat-header-action-btn desktop-only-btn"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onToggleList();
+                }}
+                title={isListCollapsed ? 'Expand chat list' : 'Collapse chat list'}
+              >
+                <PanelLeftOpen style={{ width: '18px', height: '18px', transform: isListCollapsed ? 'scaleX(-1)' : 'none' }} />
+              </button>
+            )}
 
             <div
               onClick={() => {
@@ -152,31 +159,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           <div className="chat-header-actions">
             <button
               type="button"
-              onClick={() => startCall(activeChat, false)}
-              className="header-action-btn"
-              title="Audio Call"
+              className="chat-header-action-btn"
+              onClick={() => {
+                triggerHaptic('medium');
+                startCall(activeChat, false);
+              }}
+              title="Start Audio Call"
             >
               <Phone style={{ width: '16px', height: '16px' }} />
             </button>
 
             <button
               type="button"
-              onClick={() => startCall(activeChat, true)}
-              className="header-action-btn"
-              title="Video Call"
+              className="chat-header-action-btn"
+              onClick={() => {
+                triggerHaptic('medium');
+                startCall(activeChat, true);
+              }}
+              title="Start Video Call"
             >
               <Video style={{ width: '16px', height: '16px' }} />
             </button>
 
             <button
               type="button"
+              className={`chat-header-action-btn ${isDetailsOpen ? 'active' : ''}`}
               onClick={() => {
                 triggerHaptic('light');
                 setIsDetailsOpen((prev) => !prev);
               }}
-              className="header-action-btn"
-              style={isDetailsOpen ? { background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' } : {}}
-              title="Contact Info & Media"
+              title="View Contact Details & Media"
             >
               <Info style={{ width: '16px', height: '16px' }} />
             </button>
@@ -198,6 +210,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onReply={(m) => setReplyMessage(m)}
                 onReaction={(id, emoji) => addReaction(id, emoji)}
                 onMediaClick={(url) => setSelectedMedia(url)}
+                onForward={(m) => setForwardMessage(m)}
                 onUnsend={(id) => unsendMessage(id)}
                 onEdit={(id, text) => editMessage(id, text)}
               />
@@ -250,6 +263,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <MediaViewerModal
         mediaUrl={selectedMedia}
         onClose={() => setSelectedMedia(null)}
+      />
+
+      {/* Forward Message Modal */}
+      <ForwardModal
+        message={forwardMessage}
+        conversations={conversations}
+        onClose={() => setForwardMessage(null)}
+        onForward={handleForward}
       />
     </div>
   );

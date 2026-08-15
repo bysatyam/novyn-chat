@@ -5933,7 +5933,7 @@ io.on("connection", (socket) => {
     if (!messageId || !to) return;
 
     const friendKey = normalizeName(to);
-    const convKey = getFriendConversationKey(userKey, friendKey);
+    const convKey = getConversationKey(userKey, friendKey);
     const list = conversations.get(convKey);
     if (list) {
       const idx = list.findIndex((m) => String(m.id) === messageId || String(m.clientTempId) === messageId);
@@ -5960,7 +5960,7 @@ io.on("connection", (socket) => {
     if (!messageId || !to || !newText) return;
 
     const friendKey = normalizeName(to);
-    const convKey = getFriendConversationKey(userKey, friendKey);
+    const convKey = getConversationKey(userKey, friendKey);
     const list = conversations.get(convKey);
     let editedAt = nowIso();
     if (list) {
@@ -5990,7 +5990,7 @@ io.on("connection", (socket) => {
     if (!messageId || !to || !emoji) return;
 
     const friendKey = normalizeName(to);
-    const convKey = getFriendConversationKey(userKey, friendKey);
+    const convKey = getConversationKey(userKey, friendKey);
     const list = conversations.get(convKey);
     let reactions = {};
     if (list) {

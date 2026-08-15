@@ -11,6 +11,8 @@ import {
   Trash2,
   Reply,
   Smile,
+  Copy,
+  Forward,
 } from 'lucide-react';
 import { VoicePlayer } from './VoicePlayer';
 import { triggerHaptic } from '../../services/capacitor';
@@ -21,6 +23,7 @@ interface MessageBubbleProps {
   onReply: (message: Message) => void;
   onReaction: (messageId: string, emoji: string) => void;
   onMediaClick: (url: string) => void;
+  onForward?: (message: Message) => void;
   onUnsend?: (messageId: string) => void;
   onEdit?: (messageId: string, newText: string) => void;
 }
@@ -33,11 +36,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onReply,
   onReaction,
   onMediaClick,
+  onForward,
   onUnsend,
   onEdit,
 }) => {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text || '');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +57,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setShowActionsMenu(false);
         setShowReactions(false);
+        setShowEmojiPicker(false);
       }
     };
 
@@ -62,6 +69,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       document.removeEventListener('touchstart', handleOutsideClick);
     };
   }, [showActionsMenu, showReactions]);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const textToCopy =
+      message.text ||
+      (typeof message.attachment === 'string' ? message.attachment : message.attachment?.url) ||
+      '';
+    if (textToCopy) {
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        setCopied(true);
+        triggerHaptic('light');
+        setTimeout(() => {
+          setCopied(false);
+          setShowActionsMenu(false);
+        }, 800);
+      } catch (err) {
+        console.warn('Failed to copy to clipboard:', err);
+      }
+    }
+  };
 
   const formatTime = (ts: string | number) => {
     try {
@@ -246,32 +274,80 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 zIndex: 50,
               }}
             >
-              {/* React button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  triggerHaptic('light');
-                  setShowActionsMenu(false);
-                  setShowReactions(true);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#fbbf24',
-                  cursor: 'pointer',
-                  padding: '5px 8px',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '0.76rem',
-                  fontWeight: 600,
-                }}
-                title="React"
-              >
-                <Smile style={{ width: '13px', height: '13px' }} /> React
-              </button>
+              {showEmojiPicker ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 4px' }}>
+                  {COMMON_REACTIONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        triggerHaptic('light');
+                        onReaction(message.id, emoji);
+                        setShowActionsMenu(false);
+                        setShowEmojiPicker(false);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        fontSize: '1.2rem',
+                        cursor: 'pointer',
+                        padding: '2px 4px',
+                        lineHeight: 1,
+                        transition: 'transform 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.35)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowEmojiPicker(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'rgba(255, 255, 255, 0.4)',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                      padding: '2px 4px',
+                    }}
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* React button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      triggerHaptic('light');
+                      setShowEmojiPicker(true);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#fbbf24',
+                      cursor: 'pointer',
+                      padding: '5px 8px',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                    }}
+                    title="React"
+                  >
+                    <Smile style={{ width: '13px', height: '13px' }} /> React
+                  </button>
 
               {/* Reply */}
               <button
@@ -299,6 +375,66 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               >
                 <Reply style={{ width: '13px', height: '13px', color: '#10b981' }} /> Reply
               </button>
+
+              {/* Copy */}
+              <button
+                type="button"
+                onClick={handleCopy}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: copied ? '#10b981' : '#ffffff',
+                  cursor: 'pointer',
+                  padding: '5px 8px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '0.76rem',
+                  fontWeight: 600,
+                  transition: 'color 0.15s ease',
+                }}
+                title="Copy text"
+              >
+                {copied ? (
+                  <>
+                    <Check style={{ width: '13px', height: '13px', color: '#10b981' }} /> Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy style={{ width: '13px', height: '13px', color: '#94a3b8' }} /> Copy
+                  </>
+                )}
+              </button>
+
+              {/* Forward */}
+              {onForward && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerHaptic('light');
+                    onForward(message);
+                    setShowActionsMenu(false);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    padding: '5px 8px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                  }}
+                  title="Forward message"
+                >
+                  <Forward style={{ width: '13px', height: '13px', color: '#60a5fa' }} /> Forward
+                </button>
+              )}
 
               {/* Edit (if sent by me and is text) */}
               {isMe && message.text && !isAudioMessage && (
@@ -328,33 +464,35 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 </button>
               )}
 
-              {/* Unsend (if sent by me) */}
-              {isMe && onUnsend && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerHaptic('medium');
-                    onUnsend(message.id);
-                    setShowActionsMenu(false);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#f87171',
-                    cursor: 'pointer',
-                    padding: '5px 8px',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    fontSize: '0.76rem',
-                    fontWeight: 600,
-                  }}
-                  title="Unsend for everyone"
-                >
-                  <Trash2 style={{ width: '13px', height: '13px' }} /> Unsend
-                </button>
+                  {/* Unsend (if sent by me) */}
+                  {isMe && onUnsend && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        triggerHaptic('medium');
+                        onUnsend(message.id);
+                        setShowActionsMenu(false);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#f87171',
+                        cursor: 'pointer',
+                        padding: '5px 8px',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        fontSize: '0.76rem',
+                        fontWeight: 600,
+                      }}
+                      title="Unsend for everyone"
+                    >
+                      <Trash2 style={{ width: '13px', height: '13px' }} /> Unsend
+                    </button>
+                  )}
+                </>
               )}
             </motion.div>
           )}
