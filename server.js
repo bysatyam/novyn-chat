@@ -5955,6 +5955,7 @@ io.on("connection", (socket) => {
     markConversationAsSeen(userKey, resolved.targetKey, resolved.type);
 
     const messages = conversations.get(resolved.conversationKey) || [];
+    const wallpaper = conversationWallpapers.get(resolved.conversationKey) || "";
 
     socket.emit("history", {
       with: resolved.targetKey,
@@ -5963,6 +5964,7 @@ io.on("connection", (socket) => {
       kind: resolved.type,
       toType: resolved.type,
       to: resolved.targetKey,
+      wallpaper,
       memberCount: resolved.type === "group" ? resolved.group.members.size : 2,
     });
   });
@@ -6321,9 +6323,11 @@ io.on("connection", (socket) => {
 
     const packet = { to: friendKey, from: userKey, wallpaper };
     socket.emit("chat_wallpaper_updated", packet);
-    const friendSocket = onlineUsers.get(friendKey);
-    if (friendSocket) {
-      io.to(friendSocket).emit("chat_wallpaper_updated", { to: userKey, from: userKey, wallpaper });
+
+    for (const [_, s] of io.sockets.sockets) {
+      if (s.data.userKey === friendKey) {
+        s.emit("chat_wallpaper_updated", { to: userKey, from: userKey, wallpaper });
+      }
     }
   });
 

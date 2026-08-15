@@ -417,8 +417,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       triggerHaptic('light');
     });
 
-    socket.on('chat_wallpaper_updated', ({ wallpaper }: any) => {
-      if (wallpaper !== undefined) {
+    socket.on('chat_wallpaper_updated', ({ to, from, wallpaper }: any) => {
+      const currentActive = activeChatRef.current?.toLowerCase();
+      const fromUser = (from || '').toLowerCase();
+      const toUser = (to || '').toLowerCase();
+
+      if (fromUser) localStorage.setItem(`novyn_chat_wallpaper_${fromUser}`, wallpaper || 'var(--bg-canvas)');
+      if (toUser) localStorage.setItem(`novyn_chat_wallpaper_${toUser}`, wallpaper || 'var(--bg-canvas)');
+
+      if (currentActive && (currentActive === fromUser || currentActive === toUser)) {
         setChatWallpaperState(wallpaper || 'var(--bg-canvas)');
       }
     });
@@ -504,6 +511,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const target = data?.with || data?.withUser || data?.to;
       const historyList = data?.messages || [];
       if (activeChatRef.current && target && activeChatRef.current.toLowerCase() === target.toLowerCase()) {
+        if (data?.wallpaper !== undefined) {
+          const wp = data.wallpaper || 'var(--bg-canvas)';
+          setChatWallpaperState(wp);
+          localStorage.setItem(`novyn_chat_wallpaper_${target.toLowerCase()}`, wp);
+        }
         setMessages(
           historyList.map((m: any) => ({
             id: m.id || m.messageId || String(m.timestamp),
@@ -1006,6 +1018,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (activeChat) {
+      const cached = localStorage.getItem(`novyn_chat_wallpaper_${activeChat.toLowerCase()}`);
+      if (cached) {
+        setChatWallpaperState(cached);
+      } else {
+        setChatWallpaperState('var(--bg-canvas)');
+      }
       const socket = getSocket();
       if (socket) {
         socket.emit('get_chat_wallpaper', { to: activeChat });
