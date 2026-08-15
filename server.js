@@ -481,49 +481,9 @@ const io = new Server(server, {
   },
 });
 
-app.use((req, res, next) => {
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    next();
-    return;
-  }
-  if (req.path !== "/index.html") {
-    next();
-    return;
-  }
-
-  const auth = resolveUserFromAuthCookies(getAuthCookiesFromHeader(req.headers.cookie), {
-    allowRefreshFallback: true,
-  });
-  const user = auth.userKey ? users.get(auth.userKey) : null;
-  if (!user || !user.isRegistered) {
-    res.redirect(302, "/login.html");
-    return;
-  }
-  next();
+app.get(["/login", "/login.html"], (req, res) => {
+  res.redirect(302, "/");
 });
-
-app.use(
-  express.static(path.join(__dirname, "public"), {
-    index: false,
-    etag: true,
-    lastModified: true,
-    maxAge: 0,
-    setHeaders: (res, filePath) => {
-      const baseName = path.basename(filePath || "").toLowerCase();
-      const extension = path.extname(filePath || "").toLowerCase();
-      const mustRevalidate =
-        extension === ".html"
-        || baseName === "sw.js"
-        || baseName === "manifest.json";
-      if (mustRevalidate) {
-        res.set("Cache-Control", "no-cache, must-revalidate");
-        return;
-      }
-
-      res.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
-    },
-  })
-);
 
 app.get("/api/push/public-key", (req, res) => {
   if (!pushEnabled) {
@@ -543,10 +503,6 @@ app.get("/api/rtc/ice", (req, res) => {
     iceServers: getRtcIceServersForClient(authenticated),
     authenticated,
   });
-});
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "dist", "login.html"));
 });
 
 app.get("/api/stats", (req, res) => {
