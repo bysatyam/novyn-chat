@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
 import { MessageBubble } from './MessageBubble';
@@ -64,16 +64,46 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevChatRef = useRef<string | null>(null);
+  const prevMessagesCountRef = useRef<number>(0);
 
   const activeContact = conversations.find((c) => c.username.toLowerCase() === activeChat?.toLowerCase()) || null;
   const isTyping = activeChat ? typingUsers.has(activeChat) : false;
   const isMuted = activeChat ? mutedUsers.has(activeChat.toLowerCase()) : false;
   const isBlocked = activeChat ? blockedUsers.has(activeChat.toLowerCase()) : false;
 
+  // Instant scroll on chat switch / initial load; smooth scroll only for newly appended messages
+  useLayoutEffect(() => {
+    if (!messagesContainerRef.current) return;
+
+    const isNewChat = prevChatRef.current !== activeChat;
+    const isNewMessage = messages.length > prevMessagesCountRef.current;
+
+    if (isNewChat) {
+      // Instant snap to bottom - no animation, no delay
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      prevChatRef.current = activeChat;
+    } else if (isNewMessage) {
+      // Smooth scroll for new message arrived in current active chat
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    prevMessagesCountRef.current = messages.length;
+  }, [messages, activeChat]);
+
+  // Keep bottom in view when typing indicator toggles
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+    if (isTyping && messagesContainerRef.current) {
+      const container = messagesContainerRef.current;
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 140;
+      if (isNearBottom) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [isTyping]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -364,6 +394,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
         {/* Message Stream with Synced Background Wallpaper */}
         <div
+          ref={messagesContainerRef}
           className="messages-container"
           style={{ background: chatWallpaper || 'var(--bg-canvas)', position: 'relative' }}
           onDragOver={handleDragOver}

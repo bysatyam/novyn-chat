@@ -82,6 +82,14 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }
   }, [text]);
 
+  // Auto-focus input when a message is selected for reply
+  useEffect(() => {
+    if (replyMessage && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [replyMessage]);
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setText(e.target.value);
     onTyping(true);

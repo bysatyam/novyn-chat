@@ -38,6 +38,9 @@ interface ChatContextType {
   createPoll: (question: string, options: string[]) => void;
   votePoll: (messageId: string, optionId: string) => void;
   createGroup: (name: string, members: string[]) => void;
+  addGroupMembers: (groupId: string, members: string[]) => void;
+  removeGroupMember: (groupId: string, username: string) => void;
+  leaveGroup: (groupId: string) => void;
   chatWallpaper: string;
   setChatWallpaper: (to: string, wallpaper: string) => void;
   startCall: (remoteUser: string, isVideo?: boolean) => Promise<void>;
@@ -434,12 +437,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentActive = activeChatRef.current?.toLowerCase();
       const fromUser = (from || '').toLowerCase();
       const toUser = (to || '').toLowerCase();
+      const wp = wallpaper || 'var(--bg-canvas)';
 
-      if (fromUser) localStorage.setItem(`novyn_chat_wallpaper_${fromUser}`, wallpaper || 'var(--bg-canvas)');
-      if (toUser) localStorage.setItem(`novyn_chat_wallpaper_${toUser}`, wallpaper || 'var(--bg-canvas)');
+      if (wallpaper && wallpaper.trim() !== '') {
+        if (fromUser) localStorage.setItem(`novyn_chat_wallpaper_${fromUser}`, wp);
+        if (toUser) localStorage.setItem(`novyn_chat_wallpaper_${toUser}`, wp);
+      }
 
       if (currentActive && (currentActive === fromUser || currentActive === toUser)) {
-        setChatWallpaperState(wallpaper || 'var(--bg-canvas)');
+        if (wallpaper && wallpaper.trim() !== '') {
+          setChatWallpaperState(wp);
+        }
       }
     });
 
@@ -524,10 +532,20 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const target = data?.with || data?.withUser || data?.to;
       const historyList = data?.messages || [];
       if (activeChatRef.current && target && activeChatRef.current.toLowerCase() === target.toLowerCase()) {
-        if (data?.wallpaper !== undefined) {
-          const wp = data.wallpaper || 'var(--bg-canvas)';
-          setChatWallpaperState(wp);
-          localStorage.setItem(`novyn_chat_wallpaper_${target.toLowerCase()}`, wp);
+        if (data?.wallpaper && data.wallpaper.trim() !== '') {
+          setChatWallpaperState(data.wallpaper);
+          localStorage.setItem(`novyn_chat_wallpaper_${target.toLowerCase()}`, data.wallpaper);
+        } else {
+          const localCached = localStorage.getItem(`novyn_chat_wallpaper_${target.toLowerCase()}`);
+          if (localCached && localCached !== 'var(--bg-canvas)') {
+            setChatWallpaperState(localCached);
+            const socket = getSocket();
+            if (socket) {
+              socket.emit('set_chat_wallpaper', { to: target, wallpaper: localCached });
+            }
+          } else {
+            setChatWallpaperState('var(--bg-canvas)');
+          }
         }
         setMessages(
           historyList.map((m: any) => ({
@@ -1037,12 +1055,48 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
+  const addGroupMembers = useCallback(
+    (groupId: string, members: string[]) => {
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('add_group_members', { groupId, members });
+      triggerHaptic('success');
+    },
+    []
+  );
+
+  const removeGroupMember = useCallback(
+    (groupId: string, username: string) => {
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('remove_group_member', { groupId, username });
+      triggerHaptic('medium');
+    },
+    []
+  );
+
+  const leaveGroup = useCallback(
+    (groupId: string) => {
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('leave_group', { groupId });
+      setConversations((prev) => prev.filter((c) => c.username.toLowerCase() !== groupId.toLowerCase()));
+      setActiveChat(null);
+      triggerHaptic('heavy');
+    },
+    []
+  );
+
   const setChatWallpaper = useCallback(
     (to: string, wallpaper: string) => {
-      setChatWallpaperState(wallpaper);
+      const wp = wallpaper || 'var(--bg-canvas)';
+      setChatWallpaperState(wp);
+      if (to) {
+        localStorage.setItem(`novyn_chat_wallpaper_${to.toLowerCase()}`, wp);
+      }
       const socket = getSocket();
       if (socket) {
-        socket.emit('set_chat_wallpaper', { to, wallpaper });
+        socket.emit('set_chat_wallpaper', { to, wallpaper: wp });
       }
     },
     []
@@ -1051,7 +1105,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (activeChat) {
       const cached = localStorage.getItem(`novyn_chat_wallpaper_${activeChat.toLowerCase()}`);
-      if (cached) {
+      if (cached && cached !== 'var(--bg-canvas)') {
         setChatWallpaperState(cached);
       } else {
         setChatWallpaperState('var(--bg-canvas)');
@@ -1177,6 +1231,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createPoll,
         votePoll,
         createGroup,
+        addGroupMembers,
+        removeGroupMember,
+        leaveGroup,
         chatWallpaper,
         setChatWallpaper,
         startCall,

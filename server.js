@@ -6316,17 +6316,31 @@ io.on("connection", (socket) => {
     const wallpaper = String(payload?.wallpaper || "").trim();
     if (!to) return;
 
-    const friendKey = normalizeName(to);
-    const convKey = getConversationKey(userKey, friendKey);
+    const isGroup = groups.has(normalizeGroupId(to)) || to.startsWith("grp_");
+    const convKey = isGroup ? getGroupConversationKey(to) : getConversationKey(userKey, to);
     conversationWallpapers.set(convKey, wallpaper);
     schedulePersist();
 
-    const packet = { to: friendKey, from: userKey, wallpaper };
+    const packet = { to, from: userKey, wallpaper };
     socket.emit("chat_wallpaper_updated", packet);
 
-    for (const [_, s] of io.sockets.sockets) {
-      if (s.data.userKey === friendKey) {
-        s.emit("chat_wallpaper_updated", { to: userKey, from: userKey, wallpaper });
+    if (isGroup) {
+      const group = groups.get(normalizeGroupId(to));
+      if (group) {
+        for (const memberKey of group.members || []) {
+          for (const [_, s] of io.sockets.sockets) {
+            if (s.data.userKey === memberKey) {
+              s.emit("chat_wallpaper_updated", { to, from: userKey, wallpaper });
+            }
+          }
+        }
+      }
+    } else {
+      const friendKey = normalizeName(to);
+      for (const [_, s] of io.sockets.sockets) {
+        if (s.data.userKey === friendKey || s.data.userKey === userKey) {
+          s.emit("chat_wallpaper_updated", { to: userKey, from: userKey, wallpaper });
+        }
       }
     }
   });
@@ -6337,10 +6351,10 @@ io.on("connection", (socket) => {
     const to = toDisplayName(payload?.to);
     if (!to) return;
 
-    const friendKey = normalizeName(to);
-    const convKey = getConversationKey(userKey, friendKey);
+    const isGroup = groups.has(normalizeGroupId(to)) || to.startsWith("grp_");
+    const convKey = isGroup ? getGroupConversationKey(to) : getConversationKey(userKey, to);
     const wallpaper = conversationWallpapers.get(convKey) || "";
-    socket.emit("chat_wallpaper_updated", { to: friendKey, from: userKey, wallpaper });
+    socket.emit("chat_wallpaper_updated", { to, from: userKey, wallpaper });
   });
 
   // WebRTC Audio/Video Call Signaling
