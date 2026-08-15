@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "novynchat"
-  }
+    "default": "novyn-chat-app"
+  },
+  "targets": {},
+  "etags": {}
 }
