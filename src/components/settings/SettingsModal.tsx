@@ -21,6 +21,9 @@ import {
   ShieldCheck,
   Ban,
   Trash2,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { triggerHaptic } from '../../services/capacitor';
@@ -59,6 +62,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [passwordMsg, setPasswordMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   // Appearance & Themes
+  const [themeMode, setThemeMode] = useState<string>(() => localStorage.getItem('novyn_theme_mode') || 'dark');
   const [accentColor, setAccentColor] = useState('#10b981');
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
 
@@ -674,7 +678,79 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
               {/* 4. APPEARANCE TAB */}
               {activeTab === 'appearance' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+                  {/* Global Theme Mode */}
+                  <div>
+                    <label className="input-label" style={{ marginBottom: '10px', display: 'block' }}>App Theme Mode</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                      {[
+                        { id: 'dark', label: 'Dark', icon: Moon, desc: 'Classic dark' },
+                        { id: 'light', label: 'Light', icon: Sun, desc: 'Crisp light' },
+                        { id: 'oled', label: 'OLED', icon: Moon, desc: 'Pure black' },
+                        { id: 'cyber', label: 'Cyber', icon: Sparkles, desc: 'Neon glow' },
+                      ].map((mode) => {
+                        const isSelected = themeMode === mode.id;
+                        const Icon = mode.icon;
+                        return (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={() => {
+                              triggerHaptic('light');
+                              setThemeMode(mode.id);
+                              localStorage.setItem('novyn_theme_mode', mode.id);
+                              if (mode.id === 'light') {
+                                document.documentElement.setAttribute('data-theme', 'light');
+                                document.documentElement.style.setProperty('--bg-canvas', '#f8fafc');
+                                document.documentElement.style.setProperty('--bg-surface', '#ffffff');
+                                document.documentElement.style.setProperty('--bg-input', '#f1f5f9');
+                                document.documentElement.style.setProperty('--border', 'rgba(0,0,0,0.1)');
+                                document.documentElement.style.setProperty('--text-primary', '#0f172a');
+                              } else if (mode.id === 'oled') {
+                                document.documentElement.setAttribute('data-theme', 'oled');
+                                document.documentElement.style.setProperty('--bg-canvas', '#000000');
+                                document.documentElement.style.setProperty('--bg-surface', '#050505');
+                                document.documentElement.style.setProperty('--bg-input', '#101010');
+                                document.documentElement.style.setProperty('--border', 'rgba(255,255,255,0.08)');
+                                document.documentElement.style.setProperty('--text-primary', '#ffffff');
+                              } else if (mode.id === 'cyber') {
+                                document.documentElement.setAttribute('data-theme', 'cyber');
+                                document.documentElement.style.setProperty('--bg-canvas', '#0b0816');
+                                document.documentElement.style.setProperty('--bg-surface', '#130e24');
+                                document.documentElement.style.setProperty('--bg-input', '#1c1536');
+                                document.documentElement.style.setProperty('--border', 'rgba(168,85,247,0.25)');
+                                document.documentElement.style.setProperty('--text-primary', '#ffffff');
+                              } else {
+                                document.documentElement.removeAttribute('data-theme');
+                                document.documentElement.style.removeProperty('--bg-canvas');
+                                document.documentElement.style.removeProperty('--bg-surface');
+                                document.documentElement.style.removeProperty('--bg-input');
+                                document.documentElement.style.removeProperty('--border');
+                                document.documentElement.style.removeProperty('--text-primary');
+                              }
+                            }}
+                            style={{
+                              padding: '12px 8px',
+                              borderRadius: '12px',
+                              border: isSelected ? '1px solid #10b981' : '1px solid var(--border)',
+                              background: isSelected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                              color: isSelected ? '#10b981' : '#94a3b8',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              gap: '6px',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <Icon style={{ width: '18px', height: '18px' }} />
+                            <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>{mode.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Theme Accent Picker */}
                   <div>
                     <label className="input-label" style={{ marginBottom: '10px', display: 'block' }}>Primary Accent Color</label>

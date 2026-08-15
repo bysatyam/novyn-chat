@@ -37,6 +37,8 @@ interface ChatContextType {
   unpinMessage: (messageId: string) => void;
   createPoll: (question: string, options: string[]) => void;
   votePoll: (messageId: string, optionId: string) => void;
+  chatWallpaper: string;
+  setChatWallpaper: (to: string, wallpaper: string) => void;
   startCall: (remoteUser: string, isVideo?: boolean) => Promise<void>;
   answerCall: () => Promise<void>;
   endCall: (reason?: string) => void;
@@ -52,6 +54,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [chatWallpaper, setChatWallpaperState] = useState<string>('var(--bg-canvas)');
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
@@ -412,6 +415,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         prev.map((m) => (m.id === messageId || m.poll?.id === poll.id ? { ...m, poll } : m))
       );
       triggerHaptic('light');
+    });
+
+    socket.on('chat_wallpaper_updated', ({ wallpaper }: any) => {
+      if (wallpaper !== undefined) {
+        setChatWallpaperState(wallpaper || 'var(--bg-canvas)');
+      }
     });
 
     socket.on('friend_request_received', ({ from }: { from: string }) => {
@@ -984,6 +993,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [activeChat]
   );
 
+  const setChatWallpaper = useCallback(
+    (to: string, wallpaper: string) => {
+      setChatWallpaperState(wallpaper);
+      const socket = getSocket();
+      if (socket) {
+        socket.emit('set_chat_wallpaper', { to, wallpaper });
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (activeChat) {
+      const socket = getSocket();
+      if (socket) {
+        socket.emit('get_chat_wallpaper', { to: activeChat });
+      }
+    }
+  }, [activeChat]);
+
   // WebRTC Call Triggers
   const startCall = useCallback(async (remoteUser: string, isVideo = false) => {
     const socket = getSocket();
@@ -1097,6 +1126,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         unpinMessage,
         createPoll,
         votePoll,
+        chatWallpaper,
+        setChatWallpaper,
         startCall,
         answerCall,
         endCall,

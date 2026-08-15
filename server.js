@@ -530,6 +530,7 @@ app.get("/api/stats", (req, res) => {
   });
 });
 
+const conversationWallpapers = new Map();
 
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "chat-state.json");
@@ -6235,6 +6236,38 @@ io.on("connection", (socket) => {
         io.to(friendSocket).emit("poll_updated", packet);
       }
     }
+  });
+
+  socket.on("set_chat_wallpaper", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    const to = toDisplayName(payload?.to);
+    const wallpaper = String(payload?.wallpaper || "").trim();
+    if (!to) return;
+
+    const friendKey = normalizeName(to);
+    const convKey = getConversationKey(userKey, friendKey);
+    conversationWallpapers.set(convKey, wallpaper);
+    schedulePersist();
+
+    const packet = { to: friendKey, from: userKey, wallpaper };
+    socket.emit("chat_wallpaper_updated", packet);
+    const friendSocket = onlineUsers.get(friendKey);
+    if (friendSocket) {
+      io.to(friendSocket).emit("chat_wallpaper_updated", { to: userKey, from: userKey, wallpaper });
+    }
+  });
+
+  socket.on("get_chat_wallpaper", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    const to = toDisplayName(payload?.to);
+    if (!to) return;
+
+    const friendKey = normalizeName(to);
+    const convKey = getConversationKey(userKey, friendKey);
+    const wallpaper = conversationWallpapers.get(convKey) || "";
+    socket.emit("chat_wallpaper_updated", { to: friendKey, from: userKey, wallpaper });
   });
 
   // WebRTC Audio/Video Call Signaling

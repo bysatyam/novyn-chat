@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart3, Plus, Trash2, X, Send } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
@@ -53,18 +54,19 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({
     onClose();
   };
 
-  return (
+  return createPortal(
     <AnimatePresence>
       <div
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0, 0, 0, 0.65)',
-          backdropFilter: 'blur(8px)',
+          background: 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 100,
+          zIndex: 9999,
           padding: '16px',
         }}
         onClick={onClose}
@@ -240,6 +242,7 @@ export const CreatePollModal: React.FC<CreatePollModalProps> = ({
           </form>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };

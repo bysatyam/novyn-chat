@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Paperclip, Mic, X, Smile, Sparkles, BarChart3 } from 'lucide-react';
+import { Send, Paperclip, Mic, X, Smile, Sparkles, BarChart3, Image as ImageIcon, FileText } from 'lucide-react';
 import { Message } from '../../types';
 import { VoiceRecorder } from './VoiceRecorder';
 import { GifPickerModal } from './GifPickerModal';
@@ -29,26 +29,40 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showGifModal, setShowGifModal] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
   const typingTimerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const emojiBtnRef = useRef<HTMLButtonElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const attachBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Close emoji picker on click outside
+  // Close emoji picker and attach menu on click outside
   useEffect(() => {
-    if (!showEmojiPicker) return;
-
     const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
       if (
+        showEmojiPicker &&
         emojiPickerRef.current &&
-        !emojiPickerRef.current.contains(e.target as Node) &&
+        !emojiPickerRef.current.contains(target) &&
         emojiBtnRef.current &&
-        !emojiBtnRef.current.contains(e.target as Node)
+        !emojiBtnRef.current.contains(target)
       ) {
         setShowEmojiPicker(false);
+      }
+
+      if (
+        showAttachMenu &&
+        attachMenuRef.current &&
+        !attachMenuRef.current.contains(target) &&
+        attachBtnRef.current &&
+        !attachBtnRef.current.contains(target)
+      ) {
+        setShowAttachMenu(false);
       }
     };
 
@@ -59,7 +73,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       document.removeEventListener('mousedown', handleOutsideClick);
       document.removeEventListener('touchstart', handleOutsideClick);
     };
-  }, [showEmojiPicker]);
+  }, [showEmojiPicker, showAttachMenu]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -231,6 +245,165 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         )}
       </AnimatePresence>
 
+      {/* Attach Popup Menu */}
+      <AnimatePresence>
+        {showAttachMenu && (
+          <motion.div
+            ref={attachMenuRef}
+            initial={{ opacity: 0, scale: 0.92, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 10 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              marginBottom: '10px',
+              left: '8px',
+              background: '#0f172a',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '16px',
+              padding: '6px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+              boxShadow: '0 15px 35px rgba(0, 0, 0, 0.65)',
+              zIndex: 40,
+              minWidth: '200px',
+            }}
+          >
+            {/* Photos & Videos */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setShowAttachMenu(false);
+                imageInputRef.current?.click();
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '9px 12px',
+                borderRadius: '10px',
+                background: 'transparent',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'background 0.12s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
+                <ImageIcon style={{ width: '15px', height: '15px' }} />
+              </div>
+              <span>Photos & Videos</span>
+            </button>
+
+            {/* Document / File */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setShowAttachMenu(false);
+                fileInputRef.current?.click();
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '9px 12px',
+                borderRadius: '10px',
+                background: 'transparent',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'background 0.12s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(96, 165, 250, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#60a5fa' }}>
+                <FileText style={{ width: '15px', height: '15px' }} />
+              </div>
+              <span>Document / File</span>
+            </button>
+
+            {/* Create Poll */}
+            {onCreatePoll && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setShowAttachMenu(false);
+                  setShowPollModal(true);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '10px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background 0.12s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
+                  <BarChart3 style={{ width: '15px', height: '15px' }} />
+                </div>
+                <span>Create Poll</span>
+              </button>
+            )}
+
+            {/* GIFs & Stickers */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setShowAttachMenu(false);
+                setShowGifModal(true);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '9px 12px',
+                borderRadius: '10px',
+                background: 'transparent',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'background 0.12s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(236, 72, 153, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ec4899' }}>
+                <Sparkles style={{ width: '15px', height: '15px' }} />
+              </div>
+              <span>GIFs & Stickers</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Input Bar */}
       <div
         className="input-bar-container"
@@ -242,14 +415,26 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           style={{ display: 'none' }}
           onChange={handleFileSelect}
         />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*,video/*"
+          style={{ display: 'none' }}
+          onChange={handleFileSelect}
+        />
 
         <div className="input-actions">
           <button
+            ref={attachBtnRef}
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              triggerHaptic('light');
+              setShowAttachMenu((prev) => !prev);
+            }}
             disabled={isUploading}
             className="input-action-btn"
-            title="Attach File"
+            style={showAttachMenu ? { color: '#10b981', background: 'rgba(16, 185, 129, 0.15)' } : {}}
+            title="Attach..."
           >
             <Paperclip style={{ width: '18px', height: '18px' }} />
           </button>
@@ -259,36 +444,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             type="button"
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
             className="input-action-btn"
+            style={showEmojiPicker ? { color: '#10b981', background: 'rgba(16, 185, 129, 0.15)' } : {}}
             title="Emoji"
           >
             <Smile style={{ width: '18px', height: '18px' }} />
           </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              setShowGifModal(true);
-            }}
-            className="input-action-btn"
-            title="Search GIFs & Memes"
-          >
-            <Sparkles style={{ width: '18px', height: '18px', color: '#ec4899' }} />
-          </button>
-
-          {onCreatePoll && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                setShowPollModal(true);
-              }}
-              className="input-action-btn"
-              title="Create Poll"
-            >
-              <BarChart3 style={{ width: '18px', height: '18px', color: '#f59e0b' }} />
-            </button>
-          )}
         </div>
 
         <textarea

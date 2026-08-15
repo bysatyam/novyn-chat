@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Sparkles, Flame, Heart, ThumbsUp, Laugh, PartyPopper } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
@@ -24,41 +25,37 @@ const CURATED_GIFS: Record<string, string[]> = {
     'https://media.giphy.com/media/26u4cqiYI30juCOGY/giphy.gif',
     'https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif',
     'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif',
-    'https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif',
-    'https://media.giphy.com/media/ICOgUNjpvO0PC/giphy.gif',
+    'https://media.giphy.com/media/xT9IgG50Fb7Mi0prBC/giphy.gif',
+    'https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif',
   ],
   reaction: [
     'https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif',
-    'https://media.giphy.com/media/PUBxelzbCh4yI/giphy.gif',
-    'https://media.giphy.com/media/11ISw6cxFx0jK/giphy.gif',
+    'https://media.giphy.com/media/26AHONQ79FdWZhAI0/giphy.gif',
     'https://media.giphy.com/media/xT0xeJpnrWC4XWblEk/giphy.gif',
-    'https://media.giphy.com/media/g9582DNuQppxC/giphy.gif',
-    'https://media.giphy.com/media/9V91DxV5OgoGXjwTrG/giphy.gif',
+    'https://media.giphy.com/media/3o6Zt6KHxJTbXCnSvu/giphy.gif',
+    'https://media.giphy.com/media/d3mlE7uhX8KFgEmY/giphy.gif',
   ],
   'funny laugh': [
     'https://media.giphy.com/media/10JhviFuU2gWD6/giphy.gif',
-    'https://media.giphy.com/media/B0vFTrb0ZGDf2/giphy.gif',
-    'https://media.giphy.com/media/ZqlvCTNHpqrio/giphy.gif',
     'https://media.giphy.com/media/3oEjHAUOqG3lSS0f1C/giphy.gif',
-    'https://media.giphy.com/media/lszAB3TzFtDxU/giphy.gif',
+    'https://media.giphy.com/media/26n6Gx9moCgs1qxxt/giphy.gif',
+    'https://media.giphy.com/media/lOKbTE7h9Bq40/giphy.gif',
   ],
   'love heart': [
-    'https://media.giphy.com/media/26FLdm964upiahraU/giphy.gif',
+    'https://media.giphy.com/media/26FLdm964upIslUZ2/giphy.gif',
+    'https://media.giphy.com/media/3o7TKoWXm3okO1kgHC/giphy.gif',
     'https://media.giphy.com/media/l4pTdcifPZLpDjL1e/giphy.gif',
     'https://media.giphy.com/media/M90mJvfWfd5mbUuULX/giphy.gif',
-    'https://media.giphy.com/media/R6gVNROjBy4UM/giphy.gif',
   ],
   'agree thumbs up': [
     'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif',
-    'https://media.giphy.com/media/mgqefqwSbToPe/giphy.gif',
-    'https://media.giphy.com/media/3o6ZsUJ44ffpnAW7Dy/giphy.gif',
-    'https://media.giphy.com/media/diUKszNTUghVe/giphy.gif',
+    'https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif',
+    'https://media.giphy.com/media/mgqefOvJJVTNW/giphy.gif',
   ],
   'celebrate dance': [
     'https://media.giphy.com/media/blSTtZehjAZ8I/giphy.gif',
+    'https://media.giphy.com/media/l2JIdnF6aJcA83J9S/giphy.gif',
     'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif',
-    'https://media.giphy.com/media/l41lI4bYmcsPJX9Go/giphy.gif',
-    'https://media.giphy.com/media/g3h4YTHFBgfbG/giphy.gif',
   ],
 };
 
@@ -81,22 +78,25 @@ export const GifPickerModal: React.FC<GifPickerModalProps> = ({
       return;
     }
 
+    setLoading(true);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
     debounceRef.current = setTimeout(async () => {
-      setLoading(true);
       try {
-        // Fetch from Giphy / Tenor public endpoints
+        const apiKey = 'LIVDSRZULEUB'; // Public Tenor test key
         const res = await fetch(
-          `https://api.giphy.com/v1/gifs/search?api_key=dc6zaTOxFJmzC&q=${encodeURIComponent(
-            query
-          )}&limit=18&rating=g`
+          `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${apiKey}&limit=16`
         );
-        const data = await res.json();
-        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-          const results = data.data
-            .map((item: any) => item.images?.fixed_height?.url || item.images?.original?.url)
-            .filter(Boolean);
-          setGifs(results);
+        if (res.ok) {
+          const data = await res.json();
+          const urls = data.results?.map((r: any) => r.media?.[0]?.gif?.url).filter(Boolean) || [];
+          if (urls.length > 0) {
+            setGifs(urls);
+          } else {
+            // Fallback to query match in curated
+            const matches = Object.values(CURATED_GIFS).flat();
+            setGifs(matches.slice(0, 8));
+          }
         } else {
           // Fallback to query match in curated
           const matches = Object.values(CURATED_GIFS).flat();
@@ -118,18 +118,19 @@ export const GifPickerModal: React.FC<GifPickerModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <AnimatePresence>
       <div
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0, 0, 0, 0.65)',
-          backdropFilter: 'blur(8px)',
+          background: 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 100,
+          zIndex: 9999,
           padding: '16px',
         }}
         onClick={onClose}
@@ -345,6 +346,7 @@ export const GifPickerModal: React.FC<GifPickerModalProps> = ({
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };

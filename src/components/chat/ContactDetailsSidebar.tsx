@@ -16,10 +16,13 @@ import {
   Download,
   ExternalLink,
   QrCode,
+  Palette,
 } from 'lucide-react';
 import { SharedMediaModal } from './SharedMediaModal';
 import { ExportChatModal } from './ExportChatModal';
 import { QRCodeModal } from '../profile/QRCodeModal';
+import { WallpaperPickerModal } from './WallpaperPickerModal';
+import { useChat } from '../../context/ChatContext';
 import { triggerHaptic } from '../../services/capacitor';
 
 interface ContactDetailsSidebarProps {
@@ -53,10 +56,12 @@ export const ContactDetailsSidebar: React.FC<ContactDetailsSidebarProps> = ({
   isMuted = false,
   isBlocked = false,
 }) => {
+  const { chatWallpaper, setChatWallpaper } = useChat();
   const [activeMediaTab, setActiveMediaTab] = useState<'media' | 'docs' | 'voice'>('media');
   const [isSharedMediaModalOpen, setIsSharedMediaModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isWallpaperModalOpen, setIsWallpaperModalOpen] = useState(false);
   const [showConfirmUnfriend, setShowConfirmUnfriend] = useState(false);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
 
@@ -485,6 +490,31 @@ export const ContactDetailsSidebar: React.FC<ContactDetailsSidebarProps> = ({
               <span>Contact QR Code</span>
             </button>
 
+            {/* Chat Wallpaper & Theme */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setIsWallpaperModalOpen(true);
+              }}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '11px 14px',
+                borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border)',
+                color: '#ffffff',
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+              }}
+            >
+              <Palette style={{ width: '16px', height: '16px', color: '#ec4899' }} />
+              <span>Chat Wallpaper & Theme</span>
+            </button>
+
             {/* Clear Chat History */}
             {showConfirmClear ? (
               <div
@@ -657,6 +687,14 @@ export const ContactDetailsSidebar: React.FC<ContactDetailsSidebarProps> = ({
         username={contact.username}
         displayName={contact.displayName}
         avatarUrl={contact.avatarId}
+      />
+
+      {/* Chat Wallpaper & Theme Modal */}
+      <WallpaperPickerModal
+        isOpen={isWallpaperModalOpen}
+        onClose={() => setIsWallpaperModalOpen(false)}
+        currentWallpaper={chatWallpaper}
+        onSelectWallpaper={(bg) => setChatWallpaper(contact.username, bg)}
       />
     </>
   );

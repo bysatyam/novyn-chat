@@ -13,7 +13,7 @@ import { WallpaperPickerModal } from './WallpaperPickerModal';
 import { CommandPaletteModal } from '../layout/CommandPaletteModal';
 import { Avatar } from '../ui/Avatar';
 import { Message } from '../../types';
-import { Phone, Video, ChevronLeft, ShieldCheck, PanelLeftOpen, Info, Search, Palette, Command } from 'lucide-react';
+import { Phone, Video, ChevronLeft, ShieldCheck, PanelLeftOpen, Info, Search, Command } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
 import { getSocket } from '../../services/socket';
 import { uploadMediaFile } from '../../services/api';
@@ -40,6 +40,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     unpinMessage,
     createPoll,
     votePoll,
+    chatWallpaper,
+    setChatWallpaper,
     typingUsers,
     mutedUsers,
     blockedUsers,
@@ -60,7 +62,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isWallpaperModalOpen, setIsWallpaperModalOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [wallpaper, setWallpaper] = useState<string>(() => localStorage.getItem('novyn_chat_wallpaper') || 'var(--bg-canvas)');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -86,8 +87,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }, []);
 
   const handleWallpaperChange = (newBg: string) => {
-    setWallpaper(newBg);
-    localStorage.setItem('novyn_chat_wallpaper', newBg);
+    if (activeChat) {
+      setChatWallpaper(activeChat, newBg);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -305,18 +307,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               className="header-action-btn"
               onClick={() => {
                 triggerHaptic('light');
-                setIsWallpaperModalOpen(true);
-              }}
-              title="Chat Wallpaper & Theme"
-            >
-              <Palette style={{ width: '16px', height: '16px', color: '#ec4899' }} />
-            </button>
-
-            <button
-              type="button"
-              className="header-action-btn"
-              onClick={() => {
-                triggerHaptic('light');
                 setIsCommandPaletteOpen(true);
               }}
               title="Quick Actions (Ctrl+K)"
@@ -332,7 +322,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 triggerHaptic('light');
                 setIsDetailsOpen((prev) => !prev);
               }}
-              title="View Contact Details & Media"
+              title="Contact Info & Media"
             >
               <Info style={{ width: '16px', height: '16px' }} />
             </button>
@@ -367,10 +357,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {/* Drag & Drop File Upload Overlay */}
         <DropZoneOverlay isDragging={isDragging} onFileSelect={() => {}} />
 
-        {/* Message Stream with Custom Background Wallpaper */}
+        {/* Message Stream with Synced Background Wallpaper */}
         <div
           className="messages-container"
-          style={{ background: wallpaper, position: 'relative' }}
+          style={{ background: chatWallpaper || 'var(--bg-canvas)', position: 'relative' }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -461,7 +451,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <WallpaperPickerModal
         isOpen={isWallpaperModalOpen}
         onClose={() => setIsWallpaperModalOpen(false)}
-        currentWallpaper={wallpaper}
+        currentWallpaper={chatWallpaper}
         onSelectWallpaper={handleWallpaperChange}
       />
 
