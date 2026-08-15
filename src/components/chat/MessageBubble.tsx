@@ -315,106 +315,76 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
         </AnimatePresence>
 
-        {/* 2. Floating 3-Dots Action Dropdown Menu (Reply, Edit, Unsend, React) */}
+        {/* 2. Floating Vertical Action Dropdown Menu (Top-to-Bottom) */}
         <AnimatePresence>
           {showActionsMenu && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 6 }}
+              initial={{ opacity: 0, scale: 0.92, y: 6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 6 }}
+              exit={{ opacity: 0, scale: 0.92, y: 6 }}
               transition={{ duration: 0.15 }}
               onClick={(e) => e.stopPropagation()}
               style={{
                 position: 'absolute',
-                top: '-44px',
+                top: isMe ? 'auto' : '100%',
+                bottom: isMe ? '100%' : 'auto',
                 right: isMe ? '0' : 'auto',
                 left: isMe ? 'auto' : '0',
-                background: '#161f30',
-                border: '1px solid rgba(255, 255, 255, 0.18)',
+                marginTop: isMe ? '0' : '6px',
+                marginBottom: isMe ? '6px' : '0',
+                background: '#131b2e',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
                 borderRadius: '14px',
-                padding: '4px 8px',
+                padding: '6px',
                 display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 12px 32px rgba(0,0,0,0.7)',
-                zIndex: 50,
+                flexDirection: 'column',
+                gap: '2px',
+                minWidth: '160px',
+                boxShadow: '0 16px 36px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+                zIndex: 100,
+                backdropFilter: 'blur(16px)',
               }}
             >
-              {showEmojiPicker ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 4px' }}>
-                  {COMMON_REACTIONS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        triggerHaptic('light');
-                        onReaction(message.id, emoji);
-                        setShowActionsMenu(false);
-                        setShowEmojiPicker(false);
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        fontSize: '1.2rem',
-                        cursor: 'pointer',
-                        padding: '2px 4px',
-                        lineHeight: 1,
-                        transition: 'transform 0.12s ease',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.35)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
+              {/* Quick Reactions Bar at Top */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '4px',
+                  padding: '4px 6px 6px',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                  marginBottom: '4px',
+                }}
+              >
+                {COMMON_REACTIONS.map((emoji) => (
                   <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowEmojiPicker(false);
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'rgba(255, 255, 255, 0.4)',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      padding: '2px 4px',
-                    }}
-                    title="Close"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* React button */}
-                  <button
+                    key={emoji}
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       triggerHaptic('light');
-                      setShowEmojiPicker(true);
+                      onReaction(message.id, emoji);
+                      setShowActionsMenu(false);
                     }}
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: '#fbbf24',
+                      fontSize: '1.15rem',
                       cursor: 'pointer',
-                      padding: '5px 8px',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      fontSize: '0.76rem',
-                      fontWeight: 600,
+                      padding: '2px',
+                      lineHeight: 1,
+                      transition: 'transform 0.12s ease',
                     }}
-                    title="React"
+                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.35)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                   >
-                    <Smile style={{ width: '13px', height: '13px' }} /> React
+                    {emoji}
                   </button>
+                ))}
+              </div>
 
+              {/* Vertical Actions (Top to Bottom) */}
               {/* Reply */}
               <button
                 type="button"
@@ -429,17 +399,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   border: 'none',
                   color: '#ffffff',
                   cursor: 'pointer',
-                  padding: '5px 8px',
+                  padding: '7px 10px',
                   borderRadius: '8px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '0.76rem',
+                  gap: '8px',
+                  fontSize: '0.8rem',
                   fontWeight: 600,
+                  width: '100%',
+                  textAlign: 'left',
+                  transition: 'background 0.15s ease',
                 }}
-                title="Reply"
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
               >
-                <Reply style={{ width: '13px', height: '13px', color: '#10b981' }} /> Reply
+                <Reply style={{ width: '14px', height: '14px', color: '#10b981' }} />
+                <span>Reply</span>
               </button>
 
               {/* Copy */}
@@ -451,24 +426,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   border: 'none',
                   color: copied ? '#10b981' : '#ffffff',
                   cursor: 'pointer',
-                  padding: '5px 8px',
+                  padding: '7px 10px',
                   borderRadius: '8px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '0.76rem',
+                  gap: '8px',
+                  fontSize: '0.8rem',
                   fontWeight: 600,
-                  transition: 'color 0.15s ease',
+                  width: '100%',
+                  textAlign: 'left',
+                  transition: 'background 0.15s ease',
                 }}
-                title="Copy text"
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
               >
                 {copied ? (
                   <>
-                    <Check style={{ width: '13px', height: '13px', color: '#10b981' }} /> Copied!
+                    <Check style={{ width: '14px', height: '14px', color: '#10b981' }} />
+                    <span>Copied!</span>
                   </>
                 ) : (
                   <>
-                    <Copy style={{ width: '13px', height: '13px', color: '#94a3b8' }} /> Copy
+                    <Copy style={{ width: '14px', height: '14px', color: '#94a3b8' }} />
+                    <span>Copy Text</span>
                   </>
                 )}
               </button>
@@ -488,17 +468,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     border: 'none',
                     color: '#ffffff',
                     cursor: 'pointer',
-                    padding: '5px 8px',
+                    padding: '7px 10px',
                     borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '5px',
-                    fontSize: '0.76rem',
+                    gap: '8px',
+                    fontSize: '0.8rem',
                     fontWeight: 600,
+                    width: '100%',
+                    textAlign: 'left',
+                    transition: 'background 0.15s ease',
                   }}
-                  title="Forward message"
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                 >
-                  <Forward style={{ width: '13px', height: '13px', color: '#60a5fa' }} /> Forward
+                  <Forward style={{ width: '14px', height: '14px', color: '#60a5fa' }} />
+                  <span>Forward</span>
                 </button>
               )}
 
@@ -521,23 +506,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     border: 'none',
                     color: '#ffffff',
                     cursor: 'pointer',
-                    padding: '5px 8px',
+                    padding: '7px 10px',
                     borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '5px',
-                    fontSize: '0.76rem',
+                    gap: '8px',
+                    fontSize: '0.8rem',
                     fontWeight: 600,
+                    width: '100%',
+                    textAlign: 'left',
+                    transition: 'background 0.15s ease',
                   }}
-                  title={message.pinnedAt ? 'Unpin message' : 'Pin message'}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                 >
                   {message.pinnedAt ? (
                     <>
-                      <PinOff style={{ width: '13px', height: '13px', color: '#f59e0b' }} /> Unpin
+                      <PinOff style={{ width: '14px', height: '14px', color: '#f59e0b' }} />
+                      <span>Unpin</span>
                     </>
                   ) : (
                     <>
-                      <Pin style={{ width: '13px', height: '13px', color: '#f59e0b' }} /> Pin
+                      <Pin style={{ width: '14px', height: '14px', color: '#f59e0b' }} />
+                      <span>Pin</span>
                     </>
                   )}
                 </button>
@@ -557,49 +548,57 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     border: 'none',
                     color: '#ffffff',
                     cursor: 'pointer',
-                    padding: '5px 8px',
+                    padding: '7px 10px',
                     borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '5px',
-                    fontSize: '0.76rem',
+                    gap: '8px',
+                    fontSize: '0.8rem',
                     fontWeight: 600,
+                    width: '100%',
+                    textAlign: 'left',
+                    transition: 'background 0.15s ease',
                   }}
-                  title="Edit"
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                 >
-                  <Edit2 style={{ width: '13px', height: '13px', color: '#38bdf8' }} /> Edit
+                  <Edit2 style={{ width: '14px', height: '14px', color: '#38bdf8' }} />
+                  <span>Edit</span>
                 </button>
               )}
 
-                  {/* Unsend (if sent by me) */}
-                  {isMe && onUnsend && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        triggerHaptic('medium');
-                        onUnsend(message.id);
-                        setShowActionsMenu(false);
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#f87171',
-                        cursor: 'pointer',
-                        padding: '5px 8px',
-                        borderRadius: '8px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        fontSize: '0.76rem',
-                        fontWeight: 600,
-                      }}
-                      title="Unsend for everyone"
-                    >
-                      <Trash2 style={{ width: '13px', height: '13px' }} /> Unsend
-                    </button>
-                  )}
-                </>
+              {/* Unsend (if sent by me) */}
+              {isMe && onUnsend && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerHaptic('medium');
+                    onUnsend(message.id);
+                    setShowActionsMenu(false);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#f87171',
+                    cursor: 'pointer',
+                    padding: '7px 10px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    width: '100%',
+                    textAlign: 'left',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                >
+                  <Trash2 style={{ width: '14px', height: '14px', color: '#ef4444' }} />
+                  <span>Unsend</span>
+                </button>
               )}
             </motion.div>
           )}

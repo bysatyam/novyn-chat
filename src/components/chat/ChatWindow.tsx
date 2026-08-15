@@ -67,7 +67,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const prevChatRef = useRef<string | null>(null);
+  const isChatReadyRef = useRef<boolean>(false);
+  const prevChatIdRef = useRef<string | null>(null);
   const prevMessagesCountRef = useRef<number>(0);
 
   const activeContact = conversations.find((c) => c.username.toLowerCase() === activeChat?.toLowerCase()) || null;
@@ -75,20 +76,39 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const isMuted = activeChat ? mutedUsers.has(activeChat.toLowerCase()) : false;
   const isBlocked = activeChat ? blockedUsers.has(activeChat.toLowerCase()) : false;
 
-  // Instant scroll on chat switch / initial load; smooth scroll only for newly appended messages
+  // Reset ready state when chat conversation switches
+  useEffect(() => {
+    if (prevChatIdRef.current !== activeChat) {
+      isChatReadyRef.current = false;
+      prevChatIdRef.current = activeChat;
+      prevMessagesCountRef.current = 0;
+    }
+  }, [activeChat]);
+
+  // Instant scroll on initial load / chat switch, smooth scroll ONLY for single new live messages
   useLayoutEffect(() => {
     if (!messagesContainerRef.current) return;
+    const container = messagesContainerRef.current;
 
-    const isNewChat = prevChatRef.current !== activeChat;
-    const isNewMessage = messages.length > prevMessagesCountRef.current;
-
-    if (isNewChat) {
-      // Instant snap to bottom - no animation, no delay
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-      prevChatRef.current = activeChat;
-    } else if (isNewMessage) {
-      // Smooth scroll for new message arrived in current active chat
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!isChatReadyRef.current) {
+      // Instant snap to bottom - absolutely zero animation
+      container.scrollTop = container.scrollHeight;
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+      if (messages.length > 0) {
+        isChatReadyRef.current = true;
+      }
+    } else {
+      const isNewLiveMessage = messages.length > prevMessagesCountRef.current;
+      if (isNewLiveMessage) {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 220;
+        if (isNearBottom) {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
     }
 
     prevMessagesCountRef.current = messages.length;
@@ -98,7 +118,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     if (isTyping && messagesContainerRef.current) {
       const container = messagesContainerRef.current;
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 140;
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 160;
       if (isNearBottom) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
