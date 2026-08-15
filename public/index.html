@@ -1,0 +1,1172 @@
+﻿﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow, noarchive" />
+  <link rel="canonical" href="https://novyn-live.onrender.com/" />
+  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0C0E14" media="(prefers-color-scheme: dark)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>Novyn | Chat Dashboard</title>
+  <script>
+    document.documentElement.classList.add('preclear-search');
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="icon" type="image/svg+xml" href="/icons/novyn-badge.svg" />
+  <link rel="stylesheet" href="dashboard.css?v=20260408a" />
+</head>
+<body>
+
+  <div class="app" id="chatLayout">
+
+    <!-- ══════════════════════════
+         APP BODY: sidebar + chat
+    ══════════════════════════ -->
+    <div class="app-body">
+
+      <!-- ══ BOTTOM TAB BAR ══ -->
+      <!-- On desktop this becomes a left icon rail -->
+      <nav class="bottom-tab-bar" aria-label="Primary navigation">
+
+        <button class="tab-btn active" data-rail="messages" id="navChatsBtn" title="Chats" aria-label="Chats">
+          <svg class="portal-nav-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <g class="portal-ring-bg">
+              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/>
+            </g>
+            <g class="portal-outer">
+              <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/>
+            </g>
+            <g class="portal-inner">
+              <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none"/>
+            </g>
+            <g class="portal-dot">
+              <circle cx="24" cy="24" r="3" fill="currentColor"/>
+            </g>
+          </svg>
+          <span>Chats</span>
+          <span class="tab-btn-badge hidden" id="chatsBadge"></span>
+        </button>
+
+        <button class="tab-btn" data-rail="calls" id="navCallsBtn" title="Calls" aria-label="Calls">
+          <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>
+          <span>Calls</span>
+        </button>
+
+        <button class="tab-btn" data-rail="contacts" id="navContactsBtn" title="Contacts" aria-label="Contacts">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>People</span>
+        </button>
+
+        <button class="tab-btn" data-rail="discover" id="navDiscoverBtn" title="Discover" aria-label="Discover">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <span>Discover</span>
+        </button>
+
+        <!-- Profile tab -->
+        <button class="tab-btn tab-btn-profile" data-rail="settings" id="navSettingsBtn" title="Profile" aria-label="Profile">
+          <div class="nav-avatar" style="width:24px;height:24px;font-size:9px;" id="tabAvatarIcon">J</div>
+          <span>Profile</span>
+        </button>
+
+      </nav>
+
+      <!-- ══ SIDEBAR ══ -->
+      <aside class="sidebar panel-list" id="mobileSidebar">
+
+        <div class="sidebar-head">
+          <div class="sidebar-top">
+            <span class="app-brand">Novyn<span class="app-brand-dot"></span></span>
+            <div class="sidebar-top-actions">
+              <button class="icon-btn" id="addFriendOpenBtn" aria-label="Add friend" title="Add friend">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+              <button class="icon-btn" id="createGroupBtn" aria-label="Create group" title="Create group">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="9" cy="8" r="3"/>
+                  <path d="M3 19a6 6 0 0 1 12 0"/>
+                  <path d="M17 8h4"/>
+                  <path d="M19 6v4"/>
+                </svg>
+              </button>
+              <button class="icon-btn" id="chatQuickMenuBtn" aria-label="Chat options" title="Chat options" aria-expanded="false" aria-controls="chatQuickMenu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="chatQuickMenu" class="chat-quick-menu hidden" role="menu" aria-label="Chat options">
+            <button class="chat-quick-item" type="button" data-quick-action="profile" role="menuitem">Profile settings</button>
+            <button class="chat-quick-item chat-quick-item-danger hidden" type="button" data-quick-action="clear-chat" role="menuitem">Clear this chat</button>
+            <button class="chat-quick-item" type="button" data-quick-action="all" role="menuitem">All chats</button>
+            <button class="chat-quick-item" type="button" data-quick-action="groups" role="menuitem">Group chats</button>
+            <button class="chat-quick-item" type="button" data-quick-action="blocked" role="menuitem">Blocked list</button>
+            <button class="chat-quick-item" type="button" data-quick-action="unread" role="menuitem">Unread only</button>
+            <button class="chat-quick-item" type="button" data-quick-action="discover" role="menuitem">Discover people</button>
+          </div>
+
+          <div class="search-bar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="search" placeholder="Search…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="search" id="sidebarSearchInput" />
+            <script>
+              (function() {
+                var searchInput = document.getElementById('sidebarSearchInput');
+                if (searchInput) {
+                  searchInput.value = '';
+                  searchInput.setAttribute('value', '');
+                }
+                document.documentElement.classList.remove('preclear-search');
+              })();
+            </script>
+          </div>
+
+          <div class="call-filters" aria-label="Call filters">
+            <button class="call-filter active" type="button" data-call-filter="all">All</button>
+            <button class="call-filter" type="button" data-call-filter="missed">Missed</button>
+            <button class="call-filter" type="button" data-call-filter="video">Video</button>
+            <button class="call-filter" type="button" data-call-filter="outgoing">Outgoing</button>
+          </div>
+        </div>
+
+        <!-- Section labels -->
+        <div class="section-label label-messages messages-head">
+          <span>Messages</span>
+          <span class="messages-head-meta" id="messageViewMeta">All chats</span>
+        </div>
+        <div class="chat-categories" id="chatCategories" aria-label="Chat filters">
+          <button class="chat-category-btn active" type="button" data-chat-filter="all">
+            <span>All</span><span class="chat-category-count" id="chatFilterCountAll">0</span>
+          </button>
+          <button class="chat-category-btn" type="button" data-chat-filter="groups">
+            <span>Groups</span><span class="chat-category-count" id="chatFilterCountGroups">0</span>
+          </button>
+          <button class="chat-category-btn" type="button" data-chat-filter="blocked">
+            <span>Blocked</span><span class="chat-category-count" id="chatFilterCountBlocked">0</span>
+          </button>
+          <button class="chat-category-btn" type="button" data-chat-filter="unread">
+            <span>Unread</span><span class="chat-category-count" id="chatFilterCountUnread">0</span>
+          </button>
+        </div>
+        <div class="section-label label-contacts contacts-label">
+          <span>Contacts</span>
+          <button class="contacts-requests-btn orbit-contacts-btn" id="contactsRequestsBtn" type="button" aria-label="Pending requests" aria-expanded="false" aria-controls="contactsRequestsPanel" title="Pending requests">
+            <svg viewBox="0 0 38 38" fill="none" aria-hidden="true">
+              <circle class="ring1" cx="19" cy="19" r="13" fill="none" stroke="currentColor" stroke-width="1"/>
+              <circle class="ring2" cx="19" cy="19" r="13" fill="none" stroke="currentColor" stroke-width="0.7"/>
+              <g class="orbit-cw">
+                <circle class="dp1" cx="19" cy="6" r="3.2" fill="currentColor"/>
+              </g>
+              <g class="orbit-ccw">
+                <circle class="dp2" cx="19" cy="32" r="2.4" fill="currentColor"/>
+              </g>
+              <circle cx="19" cy="19" r="6.5" fill="currentColor"/>
+              <line x1="16" y1="19" x2="22" y2="19" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="19" y1="16" x2="19" y2="22" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <span id="contactsRequestsBadge" class="requests-badge" style="display:none;">0</span>
+          </button>
+        </div>
+        <div id="contactsRequestsPanel" class="contacts-requests-panel" aria-hidden="true">
+          <div class="contacts-requests-title">Pending requests</div>
+          <ul id="requestList" class="chat-list" aria-live="polite" aria-label="Friend requests"></ul>
+        </div>
+        <div class="section-label label-calls">Call History</div>
+
+        <!-- Add friend form -->
+        <form id="addFriendForm" class="add-friend-inline hidden" autocomplete="off">
+          <input id="friendInput" type="text" maxlength="24" placeholder="Add by username…" autocomplete="off" required />
+          <button type="submit" class="add-inline-btn">Add</button>
+        </form>
+        <div id="friendSuggestions" class="friend-suggestions hidden" aria-live="polite"></div>
+
+        <!-- Lists -->
+        <ul id="friendList" class="chat-list" aria-live="polite" aria-label="Friends"></ul>
+        <ul id="callHistoryList" class="chat-list call-history-list" aria-live="polite" aria-label="Call history"></ul>
+
+        <!-- Discover -->
+        <div id="discoverPanel" class="discover-panel" aria-live="polite">
+          <div class="discover-section-label">Online now</div>
+          <div id="discoverList" class="discover-list"></div>
+          <div id="discoverEmpty" class="discover-empty">No one online right now</div>
+        </div>
+
+        <!-- Hidden compat -->
+        <span id="meAvatar" style="display:none;">?</span>
+        <span id="meName" style="display:none;">You</span>
+        <span id="requestCount" style="display:none;">0</span>
+        <span id="friendCount" style="display:none;">0</span>
+
+        <!-- Sidebar footer removed: profile info moved to settings panel -->
+
+      </aside>
+
+      <!-- ══ CHAT WINDOW ══ -->
+      <main class="chat-window card panel-chat" id="mobileChat" data-mob-hidden="true" aria-label="Conversation">
+
+        <div class="chat-header">
+          <button class="mob-back-btn icon-btn" id="mobBackBtn" aria-label="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <div id="activePresence" class="chat-av-wrap hidden">
+            <div id="activeFriendAvatar" class="avatar av-default avatar-sm"><span>?</span></div>
+            <div class="online-dot" id="activeFriendOnlineDot" style="display:none;"></div>
+          </div>
+          <div class="chat-header-info">
+            <div class="chat-header-name" id="activeFriendLabel">Select a conversation</div>
+            <div class="chat-header-status" id="activeFriendPresenceLine">Choose a friend to start messaging</div>
+          </div>
+          <div class="chat-header-actions">
+            <button class="icon-btn" id="messageSearchToggle" type="button" title="Search" aria-label="Search messages" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
+            <button class="icon-btn call-btn" aria-label="Voice call">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/>
+              </svg>
+            </button>
+            <button class="icon-btn video-btn" aria-label="Video call">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+              </svg>
+            </button>
+            <button class="icon-btn" id="infoToggleBtn" type="button" aria-label="Contact details">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+              </svg>
+            </button>
+            <span id="onlineCount" class="online-count-pill" aria-live="polite" style="display:none;">0 online</span>
+          </div>
+        </div>
+
+        <!-- Message search -->
+        <div id="messageSearchPanel" class="chat-search-panel hidden" aria-label="Search messages">
+          <div class="chat-search-row">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input id="messageSearchInput" type="text" placeholder="Search messages…" autocomplete="off" />
+            <select id="messageSearchScope" class="search-scope" aria-label="Search scope">
+              <option value="chat">This chat</option>
+              <option value="global">All chats</option>
+            </select>
+            <select id="messageSearchFilter" class="search-filter hidden" aria-label="Search filter">
+              <option value="all">All</option>
+              <option value="media">Media</option>
+              <option value="links">Links</option>
+              <option value="files">Files</option>
+              <option value="unread">Unread</option>
+            </select>
+            <button class="search-nav-btn" id="messageSearchPrev" type="button" aria-label="Previous">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 15 12 9 18 15"/></svg>
+            </button>
+            <button class="search-nav-btn" id="messageSearchNext" type="button" aria-label="Next">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button id="messageSearchClear" type="button">Clear</button>
+          </div>
+          <span id="messageSearchCount" class="search-count hidden" aria-live="polite"></span>
+          <div id="globalSearchResults" class="global-search-results hidden" aria-live="polite"></div>
+        </div>
+
+        <!-- Messages -->
+        <div class="messages-wrap">
+          <div id="messages" class="messages" role="log" aria-live="polite" aria-label="Messages">
+            <div class="messages-empty">
+              <div class="messages-empty-icon">
+                <svg class="empty-portal-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <g class="portal-ring-bg">
+                    <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="7" stroke-opacity="0.08"/>
+                  </g>
+                  <g class="portal-outer">
+                    <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 85" stroke-linecap="round" fill="none"/>
+                  </g>
+                  <g class="portal-inner">
+                    <circle cx="24" cy="24" r="10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="14 50" stroke-linecap="round" fill="none" opacity="0.45"/>
+                  </g>
+                  <g class="portal-dot">
+                    <circle cx="24" cy="24" r="3" fill="currentColor"/>
+                  </g>
+                </svg>
+              </div>
+              <p class="messages-empty-title">Your inbox is ready</p>
+              <p class="messages-empty-sub">Choose a conversation to start messaging.</p>
+            </div>
+          </div>
+          <button class="scroll-btn hidden" id="scrollBtn" aria-label="Scroll to latest">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span class="scroll-btn-badge hidden" id="scrollBadge"></span>
+          </button>
+        </div>
+
+        <!-- Typing / speaking indicators -->
+        <div id="typingIndicator" class="typing-indicator hidden" aria-live="polite">
+          <div id="typingAvatar" class="typing-avatar">A</div>
+          <div class="typing-meta">
+            <span id="typingText" class="typing-label">Typing...</span>
+          </div>
+          <div class="typing-portal" aria-hidden="true">
+            <span class="typing-portal-core"></span>
+          </div>
+        </div>
+        <div id="speakingIndicator" class="speaking-indicator hidden" aria-live="polite">
+          <div id="speakingAvatar" class="typing-avatar speaking-avatar">A</div>
+          <div class="typing-meta">
+            <span id="speakingText" class="typing-label">Speaking...</span>
+          </div>
+          <div class="voice-wave" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <!-- Input -->
+        <div class="chat-input-area message-form-wrap">
+          <div id="replyBanner" class="reply-banner hidden">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+              <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+            </svg>
+            <span class="reply-preview-text" id="replyPreviewText">Replying to…</span>
+            <button class="reply-cancel-btn" id="replyCancelBtn" type="button">✕</button>
+          </div>
+
+          <section id="scheduledPanel" class="scheduled-panel collapsed hidden" aria-label="Scheduled messages">
+            <button id="scheduledPanelToggleBtn" class="scheduled-panel-head" type="button" aria-expanded="false" aria-controls="scheduledPanelBody">
+              <span class="scheduled-panel-title" id="scheduledPanelTitle">Scheduled messages</span>
+              <span class="scheduled-panel-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none">
+                  <path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </button>
+            <div id="scheduledPanelBody" class="scheduled-panel-body">
+              <div id="scheduledList" class="scheduled-list"></div>
+              <div id="scheduledEmpty" class="scheduled-empty">No scheduled messages</div>
+            </div>
+          </section>
+
+          <div id="voiceStatus" class="voice-status hidden" role="status" aria-live="polite">
+            <div class="voice-status-main">
+              <span class="voice-dot"></span>
+              <span class="voice-waveform-live" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+              </span>
+              <span class="voice-timer" id="voiceTimer">0:00</span>
+            </div>
+            <div class="voice-label-row"><span class="voice-label" id="voiceLabel">Recording...</span></div>
+            <div class="voice-status-actions">
+              <button class="voice-action voice-cancel" id="voiceCancelBtn" type="button">Cancel</button>
+              <button class="voice-action voice-stop" id="voiceStopBtn" type="button">Send</button>
+            </div>
+            <div class="voice-progress hidden" id="voiceProgress" aria-live="polite">
+              <span class="voice-progress-track"><span class="voice-progress-bar" id="voiceProgressBar"></span></span>
+              <span class="voice-progress-text" id="voiceProgressText">Uploading… 0%</span>
+            </div>
+          </div>
+
+          <div id="scheduleMenu" class="schedule-menu hidden" role="dialog" aria-modal="false" aria-label="Schedule message">
+            <div class="schedule-menu-head">
+              <span class="schedule-menu-title">Schedule send</span>
+              <button type="button" class="schedule-menu-close" id="scheduleMenuCloseBtn" aria-label="Close schedule menu">✕</button>
+            </div>
+            <div class="schedule-preset-row">
+              <button type="button" class="schedule-preset-btn" data-schedule-minutes="15">+15m</button>
+              <button type="button" class="schedule-preset-btn" data-schedule-minutes="60">+1h</button>
+              <button type="button" class="schedule-preset-btn" data-schedule-minutes="180">+3h</button>
+              <button type="button" class="schedule-preset-btn" data-schedule-minutes="1440">Tomorrow</button>
+            </div>
+            <label class="schedule-input-label" for="scheduleDateInput">Custom schedule</label>
+            <div class="schedule-date-time-row">
+              <div class="schedule-field">
+                <span class="schedule-field-label">Date</span>
+                <input id="scheduleDateInput" class="schedule-date-input" type="date" />
+              </div>
+              <div class="schedule-field">
+                <span class="schedule-field-label">Time</span>
+                <input id="scheduleTimeInput" class="schedule-time-input" type="time" step="60" />
+              </div>
+            </div>
+            <div id="schedulePreviewText" class="schedule-preview" aria-live="polite"></div>
+            <div class="schedule-menu-actions">
+              <button type="button" class="schedule-menu-btn ghost" id="scheduleMenuCancelBtn">Cancel</button>
+              <button type="button" class="schedule-menu-btn" id="scheduleMenuConfirmBtn">Schedule</button>
+            </div>
+          </div>
+
+          <form id="messageForm" class="input-toolbar" autocomplete="off">
+            <button type="button" class="tool-btn" aria-label="Emoji">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                <line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+              </svg>
+            </button>
+            <input type="text" id="messageInput" name="chatMessage"
+              placeholder="Message…"
+              autocomplete="off" inputmode="text" enterkeyhint="send"
+              autocapitalize="sentences" autocorrect="on" spellcheck="true" maxlength="1000" />
+            <button type="button" class="tool-btn" id="attachFileBtn" aria-label="Attach file">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <button type="button" class="tool-btn" id="cameraBtn" aria-label="Capture photo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 8a2 2 0 0 1 2-2h2.1l1.35-2h7.1l1.35 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z"/>
+                <circle cx="12" cy="13" r="3.2"/>
+              </svg>
+            </button>
+            <button type="button" class="tool-btn voice-btn" id="voiceBtn" aria-label="Voice message">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </button>
+            <button type="button" class="tool-btn" id="scheduleBtn" aria-label="Schedule send" title="Schedule send" aria-haspopup="dialog" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="13" r="8"/>
+                <path d="M12 9v4l3 2"/>
+                <path d="M8 2h8"/>
+              </svg>
+            </button>
+            <button class="send-btn" type="submit" aria-label="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </form>
+          <input
+            id="attachFileInput"
+            type="file"
+            class="hidden"
+            accept="image/*,.pdf,.txt,.csv,.zip,.rar,.7z,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+          />
+          <input
+            id="cameraCaptureInput"
+            type="file"
+            class="hidden"
+            accept="image/*"
+            capture="environment"
+          />
+          <span id="charCounter" class="char-counter hidden" aria-live="polite"></span>
+        </div>
+
+      </main>
+
+    </div><!-- /.app-body -->
+
+  </div><!-- /.app -->
+
+  <!-- ══ SETTINGS PANEL ══ -->
+  <div id="settingsPanel" class="settings-panel" role="complementary" aria-label="Settings">
+    <div class="settings-panel-inner">
+      <div class="settings-panel-header">
+        <span class="settings-panel-title">Settings</span>
+        <button class="icon-btn" id="settingsCloseBtn" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="settings-scroll">
+        <!-- Profile card -->
+        <div class="settings-profile-card settings-profile-row">
+          <div class="settings-avatar" id="settingsAvatar">S</div>
+          <div class="settings-profile-meta">
+            <div class="settings-name" id="settingsProfileName">You</div>
+            <div class="settings-handle" id="settingsProfileHandle">@username</div>
+            <div class="settings-presence settings-presence-inline" id="settingsPresenceLine" data-presence="online">
+              <span class="presence-dot"></span>
+              <span id="settingsPresenceText">Active now</span>
+            </div>
+          </div>
+          <div class="settings-profile-actions">
+            <div id="networkPill" class="network-pill" role="status" aria-live="polite">
+              <span class="signal-dot"></span>
+              <span id="connectionLabel">Connecting…</span>
+            </div>
+            <button id="retryFailedBtn" class="network-retry-all hidden" type="button">Retry failed</button>
+            <button class="settings-edit-btn" data-settings-action="profile">Edit</button>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div class="settings-section">
+          <div class="settings-section-title">Status</div>
+          <div class="settings-status-row">
+            <button class="status-pill active" type="button" data-status="online" aria-pressed="true">Online</button>
+            <button class="status-pill" type="button" data-status="away" aria-pressed="false">Away</button>
+            <button class="status-pill" type="button" data-status="busy" aria-pressed="false">Busy</button>
+            <button class="status-pill" type="button" data-status="offline" aria-pressed="false">Invisible</button>
+          </div>
+        </div>
+
+        <!-- Account -->
+        <div class="settings-section">
+          <div class="settings-section-title">Account</div>
+          <button class="settings-row" type="button" data-settings-action="username">
+            <div class="settings-row-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="settings-row-text">
+              <span class="settings-row-title">Change username</span>
+            </div>
+            <span class="settings-row-chevron">›</span>
+          </button>
+          <button class="settings-row" type="button" data-settings-action="password">
+            <div class="settings-row-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <div class="settings-row-text">
+              <span class="settings-row-title">Change password</span>
+            </div>
+            <span class="settings-row-chevron">›</span>
+          </button>
+        </div>
+
+        <!-- Appearance -->
+        <div class="settings-section">
+          <div class="settings-section-title">Appearance</div>
+          <button class="settings-row settings-item-radio" type="button" data-settings-action="theme" data-theme="system">
+            <div class="settings-row-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            </div>
+            <div class="settings-row-text"><span class="settings-row-title">System theme</span></div>
+            <span class="settings-check" style="color:var(--mint-2);opacity:0;">✓</span>
+          </button>
+          <button class="settings-row settings-item-radio" type="button" data-settings-action="theme" data-theme="light">
+            <div class="settings-row-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2"/></svg>
+            </div>
+            <div class="settings-row-text"><span class="settings-row-title">Light</span></div>
+            <span class="settings-check" style="color:var(--mint-2);opacity:0;">✓</span>
+          </button>
+          <button class="settings-row settings-item-radio" type="button" data-settings-action="theme" data-theme="dark">
+            <div class="settings-row-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </div>
+            <div class="settings-row-text"><span class="settings-row-title">Dark</span></div>
+            <span class="settings-check" style="color:var(--mint-2);opacity:0;">✓</span>
+          </button>
+        </div>
+
+        <!-- Privacy -->
+        <div class="settings-section">
+          <div class="settings-section-title">Privacy & Security</div>
+          <div class="settings-row">
+            <div class="settings-row-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div class="settings-row-text">
+              <span class="settings-row-title">Transport encrypted</span>
+              <span class="settings-row-sub">Messages are encrypted in transit. End-to-end encryption is not enabled.</span>
+            </div>
+            <span class="settings-pill success">TLS</span>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-head">
+            <div class="settings-section-title">Blocked Users</div>
+            <span class="settings-pill" id="settingsBlockedCount">0</span>
+          </div>
+          <div class="settings-blocked-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input id="settingsBlockedSearch" type="search" placeholder="Search blocked users..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="search" />
+          </div>
+          <div class="settings-blocked-list" id="settingsBlockedList" role="list" aria-live="polite">
+            <div class="settings-blocked-empty">No blocked users.</div>
+          </div>
+        </div>
+
+        <!-- Danger zone -->
+        <div class="settings-section">
+          <button class="settings-row danger" type="button" data-settings-action="logout">
+            <div class="settings-row-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </div>
+            <div class="settings-row-text"><span class="settings-row-title">Log out</span></div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ INFO PANEL ══ -->
+  <div class="info-scrim" id="infoScrim"></div>
+  <div id="infoPanel" class="info-panel" role="dialog" aria-modal="true" aria-label="Contact info">
+    <div class="info-inner">
+      <div class="info-top">
+        <span class="info-title" id="infoPanelTitle">Contact info</span>
+        <button class="icon-btn mob-close-btn" id="infoCloseBtn" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="profile-center">
+        <div class="profile-big" id="infoPanelAvatar">?</div>
+        <div class="profile-name" id="infoPanelName">Friend</div>
+        <div class="profile-handle" id="infoPanelHandle">@handle</div>
+        <div class="profile-status-badge" id="infoPanelStatus">Offline</div>
+        <div class="profile-actions">
+          <button class="profile-action-btn" id="infoCallBtn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="13" height="13"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>
+            Voice call
+          </button>
+          <button class="profile-action-btn" id="infoMuteBtn" type="button" data-icon="on">
+            <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v5"/><path d="M9 9v2a3 3 0 0 0 5.13 2.13"/><path d="M19 10v1a7 7 0 0 1-11.44 5.44"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
+            <span>Mute</span>
+          </button>
+          <button class="profile-action-btn action-warn" id="infoBlockBtn" type="button">Block</button>
+          <button class="profile-action-btn action-danger" id="removeFriendBtn" type="button">Remove</button>
+          <button class="profile-action-btn action-danger ghost" id="clearChatBtn" type="button">Clear chat</button>
+          <button class="profile-action-btn action-danger ghost" id="infoReportBtn" type="button">Report</button>
+          <button class="profile-action-btn hidden" id="infoAddMembersBtn" type="button">Add members</button>
+        </div>
+      </div>
+      <div class="info-section hidden" id="groupInfoSection">
+        <div class="info-section-title">
+          <span>Group members</span>
+          <span class="group-members-meta" id="groupMembersMeta">0</span>
+        </div>
+        <div class="group-member-list" id="groupMemberList">
+          <div class="group-member-empty">No members yet</div>
+        </div>
+      </div>
+      <div class="info-section">
+        <div class="info-section-title">Stats</div>
+        <div class="info-stat-row">
+          <div class="info-stat"><div class="info-stat-num" id="profileStatMessages">0</div><div class="info-stat-label">Messages</div></div>
+          <div class="info-stat"><div class="info-stat-num" id="profileStatMedia">0</div><div class="info-stat-label">Media</div></div>
+          <div class="info-stat"><div class="info-stat-num" id="profileStatLinks">0</div><div class="info-stat-label">Links</div></div>
+          <div class="info-stat"><div class="info-stat-num" id="profileStatFiles">0</div><div class="info-stat-label">Files</div></div>
+        </div>
+      </div>
+      <div class="info-section">
+        <div class="info-section-title">Shared media</div>
+        <div class="media-grid" id="infoMediaGrid"></div>
+      </div>
+      <div class="info-section" id="infoTagsSection">
+        <div class="info-section-title">Interests</div>
+        <div class="tags-row" id="infoTags"></div>
+      </div>
+      <div class="info-section">
+        <div class="info-section-title">Call history</div>
+        <div class="call-log-list" id="callLogList">
+          <div class="call-log-empty">No calls yet</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CALL MODAL ══ -->
+  <div id="callModal" class="call-modal hidden" role="dialog" aria-modal="true">
+    <div class="call-modal-backdrop"></div>
+    <div class="call-modal-card">
+      <div class="call-header">
+        <span class="call-badge" id="callBadge">Voice</span>
+        <button class="icon-btn" id="callMinimizeBtn" type="button" aria-label="Minimize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="call-video-stage" id="callVideoStage">
+        <video id="callRemoteVideo" class="call-video" autoplay playsinline></video>
+        <video id="callLocalVideo" class="call-video local" autoplay playsinline muted></video>
+      </div>
+      <div class="call-avatar" id="callAvatar">?</div>
+      <div class="call-peer" id="callPeerName">Friend</div>
+      <div class="call-status-row">
+        <div class="call-status" id="callStatusText">Calling…</div>
+        <div class="call-timer hidden" id="callDuration" aria-live="polite">00:00</div>
+      </div>
+      <div class="call-actions">
+        <button class="call-icon-btn" id="callMuteBtn" type="button" aria-pressed="false" title="Mute" data-icon="on">
+          <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v5"/><path d="M9 9v2a3 3 0 0 0 5.13 2.13"/><path d="M19 10v1a7 7 0 0 1-11.44 5.44"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
+          <span>Mute</span>
+        </button>
+        <button class="call-icon-btn active" id="callSpeakerBtn" type="button" aria-pressed="true" title="Speaker" data-icon="on">
+          <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M19 6a6 6 0 0 1 0 12"/></svg>
+          <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4z"/><line x1="16" y1="9" x2="21" y2="15"/><line x1="21" y1="9" x2="16" y2="15"/></svg>
+          <span>Speaker</span>
+        </button>
+        <button class="call-icon-btn" id="callCameraBtn" type="button" aria-pressed="true" title="Camera">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="m21 8-4 3v2l4 3V8z"/></svg>
+          <span>Camera</span>
+        </button>
+        <button class="call-icon-btn" id="callFlipBtn" type="button" title="Flip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7h4l2-2h6l2 2h4"/><path d="M3 17h4l2 2h6l2-2h4"/><polyline points="8 12 6 10 4 12"/><polyline points="16 12 18 14 20 12"/></svg>
+          <span>Flip</span>
+        </button>
+      </div>
+      <div class="call-controls">
+        <button class="call-control-btn accept" id="callAcceptBtn" type="button" aria-label="Answer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/>
+          </svg>
+          <span class="call-control-label">Answer</span>
+        </button>
+        <button class="call-control-btn decline" id="callRejectBtn" type="button" aria-label="Decline">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/>
+            <line x1="4" y1="4" x2="20" y2="20"/>
+          </svg>
+          <span class="call-control-label">Decline</span>
+        </button>
+        <button class="call-control-btn hangup" id="callHangupBtn" type="button" aria-label="End call">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M3 9.5c2.2-2.2 5.4-3.5 9-3.5s6.8 1.3 9 3.5"/>
+            <path d="M5.5 17.5a2.5 2.5 0 0 1-2.5-2.5v-1.5a2.5 2.5 0 0 1 2.5-2.5h2l1.8 2.2-1.2 2.8z"/>
+            <path d="M18.5 17.5h-2.6l-1.2-2.8 1.8-2.2h2a2.5 2.5 0 0 1 2.5 2.5V15a2.5 2.5 0 0 1-2.5 2.5z"/>
+          </svg>
+          <span class="call-control-label">End call</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CHANGE USERNAME ══ -->
+  <div id="usernameModal" class="confirm-modal" style="display:none;" role="dialog" aria-modal="true">
+    <div class="confirm-modal-backdrop"></div>
+    <div class="confirm-modal-card settings-modal-card">
+      <div class="confirm-modal-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <h3>Change username</h3>
+      <p class="confirm-modal-desc">Your friends will see the new @handle immediately.</p>
+      <div class="settings-form">
+        <label for="usernameCurrentPassword">Current password</label>
+        <input id="usernameCurrentPassword" type="password" placeholder="Enter current password" autocomplete="current-password" />
+        <label for="usernameNew">New username</label>
+        <input id="usernameNew" type="text" maxlength="24" placeholder="New username" autocomplete="off" />
+      </div>
+      <div class="confirm-modal-btns">
+        <button class="confirm-modal-cancel" id="usernameCancel">Cancel</button>
+        <button class="settings-confirm" id="usernameSave">Update</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CHANGE PASSWORD ══ -->
+  <div id="passwordModal" class="confirm-modal" style="display:none;" role="dialog" aria-modal="true">
+    <div class="confirm-modal-backdrop"></div>
+    <div class="confirm-modal-card settings-modal-card">
+      <div class="confirm-modal-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <h3>Change password</h3>
+      <p class="confirm-modal-desc">Use at least 4 characters for a secure passphrase.</p>
+      <div class="settings-form">
+        <label for="passwordCurrent">Current password</label>
+        <input id="passwordCurrent" type="password" placeholder="Current password" autocomplete="current-password" />
+        <label for="passwordNew">New password</label>
+        <input id="passwordNew" type="password" minlength="4" placeholder="New password" autocomplete="new-password" />
+        <label for="passwordConfirm">Confirm password</label>
+        <input id="passwordConfirm" type="password" minlength="4" placeholder="Confirm password" autocomplete="new-password" />
+      </div>
+      <div class="confirm-modal-btns">
+        <button class="confirm-modal-cancel" id="passwordCancel">Cancel</button>
+        <button class="settings-confirm" id="passwordSave">Update</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ EDIT PROFILE ══ -->
+  <div id="profileModal" class="profile-modal" style="display:none;" role="dialog" aria-modal="true" aria-label="Edit profile">
+    <div class="profile-modal-backdrop"></div>
+    <div class="profile-modal-card">
+      <div class="profile-modal-header">
+        <div class="profile-modal-heading">
+          <span class="profile-modal-title">Edit profile</span>
+          <p class="profile-modal-subtitle">Personalize your profile and keep your account email verified.</p>
+        </div>
+        <button class="icon-btn" id="profileModalClose" aria-label="Close profile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="profile-avatar-section">
+        <div class="profile-avatar-top">
+          <div class="profile-modal-big" id="profileAvatarBig">?</div>
+          <div class="profile-avatar-copy">
+            <p class="profile-avatar-title">Choose avatar</p>
+            <p class="profile-avatar-hint">Pick the style friends will see in chats.</p>
+          </div>
+        </div>
+        <div class="profile-avatar-grid" id="profileAvatarGrid"></div>
+      </div>
+      <div class="profile-fields-section">
+        <div class="profile-field">
+          <label for="profileDisplayName">Display name</label>
+          <input id="profileDisplayName" type="text" maxlength="24" placeholder="Your name" autocomplete="off" />
+        </div>
+        <div class="profile-field">
+          <label for="profileBio">Bio</label>
+          <input id="profileBio" type="text" maxlength="140" placeholder="A short bio" autocomplete="off" />
+        </div>
+        <div class="profile-field">
+          <label for="profileEmail">Email</label>
+          <input
+            id="profileEmail"
+            type="email"
+            maxlength="120"
+            placeholder="you@example.com"
+            autocomplete="email"
+            inputmode="email"
+          />
+          <div class="profile-email-actions">
+            <button class="profile-email-btn" id="profileEmailSendCodeBtn" type="button">Send code</button>
+            <div class="profile-email-code-wrap">
+              <input
+                id="profileEmailCode"
+                type="text"
+                maxlength="6"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                placeholder="Verification code"
+                autocomplete="one-time-code"
+              />
+              <button class="profile-email-btn" id="profileEmailVerifyBtn" type="button">Verify email</button>
+            </div>
+          </div>
+          <div class="profile-email-status" id="profileEmailStatus" role="status" aria-live="polite"></div>
+        </div>
+        <div class="profile-field-row">
+          <div class="profile-field">
+            <label for="profileAge">Age</label>
+            <input id="profileAge" type="text" inputmode="numeric" maxlength="3" placeholder="18" autocomplete="off" />
+          </div>
+          <div class="profile-field">
+            <label for="profileGender">Gender</label>
+            <select id="profileGender">
+              <option value="">Prefer not to say</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+              <option value="nonbinary">Non-binary</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="confirm-modal-btns">
+        <button class="settings-confirm" id="profileSaveBtn" type="button">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ UNFRIEND CONFIRM ══ -->
+  <div id="unfriendModal" class="confirm-modal" style="display:none;" role="dialog" aria-modal="true">
+    <div class="confirm-modal-backdrop"></div>
+    <div class="confirm-modal-card settings-modal-card">
+      <div class="confirm-modal-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </div>
+      <h3 id="unfriendModalTitle">Unfriend?</h3>
+      <p class="confirm-modal-desc" id="unfriendModalDesc">This will also clear your chat history.</p>
+      <div class="confirm-modal-btns">
+        <button class="confirm-modal-cancel" id="unfriendCancel">Cancel</button>
+        <button class="settings-confirm danger" id="unfriendConfirm">Unfriend</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="blockedConfirmModal" class="confirm-modal" style="display:none;" role="dialog" aria-modal="true" aria-label="Confirm unblock">
+    <div class="confirm-modal-backdrop"></div>
+    <div class="confirm-modal-card settings-modal-card">
+      <div class="confirm-modal-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><path d="M12 16v2"/>
+        </svg>
+      </div>
+      <h3>Unblock user?</h3>
+      <p class="confirm-modal-desc" id="blockedConfirmDesc">You can block them again anytime from profile info.</p>
+      <div class="confirm-modal-btns">
+        <button class="confirm-modal-cancel" id="blockedConfirmCancel">Cancel</button>
+        <button class="settings-confirm" id="blockedConfirmOk">Unblock</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="statusViewerModal" class="status-viewer-modal hidden" role="dialog" aria-modal="true" aria-label="Status viewer">
+    <div class="status-viewer-backdrop" id="statusViewerBackdrop"></div>
+    <div class="status-viewer-card">
+      <div class="status-viewer-progress-track">
+        <div class="status-viewer-progress-fill" id="statusViewerProgressBar"></div>
+      </div>
+      <div class="status-viewer-header">
+        <div class="status-viewer-meta">
+          <div class="status-viewer-avatar" id="statusViewerAvatar">?</div>
+          <div class="status-viewer-meta-text">
+            <div class="status-viewer-name" id="statusViewerName">Status</div>
+            <div class="status-viewer-time" id="statusViewerTime">Just now</div>
+          </div>
+        </div>
+        <div class="status-viewer-actions">
+          <button type="button" class="status-viewer-action hidden" id="statusViewerEditBtn">Edit</button>
+          <button type="button" class="status-viewer-action" id="statusViewerCloseBtn" aria-label="Close status viewer">Close</button>
+        </div>
+      </div>
+      <div class="status-viewer-body">
+        <p class="status-viewer-text" id="statusViewerText">No status available.</p>
+      </div>
+      <button type="button" class="status-viewer-nav status-viewer-nav-prev" id="statusViewerPrev" aria-label="Previous status"></button>
+      <button type="button" class="status-viewer-nav status-viewer-nav-next" id="statusViewerNext" aria-label="Next status"></button>
+    </div>
+  </div>
+
+  <!-- ══ MINI CALL BANNER ══ -->
+  <div id="callMini" class="call-mini hidden" role="button" aria-label="Return to call">
+    <div class="call-mini-avatar" id="callMiniAvatar">?</div>
+    <div class="call-mini-info">
+      <div class="call-mini-name" id="callMiniName">Friend</div>
+      <div class="call-mini-status" id="callMiniStatus">Calling…</div>
+    </div>
+    <div class="call-mini-time hidden" id="callMiniTime">00:00</div>
+    <button class="call-mini-end" id="callMiniEnd" type="button" aria-label="End call">End</button>
+  </div>
+
+  <audio id="callRemoteAudio" class="call-remote-audio" autoplay playsinline></audio>
+
+  <div id="toast" class="show hidden" role="status" aria-live="polite"></div>
+
+  <!-- Ghost elements for JS compat -->
+  <div style="display:none;" aria-hidden="true">
+    <div id="loginCard"></div>
+    <form id="loginForm"></form>
+    <input id="usernameInput" />
+    <input id="passwordInput" />
+    <span id="usernameHint"></span>
+    <div id="usernameSuggestions"></div>
+    <button id="loginBtn"></button>
+    <!-- Topbar compat ghosts -->
+    <div class="app-topbar" style="display:none;">
+      <div class="topbar-brand"></div>
+      <nav class="nav-rail"></nav>
+      <div class="topbar-flex"></div>
+      <div class="topbar-search" id="sidebarSearch"></div>
+      <button class="settings-topbar-btn icon-btn" id="navSettingsBtn2"></button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="auth-session.js?v=20260408a"></script>
+  <script src="pwa-register.js?v=20260408a"></script>
+  <script src="app.js?v=20260408a"></script>
+  <script src="lazy-init.js?v=20260408a"></script>
+
+  <script>
+  (function() {
+    /* ── Tab bar navigation ── */
+    if (!window.__novynNavBound) {
+      var tabs = document.querySelectorAll('.tab-btn');
+      tabs.forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          var rail = btn.getAttribute('data-rail');
+          if (!rail) return;
+
+          // Settings tab opens panel instead of switching rail
+          if (rail === 'settings') {
+            if (e) e.stopPropagation();
+            if (typeof window._novynOpenSettingsPanel === 'function') {
+              window._novynOpenSettingsPanel();
+            } else {
+              document.body.classList.add('settings-open');
+            }
+            return;
+          }
+
+          if (typeof window.switchRail === 'function') {
+            window.switchRail(rail);
+            return;
+          }
+
+          tabs.forEach(function(b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          document.body.setAttribute('data-rail', rail);
+        });
+      });
+    }
+
+    /* ── Settings panel close ── */
+    var closeBtn = document.getElementById('settingsCloseBtn');
+    function closeSettingsPanel() {
+      if (typeof window._novynCloseSettingsPanel === 'function') {
+        window._novynCloseSettingsPanel();
+      } else {
+        document.body.classList.remove('settings-open');
+      }
+    }
+    if (closeBtn) closeBtn.addEventListener('click', function() {
+      closeSettingsPanel();
+    });
+    document.addEventListener('click', function(e) {
+      if (document.body.classList.contains('settings-open')) {
+        var panel = document.getElementById('settingsPanel');
+        if (panel && !panel.contains(e.target) && !e.target.closest('[data-settings-action]')) {
+          closeSettingsPanel();
+        }
+      }
+    });
+
+    /* ── Sync avatar across tab and sidebar footer ── */
+    var obs = new MutationObserver(function() {
+      var av = document.getElementById('meAvatar');
+      var nm = document.getElementById('meName');
+      var avF = document.getElementById('meAvatarFooter');
+      var nmF = document.getElementById('meNameFooter');
+      var avT = document.getElementById('tabAvatarIcon');
+      var avS = document.getElementById('settingsAvatar');
+      var nmS = document.getElementById('settingsProfileName');
+      if (av && avF) avF.textContent = av.textContent;
+      if (nm && nmF) nmF.textContent = nm.textContent;
+      if (av && avT) avT.textContent = av.textContent;
+      if (av && avS) avS.textContent = av.textContent;
+      if (nm && nmS) nmS.textContent = nm.textContent;
+    });
+    var av = document.getElementById('meAvatar');
+    var nm = document.getElementById('meName');
+    if (av) obs.observe(av, { childList:true, characterData:true, subtree:true });
+    if (nm) obs.observe(nm, { childList:true, characterData:true, subtree:true });
+
+    /* ── Add friend form toggle ── */
+    var openBtn = document.getElementById('addFriendOpenBtn');
+    var form = document.getElementById('addFriendForm');
+    if (openBtn && form) {
+      openBtn.addEventListener('click', function() {
+        form.classList.toggle('hidden');
+        if (!form.classList.contains('hidden')) {
+          var inp = document.getElementById('friendInput');
+          if (inp) inp.focus();
+        }
+      });
+    }
+
+    /* ── Proxy sidebarSearch for app.js compat ── */
+    var realInput = document.getElementById('sidebarSearchInput');
+    var _orig = document.getElementById.bind(document);
+    document.getElementById = function(id) {
+      if (id === 'sidebarSearch') return realInput;
+      return _orig(id);
+    };
+
+    /* ── Settings menu actions (small dropdown) ── */
+    var settingsBtn = document.getElementById('settingsBtn');
+    var settingsMenu = document.getElementById('settingsMenu');
+    if (settingsBtn && settingsMenu && !settingsBtn.disabled) {
+      settingsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        settingsMenu.classList.toggle('hidden');
+      });
+      document.addEventListener('click', function() {
+        settingsMenu.classList.add('hidden');
+      });
+    }
+
+    /* ── Theme toggling ── */
+    var themeButtons = Array.prototype.slice.call(
+      document.querySelectorAll('[data-settings-action="theme"]')
+    );
+    var systemThemeMedia = window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null;
+
+    function getResolvedTheme(preference) {
+      if (preference === 'dark' || preference === 'light') return preference;
+      return systemThemeMedia && systemThemeMedia.matches ? 'dark' : 'light';
+    }
+
+    function updateThemeChecks(activePreference) {
+      themeButtons.forEach(function(btn) {
+        var isActive = btn.getAttribute('data-theme') === activePreference;
+        btn.classList.toggle('is-active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        var check = btn.querySelector('.settings-check');
+        if (check) check.style.opacity = isActive ? '1' : '0';
+      });
+    }
+
+    function applyThemePreference(preference, persist) {
+      var nextPreference = (
+        preference === 'dark' ||
+        preference === 'light' ||
+        preference === 'system'
+      ) ? preference : 'system';
+
+      var resolved = getResolvedTheme(nextPreference);
+      document.documentElement.classList.remove('light', 'dark');
+      document.body.classList.remove('light', 'dark');
+      document.documentElement.classList.add(resolved);
+      document.body.classList.add(resolved);
+      document.documentElement.setAttribute('data-theme', resolved);
+      document.documentElement.setAttribute('data-theme-preference', nextPreference);
+      updateThemeChecks(nextPreference);
+
+      if (persist) {
+        localStorage.setItem('novyn-theme', nextPreference);
+      }
+    }
+
+    themeButtons.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        applyThemePreference(btn.getAttribute('data-theme'), true);
+      });
+    });
+
+    applyThemePreference(localStorage.getItem('novyn-theme') || 'system', false);
+
+    if (systemThemeMedia) {
+      var onSystemThemeChanged = function() {
+        var preference = localStorage.getItem('novyn-theme') || 'system';
+        if (preference === 'system') {
+          applyThemePreference('system', false);
+        }
+      };
+      if (typeof systemThemeMedia.addEventListener === 'function') {
+        systemThemeMedia.addEventListener('change', onSystemThemeChanged);
+      } else if (typeof systemThemeMedia.addListener === 'function') {
+        systemThemeMedia.addListener(onSystemThemeChanged);
+      }
+    }
+
+    /* ── Info panel close ── */
+    var infoClose = document.getElementById('infoCloseBtn');
+    if (infoClose) infoClose.addEventListener('click', function() {
+      document.body.classList.remove('info-open');
+    });
+    var infoScrim = document.getElementById('infoScrim');
+    if (infoScrim) infoScrim.addEventListener('click', function() {
+      document.body.classList.remove('info-open');
+    });
+
+    /* ── Default rail ── */
+    document.body.setAttribute('data-rail', 'messages');
+  })();
+  </script>
+</body>
+</html>

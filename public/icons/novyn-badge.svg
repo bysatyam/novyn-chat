@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <defs>
+    <filter id="n"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="s"><feGaussianBlur stdDeviation="1.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="96" height="96" rx="21" ry="21" fill="#0a0d0d"/>
+  <path d="M48 85 Q28 85 20 71 Q15 60 18 48 Q20 41 24 37 L31 18 L38 36 Q42 33 48 33 Q54 33 58 36 L65 18 L72 37 Q76 41 78 48 Q81 60 76 71 Q68 85 48 85 Z"
+        fill="none" stroke="#3CFFA0" stroke-width="2.2" stroke-linejoin="round" filter="url(#n)"/>
+  <path d="M31 59 Q38 53 45 59" stroke="#3CFFA0" stroke-width="2.2" stroke-linecap="round" fill="none" filter="url(#s)"/>
+  <path d="M51 59 Q58 53 65 59" stroke="#3CFFA0" stroke-width="2.2" stroke-linecap="round" fill="none" filter="url(#s)"/>
+  <circle cx="48" cy="68" r="1.5" fill="#3CFFA0"/>
+</svg>
