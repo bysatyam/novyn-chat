@@ -1,30 +1,91 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useChat } from '../../context/ChatContext';
 import { Avatar } from '../ui/Avatar';
-import { Search, UserPlus, Users, MessageSquare } from 'lucide-react';
+import {
+  Search,
+  UserPlus,
+  Users,
+  MessageSquare,
+  Pin,
+  PinOff,
+  Bell,
+  BellOff,
+  Star,
+  Archive,
+  ArchiveRestore,
+  Mail,
+  MailCheck,
+  Ban,
+  Trash2,
+  LogOut,
+  ChevronDown,
+  ArrowLeft,
+  X,
+  Check,
+} from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
 import { CreateGroupModal } from './CreateGroupModal';
+import { Conversation } from '../../types';
 
 interface ChatListProps {
   onOpenContacts: () => void;
   isCompact?: boolean;
 }
 
+type FilterTab = 'all' | 'unread' | 'favourites' | 'groups';
+
 export const ChatList: React.FC<ChatListProps> = ({
   onOpenContacts,
   isCompact = false,
 }) => {
-  const { conversations, activeChat, setActiveChat } = useChat();
+  const {
+    conversations,
+    activeChat,
+    setActiveChat,
+    pinnedChats,
+    archivedChats,
+    favouriteChats,
+    manualUnreadChats,
+    mutedUsers,
+    blockedUsers,
+    togglePinChat,
+    toggleArchiveChat,
+    toggleFavouriteChat,
+    markChatUnread,
+    muteUser,
+    blockUser,
+    clearChat,
+    unfriendUser,
+    leaveGroup,
+  } = useChat();
+
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
+  const [isViewingArchived, setIsViewingArchived] = useState(false);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
 
-  const filteredConversations = conversations.filter((c) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      (c.displayName && c.displayName.toLowerCase().includes(query)) ||
-      c.username.toLowerCase().includes(query)
-    );
-  });
+  // Context Menu State
+  const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Action Confirmation Modal
+  const [confirmAction, setConfirmAction] = useState<{
+    type: 'clear' | 'delete' | 'leave' | 'block';
+    target: Conversation;
+  } | null>(null);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpenFor(null);
+        setMenuPosition(null);
+      }
+    };
+    window.addEventListener('mousedown', handleOutsideClick);
+    return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   const formatLastSeen = (ts?: string | number) => {
     if (!ts) return '';
@@ -38,6 +99,103 @@ export const ChatList: React.FC<ChatListProps> = ({
     } catch {
       return '';
     }
+  };
+
+  // Filter conversations
+  const filteredConversations = conversations
+    .filter((c) => {
+      const key = c.username.toLowerCase();
+      const isArchived = archivedChats.has(key);
+
+      // Separate Archived View vs Main View
+      if (isViewingArchived) {
+        if (!isArchived) return false;
+      } else {
+        if (isArchived) return false;
+      }
+
+      // Filter Tabs
+      if (activeFilter === 'unread') {
+        const isUnread = c.unreadCount > 0 || manualUnreadChats.has(key);
+        if (!isUnread) return false;
+      } else if (activeFilter === 'favourites') {
+        if (!favouriteChats.has(key)) return false;
+      } else if (activeFilter === 'groups') {
+        if (!c.isGroup) return false;
+      }
+
+      // Search Query
+      const query = searchQuery.toLowerCase();
+      return (
+        (c.displayName && c.displayName.toLowerCase().includes(query)) ||
+        c.username.toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => {
+      const keyA = a.username.toLowerCase();
+      const keyB = b.username.toLowerCase();
+      const isPinnedA = pinnedChats.has(keyA);
+      const isPinnedB = pinnedChats.has(keyB);
+
+      // Pinned chats stay on top
+      if (isPinnedA && !isPinnedB) return -1;
+      if (!isPinnedA && isPinnedB) return 1;
+
+      // Sort by recent message time or last seen
+      const timeA = new Date(a.lastMessage?.timestamp || a.lastSeenAt || 0).getTime();
+      const timeB = new Date(b.lastMessage?.timestamp || b.lastSeenAt || 0).getTime();
+      return timeB - timeA;
+    });
+
+  const archivedCount = conversations.filter((c) =>
+    archivedChats.has(c.username.toLowerCase())
+  ).length;
+
+  const unreadCountTotal = conversations.filter(
+    (c) =>
+      !archivedChats.has(c.username.toLowerCase()) &&
+      (c.unreadCount > 0 || manualUnreadChats.has(c.username.toLowerCase()))
+  ).length;
+
+  const handleOpenMenu = (
+    e: React.MouseEvent,
+    convUsername: string,
+    isRightClick = false
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    triggerHaptic('light');
+
+    if (isRightClick) {
+      setMenuPosition({ x: Math.min(e.clientX, window.innerWidth - 220), y: Math.min(e.clientY, window.innerHeight - 300) });
+    } else {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setMenuPosition({ x: Math.min(rect.right - 200, window.innerWidth - 220), y: Math.min(rect.bottom + 4, window.innerHeight - 300) });
+    }
+    setMenuOpenFor(convUsername);
+  };
+
+  const handleExecuteConfirmedAction = () => {
+    if (!confirmAction) return;
+    const { type, target } = confirmAction;
+
+    if (type === 'clear') {
+      clearChat(target.username);
+    } else if (type === 'delete') {
+      unfriendUser(target.username);
+      if (activeChat?.toLowerCase() === target.username.toLowerCase()) {
+        setActiveChat(null);
+      }
+    } else if (type === 'leave') {
+      leaveGroup(target.username);
+      if (activeChat?.toLowerCase() === target.username.toLowerCase()) {
+        setActiveChat(null);
+      }
+    } else if (type === 'block') {
+      blockUser(target.username, !blockedUsers.has(target.username.toLowerCase()));
+    }
+
+    setConfirmAction(null);
   };
 
   if (isCompact) {
@@ -92,12 +250,18 @@ export const ChatList: React.FC<ChatListProps> = ({
         >
           {filteredConversations.map((conv) => {
             const isSelected = activeChat?.toLowerCase() === conv.username.toLowerCase();
+            const isPinned = pinnedChats.has(conv.username.toLowerCase());
+            const isUnread = conv.unreadCount > 0 || manualUnreadChats.has(conv.username.toLowerCase());
+
             return (
               <div
                 key={conv.username}
                 onClick={() => {
                   triggerHaptic('light');
                   setActiveChat(conv.username);
+                  if (manualUnreadChats.has(conv.username.toLowerCase())) {
+                    markChatUnread(conv.username, false);
+                  }
                 }}
                 style={{
                   position: 'relative',
@@ -112,7 +276,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                   transition: 'all 0.15s ease',
                   flexShrink: 0,
                 }}
-                title={`${conv.displayName || conv.username} ${conv.unreadCount > 0 ? `(${conv.unreadCount} unread)` : ''}`}
+                title={`${conv.displayName || conv.username} ${isUnread ? '(Unread)' : ''}`}
               >
                 {/* Left Active Pill Indicator */}
                 {isSelected && (
@@ -134,10 +298,26 @@ export const ChatList: React.FC<ChatListProps> = ({
                   avatarUrl={conv.avatarId}
                   online={conv.online}
                   presence={conv.presence}
+                  isGroup={conv.isGroup}
                   size="md"
                 />
 
-                {conv.unreadCount > 0 && (
+                {/* Pinned Dot Indicator */}
+                {isPinned && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '4px',
+                      left: '8px',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#10b981',
+                    }}
+                  />
+                )}
+
+                {isUnread && (
                   <span
                     style={{
                       position: 'absolute',
@@ -152,7 +332,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                       border: '2px solid #101624',
                     }}
                   >
-                    {conv.unreadCount}
+                    {conv.unreadCount > 0 ? conv.unreadCount : ''}
                   </span>
                 )}
               </div>
@@ -163,11 +343,31 @@ export const ChatList: React.FC<ChatListProps> = ({
     );
   }
 
+  const selectedMenuConv = conversations.find(
+    (c) => c.username.toLowerCase() === menuOpenFor?.toLowerCase()
+  );
+
   return (
-    <div className="chat-list-panel" style={{ width: '100%' }}>
+    <div className="chat-list-panel" style={{ width: '100%', position: 'relative' }}>
       {/* Top Header */}
       <div className="chat-list-header">
-        <h2 className="chat-list-title">Chats</h2>
+        {isViewingArchived ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setIsViewingArchived(false)}
+              className="header-action-btn"
+              style={{ width: '32px', height: '32px' }}
+              title="Back to all chats"
+            >
+              <ArrowLeft style={{ width: '16px', height: '16px' }} />
+            </button>
+            <h2 className="chat-list-title">Archived</h2>
+          </div>
+        ) : (
+          <h2 className="chat-list-title">Chats</h2>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <button
             type="button"
@@ -202,56 +402,244 @@ export const ChatList: React.FC<ChatListProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search conversations..."
+            placeholder={isViewingArchived ? 'Search archived chats...' : 'Search conversations...'}
             className="search-input-field"
           />
         </div>
       </div>
+
+      {/* Filter Tabs (All / Unread / Favourites / Groups) - WhatsApp style */}
+      {!isViewingArchived && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '0 16px 12px',
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setActiveFilter('all');
+            }}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '9999px',
+              border: 'none',
+              background: activeFilter === 'all' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+              color: activeFilter === 'all' ? '#10b981' : '#94a3b8',
+              fontWeight: 700,
+              fontSize: '0.76rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            All
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setActiveFilter('unread');
+            }}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '9999px',
+              border: 'none',
+              background: activeFilter === 'unread' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+              color: activeFilter === 'unread' ? '#10b981' : '#94a3b8',
+              fontWeight: 700,
+              fontSize: '0.76rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Unread
+            {unreadCountTotal > 0 && (
+              <span
+                style={{
+                  background: activeFilter === 'unread' ? '#10b981' : 'rgba(255, 255, 255, 0.2)',
+                  color: '#ffffff',
+                  fontSize: '0.62rem',
+                  padding: '1px 5px',
+                  borderRadius: '9999px',
+                  fontWeight: 800,
+                }}
+              >
+                {unreadCountTotal}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setActiveFilter('favourites');
+            }}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '9999px',
+              border: 'none',
+              background: activeFilter === 'favourites' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+              color: activeFilter === 'favourites' ? '#10b981' : '#94a3b8',
+              fontWeight: 700,
+              fontSize: '0.76rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Favourites
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setActiveFilter('groups');
+            }}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '9999px',
+              border: 'none',
+              background: activeFilter === 'groups' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+              color: activeFilter === 'groups' ? '#10b981' : '#94a3b8',
+              fontWeight: 700,
+              fontSize: '0.76rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Groups
+          </button>
+        </div>
+      )}
+
+      {/* Archived Row Banner (when not in archived view and archived chats exist) */}
+      {!isViewingArchived && archivedCount > 0 && (
+        <div
+          onClick={() => {
+            triggerHaptic('light');
+            setIsViewingArchived(true);
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 20px',
+            cursor: 'pointer',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+            background: 'rgba(255, 255, 255, 0.015)',
+            transition: 'background 0.15s ease',
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255, 255, 255, 0.04)')}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255, 255, 255, 0.015)')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Archive style={{ width: '18px', height: '18px', color: '#10b981' }} />
+            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#ffffff' }}>Archived</span>
+          </div>
+          <span
+            style={{
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              color: '#10b981',
+              background: 'rgba(16, 185, 129, 0.15)',
+              padding: '2px 8px',
+              borderRadius: '9999px',
+            }}
+          >
+            {archivedCount}
+          </span>
+        </div>
+      )}
 
       {/* Conversations Stream */}
       <div className="conversations-scroll">
         {filteredConversations.length === 0 ? (
           <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-dark)' }}>
             <MessageSquare style={{ width: '36px', height: '36px', margin: '0 auto 12px', opacity: 0.3, color: '#10b981' }} />
-            <p style={{ fontSize: '0.85rem', marginBottom: '8px' }}>No conversations yet</p>
-            <button
-              type="button"
-              onClick={onOpenContacts}
-              style={{ background: 'none', border: 'none', color: '#10b981', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
-            >
-              + Add a friend to start
-            </button>
+            <p style={{ fontSize: '0.85rem', marginBottom: '8px' }}>
+              {isViewingArchived
+                ? 'No archived conversations'
+                : activeFilter === 'unread'
+                ? 'No unread conversations'
+                : activeFilter === 'favourites'
+                ? 'No favourite conversations'
+                : activeFilter === 'groups'
+                ? 'No group conversations'
+                : 'No conversations yet'}
+            </p>
+            {!isViewingArchived && activeFilter === 'all' && (
+              <button
+                type="button"
+                onClick={onOpenContacts}
+                style={{ background: 'none', border: 'none', color: '#10b981', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+              >
+                + Add a friend to start
+              </button>
+            )}
           </div>
         ) : (
           filteredConversations.map((conv) => {
             const isSelected = activeChat?.toLowerCase() === conv.username.toLowerCase();
+            const key = conv.username.toLowerCase();
+            const isPinned = pinnedChats.has(key);
+            const isMuted = mutedUsers.has(key);
+            const isFav = favouriteChats.has(key);
+            const isUnread = conv.unreadCount > 0 || manualUnreadChats.has(key);
+
             return (
               <div
                 key={conv.username}
                 onClick={() => {
                   triggerHaptic('light');
                   setActiveChat(conv.username);
+                  if (manualUnreadChats.has(key)) {
+                    markChatUnread(conv.username, false);
+                  }
                 }}
+                onContextMenu={(e) => handleOpenMenu(e, conv.username, true)}
                 className={`chat-list-item ${isSelected ? 'selected' : ''}`}
+                style={{ position: 'relative', overflow: 'visible' }}
               >
                 <Avatar
                   name={conv.displayName || conv.username}
                   avatarUrl={conv.avatarId}
                   online={conv.online}
                   presence={conv.presence}
+                  isGroup={conv.isGroup}
                   size="md"
                 />
 
                 <div className="chat-item-info">
                   <div className="chat-item-top">
-                    <span className="chat-item-name">{conv.displayName || conv.username}</span>
-                    <span className="chat-item-time">
-                      {formatLastSeen(conv.lastMessage?.timestamp || conv.lastSeenAt)}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                      <span className="chat-item-name">{conv.displayName || conv.username}</span>
+                      {isFav && <Star style={{ width: '12px', height: '12px', color: '#f59e0b', fill: '#f59e0b', flexShrink: 0 }} />}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                      <span className="chat-item-time" style={isUnread ? { color: '#10b981', fontWeight: 700 } : {}}>
+                        {formatLastSeen(conv.lastMessage?.timestamp || conv.lastSeenAt)}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="chat-item-bottom">
-                    <span className="chat-item-preview">
+                    <span className="chat-item-preview" style={isUnread ? { color: '#ffffff', fontWeight: 600 } : {}}>
                       {conv.lastMessage ? (
                         conv.lastMessage.isVoice ? (
                           '🎤 Voice message'
@@ -265,9 +653,44 @@ export const ChatList: React.FC<ChatListProps> = ({
                       )}
                     </span>
 
-                    {conv.unreadCount > 0 && (
-                      <span className="unread-badge">{conv.unreadCount}</span>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      {isMuted && (
+                        <BellOff style={{ width: '13px', height: '13px', color: 'rgba(255, 255, 255, 0.4)' }} />
+                      )}
+
+                      {isPinned && (
+                        <Pin style={{ width: '13px', height: '13px', color: '#10b981', transform: 'rotate(45deg)' }} />
+                      )}
+
+                      {isUnread && (
+                        <span className="unread-badge">
+                          {conv.unreadCount > 0 ? conv.unreadCount : ''}
+                        </span>
+                      )}
+
+                      {/* Dropdown Chevron Options Button (WhatsApp style) */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleOpenMenu(e, conv.username, false)}
+                        className="chat-item-options-btn"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#94a3b8',
+                          padding: '2px',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: 0,
+                          transition: 'opacity 0.15s ease',
+                        }}
+                        title="Chat options"
+                      >
+                        <ChevronDown style={{ width: '16px', height: '16px' }} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -275,6 +698,301 @@ export const ChatList: React.FC<ChatListProps> = ({
           })
         )}
       </div>
+
+      {/* Floating WhatsApp-Style Chat Options Context Menu */}
+      {menuOpenFor && menuPosition && selectedMenuConv && (
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            left: `${menuPosition.x}px`,
+            top: `${menuPosition.y}px`,
+            width: '210px',
+            background: '#131b2e',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            borderRadius: '14px',
+            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.65)',
+            zIndex: 9999,
+            padding: '6px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px',
+            animation: 'dropdownFadeIn 0.15s ease',
+          }}
+        >
+          {/* 1. Pin / Unpin */}
+          <button
+            type="button"
+            onClick={() => {
+              togglePinChat(selectedMenuConv.username);
+              setMenuOpenFor(null);
+            }}
+            className="context-menu-item"
+          >
+            {pinnedChats.has(selectedMenuConv.username.toLowerCase()) ? (
+              <>
+                <PinOff style={{ width: '15px', height: '15px', color: '#94a3b8' }} />
+                <span>Unpin chat</span>
+              </>
+            ) : (
+              <>
+                <Pin style={{ width: '15px', height: '15px', color: '#10b981' }} />
+                <span>Pin chat</span>
+              </>
+            )}
+          </button>
+
+          {/* 2. Mute / Unmute */}
+          <button
+            type="button"
+            onClick={() => {
+              const isMuted = mutedUsers.has(selectedMenuConv.username.toLowerCase());
+              muteUser(selectedMenuConv.username, !isMuted);
+              setMenuOpenFor(null);
+            }}
+            className="context-menu-item"
+          >
+            {mutedUsers.has(selectedMenuConv.username.toLowerCase()) ? (
+              <>
+                <Bell style={{ width: '15px', height: '15px', color: '#10b981' }} />
+                <span>Unmute notifications</span>
+              </>
+            ) : (
+              <>
+                <BellOff style={{ width: '15px', height: '15px', color: '#f59e0b' }} />
+                <span>Mute notifications</span>
+              </>
+            )}
+          </button>
+
+          {/* 3. Star / Favourite */}
+          <button
+            type="button"
+            onClick={() => {
+              toggleFavouriteChat(selectedMenuConv.username);
+              setMenuOpenFor(null);
+            }}
+            className="context-menu-item"
+          >
+            <Star
+              style={{
+                width: '15px',
+                height: '15px',
+                color: favouriteChats.has(selectedMenuConv.username.toLowerCase()) ? '#f59e0b' : '#94a3b8',
+                fill: favouriteChats.has(selectedMenuConv.username.toLowerCase()) ? '#f59e0b' : 'none',
+              }}
+            />
+            <span>
+              {favouriteChats.has(selectedMenuConv.username.toLowerCase())
+                ? 'Remove from favourites'
+                : 'Add to favourites'}
+            </span>
+          </button>
+
+          {/* 4. Mark as Unread / Read */}
+          <button
+            type="button"
+            onClick={() => {
+              const isUnread =
+                selectedMenuConv.unreadCount > 0 ||
+                manualUnreadChats.has(selectedMenuConv.username.toLowerCase());
+              markChatUnread(selectedMenuConv.username, !isUnread);
+              setMenuOpenFor(null);
+            }}
+            className="context-menu-item"
+          >
+            {selectedMenuConv.unreadCount > 0 ||
+            manualUnreadChats.has(selectedMenuConv.username.toLowerCase()) ? (
+              <>
+                <MailCheck style={{ width: '15px', height: '15px', color: '#10b981' }} />
+                <span>Mark as read</span>
+              </>
+            ) : (
+              <>
+                <Mail style={{ width: '15px', height: '15px', color: '#38bdf8' }} />
+                <span>Mark as unread</span>
+              </>
+            )}
+          </button>
+
+          {/* 5. Archive / Unarchive */}
+          <button
+            type="button"
+            onClick={() => {
+              toggleArchiveChat(selectedMenuConv.username);
+              setMenuOpenFor(null);
+            }}
+            className="context-menu-item"
+          >
+            {archivedChats.has(selectedMenuConv.username.toLowerCase()) ? (
+              <>
+                <ArchiveRestore style={{ width: '15px', height: '15px', color: '#10b981' }} />
+                <span>Unarchive chat</span>
+              </>
+            ) : (
+              <>
+                <Archive style={{ width: '15px', height: '15px', color: '#94a3b8' }} />
+                <span>Archive chat</span>
+              </>
+            )}
+          </button>
+
+          <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '4px 0' }} />
+
+          {/* 6. Block (1-on-1 chats only) */}
+          {!selectedMenuConv.isGroup && (
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmAction({ type: 'block', target: selectedMenuConv });
+                setMenuOpenFor(null);
+              }}
+              className="context-menu-item"
+            >
+              <Ban style={{ width: '15px', height: '15px', color: '#ef4444' }} />
+              <span style={{ color: '#ef4444' }}>
+                {blockedUsers.has(selectedMenuConv.username.toLowerCase())
+                  ? 'Unblock user'
+                  : 'Block user'}
+              </span>
+            </button>
+          )}
+
+          {/* 7. Clear Chat */}
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmAction({ type: 'clear', target: selectedMenuConv });
+              setMenuOpenFor(null);
+            }}
+            className="context-menu-item"
+          >
+            <Trash2 style={{ width: '15px', height: '15px', color: '#ef4444' }} />
+            <span style={{ color: '#ef4444' }}>Clear chat</span>
+          </button>
+
+          {/* 8. Delete Chat / Leave Group */}
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmAction({
+                type: selectedMenuConv.isGroup ? 'leave' : 'delete',
+                target: selectedMenuConv,
+              });
+              setMenuOpenFor(null);
+            }}
+            className="context-menu-item"
+          >
+            {selectedMenuConv.isGroup ? (
+              <>
+                <LogOut style={{ width: '15px', height: '15px', color: '#ef4444' }} />
+                <span style={{ color: '#ef4444' }}>Exit group</span>
+              </>
+            ) : (
+              <>
+                <Trash2 style={{ width: '15px', height: '15px', color: '#ef4444' }} />
+                <span style={{ color: '#ef4444' }}>Delete chat</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Destructive Options */}
+      {confirmAction && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '20px',
+          }}
+          onClick={() => setConfirmAction(null)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '380px',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: '16px',
+              padding: '22px',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)',
+              animation: 'scaleUp 0.15s ease',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ffffff', marginBottom: '8px' }}>
+              {confirmAction.type === 'clear'
+                ? 'Clear this chat?'
+                : confirmAction.type === 'delete'
+                ? 'Delete chat and contact?'
+                : confirmAction.type === 'leave'
+                ? 'Exit group?'
+                : 'Block user?'}
+            </h3>
+            <p style={{ fontSize: '0.84rem', color: '#94a3b8', lineHeight: 1.5, marginBottom: '20px' }}>
+              {confirmAction.type === 'clear'
+                ? `Messages with ${confirmAction.target.displayName || confirmAction.target.username} will be deleted from your device.`
+                : confirmAction.type === 'delete'
+                ? `Are you sure you want to remove @${confirmAction.target.username} from your contacts?`
+                : confirmAction.type === 'leave'
+                ? `You will leave "${confirmAction.target.displayName || confirmAction.target.username}". You won't receive future messages unless re-added.`
+                : `Blocked users will not be able to message or call you.`}
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteConfirmedAction}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '10px',
+                  background: '#ef4444',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {confirmAction.type === 'clear'
+                  ? 'Clear Chat'
+                  : confirmAction.type === 'delete'
+                  ? 'Delete'
+                  : confirmAction.type === 'leave'
+                  ? 'Exit Group'
+                  : 'Block User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Group Modal */}
       <CreateGroupModal

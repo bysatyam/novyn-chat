@@ -228,6 +228,8 @@ export const ContactDetailsSidebar: React.FC<ContactDetailsSidebarProps> = ({
                 name={contact.displayName || contact.username}
                 avatarUrl={contact.avatarId}
                 online={contact.online}
+                presence={contact.presence}
+                isGroup={isGroup}
                 size="xl"
               />
             </div>
@@ -740,332 +742,494 @@ export const ContactDetailsSidebar: React.FC<ContactDetailsSidebarProps> = ({
             )}
           </div>
 
-          {/* Chat Options & Actions */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '22px' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {/* Chat Options & Actions - Redesigned Grouped Card */}
+          <div style={{ marginBottom: '22px' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '8px' }}>
               CHAT OPTIONS
             </span>
 
-            {/* Mute Toggle */}
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                onToggleMute(contact.username, !isMuted);
-              }}
+            <div
               style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '11px 14px',
-                borderRadius: '12px',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--border)',
-                color: '#ffffff',
-                fontSize: '0.84rem',
-                cursor: 'pointer',
+                background: 'rgba(255, 255, 255, 0.035)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '16px',
+                overflow: 'hidden',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {isMuted ? (
-                  <BellOff style={{ width: '16px', height: '16px', color: '#f59e0b' }} />
-                ) : (
-                  <Bell style={{ width: '16px', height: '16px', color: '#94a3b8' }} />
-                )}
-                <span>Mute Notifications</span>
-              </div>
-              <span style={{ fontSize: '0.72rem', color: isMuted ? '#f59e0b' : '#64748b', fontWeight: 700 }}>
-                {isMuted ? 'Muted' : 'Off'}
-              </span>
-            </button>
-
-            {/* Export Chat */}
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                setIsExportModalOpen(true);
-              }}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '11px 14px',
-                borderRadius: '12px',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--border)',
-                color: '#ffffff',
-                fontSize: '0.84rem',
-                cursor: 'pointer',
-              }}
-            >
-              <Download style={{ width: '16px', height: '16px', color: '#10b981' }} />
-              <span>Export Chat History</span>
-            </button>
-
-            {/* QR Code (1-on-1 only) */}
-            {!isGroup && (
-              <button
-                type="button"
+              {/* 1. Mute Toggle */}
+              <div
                 onClick={() => {
                   triggerHaptic('light');
-                  setIsQRModalOpen(true);
+                  onToggleMute(contact.username, !isMuted);
                 }}
                 style={{
-                  width: '100%',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '10px',
-                  padding: '11px 14px',
-                  borderRadius: '12px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid var(--border)',
-                  color: '#ffffff',
-                  fontSize: '0.84rem',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px',
                   cursor: 'pointer',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                  transition: 'background 0.15s ease',
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <QrCode style={{ width: '16px', height: '16px', color: '#38bdf8' }} />
-                <span>Contact QR Code</span>
-              </button>
-            )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: isMuted ? 'rgba(245, 158, 11, 0.18)' : 'rgba(255, 255, 255, 0.06)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: isMuted ? '#f59e0b' : '#94a3b8',
+                    }}
+                  >
+                    {isMuted ? <BellOff style={{ width: '16px', height: '16px' }} /> : <Bell style={{ width: '16px', height: '16px' }} />}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#ffffff' }}>Mute Notifications</div>
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{isMuted ? 'Alerts are silenced' : 'Play sound on new messages'}</div>
+                  </div>
+                </div>
 
-            {/* Chat Wallpaper & Theme */}
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                setIsWallpaperModalOpen(true);
-              }}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '11px 14px',
-                borderRadius: '12px',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--border)',
-                color: '#ffffff',
-                fontSize: '0.84rem',
-                cursor: 'pointer',
-              }}
-            >
-              <Palette style={{ width: '16px', height: '16px', color: '#ec4899' }} />
-              <span>Chat Wallpaper & Theme</span>
-            </button>
+                {/* Modern iOS-style Switch Indicator */}
+                <div
+                  style={{
+                    width: '38px',
+                    height: '22px',
+                    borderRadius: '9999px',
+                    background: isMuted ? '#f59e0b' : 'rgba(255, 255, 255, 0.15)',
+                    position: 'relative',
+                    transition: 'background 0.2s ease',
+                    flexShrink: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '50%',
+                      background: '#ffffff',
+                      position: 'absolute',
+                      top: '2px',
+                      left: isMuted ? '18px' : '2px',
+                      transition: 'left 0.2s ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* 2. Export Chat */}
+              <div
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsExportModalOpen(true);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  borderBottom: !isGroup ? '1px solid rgba(255, 255, 255, 0.04)' : 'none',
+                  transition: 'background 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#10b981',
+                    }}
+                  >
+                    <Download style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#ffffff' }}>Export Chat History</div>
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Download messages and media file</div>
+                  </div>
+                </div>
+                <ExternalLink style={{ width: '15px', height: '15px', color: '#64748b' }} />
+              </div>
+
+              {/* 3. QR Code (1-on-1 only) */}
+              {!isGroup && (
+                <div
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setIsQRModalOpen(true);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: 'rgba(56, 189, 248, 0.15)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#38bdf8',
+                      }}
+                    >
+                      <QrCode style={{ width: '16px', height: '16px' }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#ffffff' }}>Contact QR Code</div>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Quick scan to share with others</div>
+                    </div>
+                  </div>
+                  <ExternalLink style={{ width: '15px', height: '15px', color: '#64748b' }} />
+                </div>
+              )}
+
+              {/* 4. Wallpaper & Theme */}
+              <div
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsWallpaperModalOpen(true);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(236, 72, 153, 0.15)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ec4899',
+                    }}
+                  >
+                    <Palette style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#ffffff' }}>Chat Wallpaper & Theme</div>
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Custom backdrop and colors</div>
+                  </div>
+                </div>
+                <ExternalLink style={{ width: '15px', height: '15px', color: '#64748b' }} />
+              </div>
+            </div>
           </div>
 
-          {/* Danger Zone: Leave Group or Clear/Unfriend */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {/* Danger Zone: Grouped Card */}
+          <div style={{ marginBottom: '24px' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '8px' }}>
               DANGER ZONE
             </span>
 
-            {isGroup ? (
-              /* Leave Group Button */
-              showConfirmLeave ? (
-                <div
-                  style={{
-                    padding: '12px',
-                    borderRadius: '12px',
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.25)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <span style={{ fontSize: '0.76rem', color: '#f87171' }}>Leave this group?</span>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmLeave(false)}
-                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLeaveGroup}
-                      style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
-                    >
-                      Leave
-                    </button>
+            <div
+              style={{
+                background: 'rgba(239, 68, 68, 0.035)',
+                border: '1px solid rgba(239, 68, 68, 0.18)',
+                borderRadius: '16px',
+                overflow: 'hidden',
+              }}
+            >
+              {isGroup ? (
+                /* Leave Group Action */
+                showConfirmLeave ? (
+                  <div
+                    style={{
+                      padding: '14px',
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.78rem', color: '#f87171', fontWeight: 600 }}>Leave this group?</span>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmLeave(false)}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleLeaveGroup}
+                        style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 12px', borderRadius: '6px', cursor: 'pointer' }}
+                      >
+                        Leave
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    onClick={() => setShowConfirmLeave(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 14px',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '8px',
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#ef4444',
+                        }}
+                      >
+                        <LogOut style={{ width: '16px', height: '16px' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#f87171' }}>Leave Group</div>
+                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Exit and remove conversation</div>
+                      </div>
+                    </div>
+                    <ExternalLink style={{ width: '15px', height: '15px', color: '#ef4444' }} />
+                  </div>
+                )
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmLeave(true)}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '11px 14px',
-                    borderRadius: '12px',
-                    background: 'rgba(239, 68, 68, 0.05)',
-                    border: '1px solid rgba(239, 68, 68, 0.15)',
-                    color: '#f87171',
-                    fontSize: '0.84rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <LogOut style={{ width: '16px', height: '16px', color: '#ef4444' }} />
-                  <span>Leave Group</span>
-                </button>
-              )
-            ) : (
-              <>
-                {/* Clear Chat History */}
-                {showConfirmClear ? (
+                <>
+                  {/* 1. Clear Chat History */}
+                  {showConfirmClear ? (
+                    <div
+                      style={{
+                        padding: '14px',
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        borderBottom: '1px solid rgba(239, 68, 68, 0.15)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.78rem', color: '#f87171', fontWeight: 600 }}>Clear all messages?</span>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmClear(false)}
+                          style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('heavy');
+                            onClearChat(contact.username);
+                            setShowConfirmClear(false);
+                          }}
+                          style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 12px', borderRadius: '6px', cursor: 'pointer' }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => setShowConfirmClear(true)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '12px 14px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid rgba(239, 68, 68, 0.12)',
+                        transition: 'background 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#ef4444',
+                          }}
+                        >
+                          <Trash2 style={{ width: '16px', height: '16px' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#f87171' }}>Clear Chat History</div>
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Delete message stream locally</div>
+                        </div>
+                      </div>
+                      <ExternalLink style={{ width: '15px', height: '15px', color: '#ef4444' }} />
+                    </div>
+                  )}
+
+                  {/* 2. Block Contact */}
                   <div
+                    onClick={() => {
+                      triggerHaptic('medium');
+                      onToggleBlock(contact.username, !isBlocked);
+                    }}
                     style={{
-                      padding: '12px',
-                      borderRadius: '12px',
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.25)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                    }}
-                  >
-                    <span style={{ fontSize: '0.76rem', color: '#f87171' }}>Clear all messages?</span>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmClear(false)}
-                        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic('heavy');
-                          onClearChat(contact.username);
-                          setShowConfirmClear(false);
-                        }}
-                        style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmClear(true)}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '11px 14px',
-                      borderRadius: '12px',
-                      background: 'rgba(239, 68, 68, 0.05)',
-                      border: '1px solid rgba(239, 68, 68, 0.15)',
-                      color: '#f87171',
-                      fontSize: '0.84rem',
+                      padding: '12px 14px',
                       cursor: 'pointer',
+                      borderBottom: '1px solid rgba(239, 68, 68, 0.12)',
+                      transition: 'background 0.15s ease',
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
-                    <Trash2 style={{ width: '16px', height: '16px', color: '#ef4444' }} />
-                    <span>Clear Chat History</span>
-                  </button>
-                )}
-
-                {/* Block Contact */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('medium');
-                    onToggleBlock(contact.username, !isBlocked);
-                  }}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '11px 14px',
-                    borderRadius: '12px',
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    border: '1px solid var(--border)',
-                    color: isBlocked ? '#ef4444' : '#ffffff',
-                    fontSize: '0.84rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Ban style={{ width: '16px', height: '16px', color: isBlocked ? '#ef4444' : '#94a3b8' }} />
-                    <span>{isBlocked ? 'Unblock Contact' : 'Block Contact'}</span>
-                  </div>
-                  {isBlocked && <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#ef4444' }}>Blocked</span>}
-                </button>
-
-                {/* Unfriend Contact */}
-                {showConfirmUnfriend ? (
-                  <div
-                    style={{
-                      padding: '12px',
-                      borderRadius: '12px',
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.25)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <span style={{ fontSize: '0.76rem', color: '#f87171' }}>Unfriend user?</span>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmUnfriend(false)}
-                        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic('heavy');
-                          onUnfriend(contact.username);
-                          setShowConfirmUnfriend(false);
-                          onClose();
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '8px',
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#ef4444',
                         }}
-                        style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
                       >
-                        Confirm
-                      </button>
+                        <Ban style={{ width: '16px', height: '16px' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#f87171' }}>
+                          {isBlocked ? 'Unblock Contact' : 'Block Contact'}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                          {isBlocked ? 'Allow messaging & calls' : 'Stop incoming messages & calls'}
+                        </div>
+                      </div>
                     </div>
+                    {isBlocked ? (
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239, 68, 68, 0.15)', padding: '2px 8px', borderRadius: '6px' }}>
+                        Blocked
+                      </span>
+                    ) : (
+                      <ExternalLink style={{ width: '15px', height: '15px', color: '#ef4444' }} />
+                    )}
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmUnfriend(true)}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '11px 14px',
-                      borderRadius: '12px',
-                      background: 'rgba(239, 68, 68, 0.05)',
-                      border: '1px solid rgba(239, 68, 68, 0.15)',
-                      color: '#f87171',
-                      fontSize: '0.84rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <UserMinus style={{ width: '16px', height: '16px', color: '#ef4444' }} />
-                    <span>Unfriend Contact</span>
-                  </button>
-                )}
-              </>
-            )}
+
+                  {/* 3. Unfriend */}
+                  {showConfirmUnfriend ? (
+                    <div
+                      style={{
+                        padding: '14px',
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.78rem', color: '#f87171', fontWeight: 600 }}>Unfriend @{contact.username}?</span>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmUnfriend(false)}
+                          style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('heavy');
+                            onUnfriend(contact.username);
+                            setShowConfirmUnfriend(false);
+                            onClose();
+                          }}
+                          style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 12px', borderRadius: '6px', cursor: 'pointer' }}
+                        >
+                          Unfriend
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => setShowConfirmUnfriend(true)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '12px 14px',
+                        cursor: 'pointer',
+                        transition: 'background 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#ef4444',
+                          }}
+                        >
+                          <UserMinus style={{ width: '16px', height: '16px' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#f87171' }}>Unfriend Contact</div>
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Remove from friends list</div>
+                        </div>
+                      </div>
+                      <ExternalLink style={{ width: '15px', height: '15px', color: '#ef4444' }} />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

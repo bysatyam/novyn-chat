@@ -43,6 +43,14 @@ interface ChatContextType {
   leaveGroup: (groupId: string) => void;
   chatWallpaper: string;
   setChatWallpaper: (to: string, wallpaper: string) => void;
+  pinnedChats: Set<string>;
+  archivedChats: Set<string>;
+  favouriteChats: Set<string>;
+  manualUnreadChats: Set<string>;
+  togglePinChat: (username: string) => void;
+  toggleArchiveChat: (username: string) => void;
+  toggleFavouriteChat: (username: string) => void;
+  markChatUnread: (username: string, unread?: boolean) => void;
   startCall: (remoteUser: string, isVideo?: boolean) => Promise<void>;
   answerCall: () => Promise<void>;
   endCall: (reason?: string) => void;
@@ -65,6 +73,83 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
   const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
+
+  const [pinnedChats, setPinnedChats] = useState<Set<string>>(new Set());
+  const [archivedChats, setArchivedChats] = useState<Set<string>>(new Set());
+  const [favouriteChats, setFavouriteChats] = useState<Set<string>>(new Set());
+  const [manualUnreadChats, setManualUnreadChats] = useState<Set<string>>(new Set());
+
+  // Load chat preferences from localStorage
+  useEffect(() => {
+    if (!user?.username) return;
+    try {
+      const p = localStorage.getItem(`novyn_pinned_${user.username}`);
+      if (p) setPinnedChats(new Set(JSON.parse(p)));
+      const a = localStorage.getItem(`novyn_archived_${user.username}`);
+      if (a) setArchivedChats(new Set(JSON.parse(a)));
+      const f = localStorage.getItem(`novyn_fav_${user.username}`);
+      if (f) setFavouriteChats(new Set(JSON.parse(f)));
+      const u = localStorage.getItem(`novyn_unread_${user.username}`);
+      if (u) setManualUnreadChats(new Set(JSON.parse(u)));
+    } catch {}
+  }, [user?.username]);
+
+  const togglePinChat = useCallback((username: string) => {
+    setPinnedChats((prev) => {
+      const next = new Set(prev);
+      const key = username.toLowerCase();
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      if (user?.username) {
+        localStorage.setItem(`novyn_pinned_${user.username}`, JSON.stringify(Array.from(next)));
+      }
+      return next;
+    });
+    triggerHaptic('light');
+  }, [user?.username]);
+
+  const toggleArchiveChat = useCallback((username: string) => {
+    setArchivedChats((prev) => {
+      const next = new Set(prev);
+      const key = username.toLowerCase();
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      if (user?.username) {
+        localStorage.setItem(`novyn_archived_${user.username}`, JSON.stringify(Array.from(next)));
+      }
+      return next;
+    });
+    triggerHaptic('medium');
+  }, [user?.username]);
+
+  const toggleFavouriteChat = useCallback((username: string) => {
+    setFavouriteChats((prev) => {
+      const next = new Set(prev);
+      const key = username.toLowerCase();
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      if (user?.username) {
+        localStorage.setItem(`novyn_fav_${user.username}`, JSON.stringify(Array.from(next)));
+      }
+      return next;
+    });
+    triggerHaptic('light');
+  }, [user?.username]);
+
+  const markChatUnread = useCallback((username: string, unread?: boolean) => {
+    setManualUnreadChats((prev) => {
+      const next = new Set(prev);
+      const key = username.toLowerCase();
+      const shouldUnread = unread !== undefined ? unread : !next.has(key);
+      if (shouldUnread) next.add(key);
+      else next.delete(key);
+      if (user?.username) {
+        localStorage.setItem(`novyn_unread_${user.username}`, JSON.stringify(Array.from(next)));
+      }
+      return next;
+    });
+    triggerHaptic('light');
+  }, [user?.username]);
 
   const [callState, setCallState] = useState<CallState>({
     isActive: false,
@@ -1236,6 +1321,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         leaveGroup,
         chatWallpaper,
         setChatWallpaper,
+        pinnedChats,
+        archivedChats,
+        favouriteChats,
+        manualUnreadChats,
+        togglePinChat,
+        toggleArchiveChat,
+        toggleFavouriteChat,
+        markChatUnread,
         startCall,
         answerCall,
         endCall,

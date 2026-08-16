@@ -234,7 +234,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       ref={containerRef}
       id={`msg-${message.id}`}
       className={`bubble-row ${isMe ? 'me' : 'other'}`}
-      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}
+      style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', gap: '6px' }}
     >
       {/* 3-Dots Action Trigger Button on Left of 'Me' */}
       {isMe && (
@@ -252,6 +252,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            marginBottom: '16px',
           }}
           title="Message actions"
         >
@@ -259,111 +260,41 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         </button>
       )}
 
-      {/* Main Bubble Container */}
-      <motion.div
-        initial={{ opacity: 0, y: 8, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.2 }}
-        onDoubleClick={handleDoubleClick}
-        onTouchEnd={handleTouchEnd}
-        className={`bubble ${isMe ? 'me' : 'other'}`}
-        style={{ position: 'relative', cursor: 'default' }}
-        title="Double-tap for emoji reactions"
-      >
-        {/* 1. Floating Double-Tap Emoji Reaction Bar */}
-        <AnimatePresence>
-          {showReactions && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.85, y: 6 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.85, y: 6 }}
-              transition={{ duration: 0.15 }}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                position: 'absolute',
-                top: '-46px',
-                right: isMe ? '0' : 'auto',
-                left: isMe ? 'auto' : '0',
-                background: '#161f30',
-                border: '1px solid rgba(255, 255, 255, 0.18)',
-                borderRadius: '9999px',
-                padding: '5px 12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 12px 32px rgba(0,0,0,0.7)',
-                zIndex: 50,
-              }}
-            >
-              {COMMON_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerHaptic('light');
-                    onReaction(message.id, emoji);
-                    setShowReactions(false);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: '1.2rem',
-                    cursor: 'pointer',
-                    padding: '2px 4px',
-                    lineHeight: 1,
-                    transition: 'transform 0.12s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.3)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* 2. Floating Vertical Action Dropdown Menu (Top-to-Bottom) */}
-        <AnimatePresence>
-          {showActionsMenu && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92, y: 6 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.92, y: 6 }}
-              transition={{ duration: 0.15 }}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                position: 'absolute',
-                top: openBelow ? '100%' : 'auto',
-                bottom: openBelow ? 'auto' : '100%',
-                right: isMe ? '0' : 'auto',
-                left: isMe ? 'auto' : '0',
-                marginTop: openBelow ? '6px' : '0',
-                marginBottom: openBelow ? '0' : '6px',
-                background: '#131b2e',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '14px',
-                padding: '6px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-                minWidth: '160px',
-                boxShadow: '0 16px 36px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-                zIndex: 1000,
-                backdropFilter: 'blur(16px)',
-              }}
-            >
-              {/* Quick Reactions Bar at Top */}
-              <div
+      {/* Main Message Column */}
+      <div className="msg-wrapper">
+        <motion.div
+          initial={{ opacity: 0, y: 8, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.2 }}
+          onDoubleClick={handleDoubleClick}
+          onTouchEnd={handleTouchEnd}
+          className={`bubble ${isMe ? 'me' : 'other'}`}
+          style={{ position: 'relative', cursor: 'default' }}
+          title="Double-tap for emoji reactions"
+        >
+          {/* 1. Floating Double-Tap Emoji Reaction Bar */}
+          <AnimatePresence>
+            {showReactions && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.85, y: 6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.85, y: 6 }}
+                transition={{ duration: 0.15 }}
+                onClick={(e) => e.stopPropagation()}
                 style={{
+                  position: 'absolute',
+                  top: '-46px',
+                  right: isMe ? '0' : 'auto',
+                  left: isMe ? 'auto' : '0',
+                  background: '#161f30',
+                  border: '1px solid rgba(255, 255, 255, 0.18)',
+                  borderRadius: '9999px',
+                  padding: '5px 12px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '4px',
-                  padding: '4px 6px 6px',
-                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                  marginBottom: '4px',
+                  gap: '8px',
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.7)',
+                  zIndex: 50,
                 }}
               >
                 {COMMON_REACTIONS.map((emoji) => (
@@ -374,102 +305,103 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       e.stopPropagation();
                       triggerHaptic('light');
                       onReaction(message.id, emoji);
-                      setShowActionsMenu(false);
+                      setShowReactions(false);
                     }}
                     style={{
                       background: 'none',
                       border: 'none',
-                      fontSize: '1.15rem',
+                      fontSize: '1.2rem',
                       cursor: 'pointer',
-                      padding: '2px',
+                      padding: '2px 4px',
                       lineHeight: 1,
                       transition: 'transform 0.12s ease',
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.35)')}
+                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.3)')}
                     onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                   >
                     {emoji}
                   </button>
                 ))}
-              </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Vertical Actions (Top to Bottom) */}
-              {/* Reply */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  triggerHaptic('light');
-                  onReply(message);
-                  setShowActionsMenu(false);
-                }}
+          {/* 2. Floating Vertical Action Dropdown Menu */}
+          <AnimatePresence>
+            {showActionsMenu && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: 6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 6 }}
+                transition={{ duration: 0.15 }}
+                onClick={(e) => e.stopPropagation()}
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#ffffff',
-                  cursor: 'pointer',
-                  padding: '7px 10px',
-                  borderRadius: '8px',
+                  position: 'absolute',
+                  top: openBelow ? '100%' : 'auto',
+                  bottom: openBelow ? 'auto' : '100%',
+                  right: isMe ? '0' : 'auto',
+                  left: isMe ? 'auto' : '0',
+                  marginTop: openBelow ? '6px' : '0',
+                  marginBottom: openBelow ? '0' : '6px',
+                  background: '#131b2e',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '14px',
+                  padding: '6px',
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  width: '100%',
-                  textAlign: 'left',
-                  transition: 'background 0.15s ease',
+                  flexDirection: 'column',
+                  gap: '2px',
+                  minWidth: '160px',
+                  boxShadow: '0 16px 36px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+                  zIndex: 1000,
+                  backdropFilter: 'blur(16px)',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
               >
-                <Reply style={{ width: '14px', height: '14px', color: '#10b981' }} />
-                <span>Reply</span>
-              </button>
+                {/* Quick Reactions Bar at Top */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '4px',
+                    padding: '4px 6px 6px',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                    marginBottom: '4px',
+                  }}
+                >
+                  {COMMON_REACTIONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        triggerHaptic('light');
+                        onReaction(message.id, emoji);
+                        setShowActionsMenu(false);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        fontSize: '1.15rem',
+                        cursor: 'pointer',
+                        padding: '2px',
+                        lineHeight: 1,
+                        transition: 'transform 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.35)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
 
-              {/* Copy */}
-              <button
-                type="button"
-                onClick={handleCopy}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: copied ? '#10b981' : '#ffffff',
-                  cursor: 'pointer',
-                  padding: '7px 10px',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  width: '100%',
-                  textAlign: 'left',
-                  transition: 'background 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-              >
-                {copied ? (
-                  <>
-                    <Check style={{ width: '14px', height: '14px', color: '#10b981' }} />
-                    <span>Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy style={{ width: '14px', height: '14px', color: '#94a3b8' }} />
-                    <span>Copy Text</span>
-                  </>
-                )}
-              </button>
-
-              {/* Forward */}
-              {onForward && (
+                {/* Reply */}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     triggerHaptic('light');
-                    onForward(message);
+                    onReply(message);
                     setShowActionsMenu(false);
                   }}
                   style={{
@@ -491,29 +423,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                 >
-                  <Forward style={{ width: '14px', height: '14px', color: '#60a5fa' }} />
-                  <span>Forward</span>
+                  <Reply style={{ width: '14px', height: '14px', color: '#10b981' }} />
+                  <span>Reply</span>
                 </button>
-              )}
 
-              {/* Pin / Unpin */}
-              {(onPin || onUnpin) && (
+                {/* Copy */}
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerHaptic('light');
-                    if (message.pinnedAt) {
-                      onUnpin?.(message.id);
-                    } else {
-                      onPin?.(message.id);
-                    }
-                    setShowActionsMenu(false);
-                  }}
+                  onClick={handleCopy}
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#ffffff',
+                    color: copied ? '#10b981' : '#ffffff',
                     cursor: 'pointer',
                     padding: '7px 10px',
                     borderRadius: '8px',
@@ -529,293 +450,370 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                 >
-                  {message.pinnedAt ? (
+                  {copied ? (
                     <>
-                      <PinOff style={{ width: '14px', height: '14px', color: '#f59e0b' }} />
-                      <span>Unpin</span>
+                      <Check style={{ width: '14px', height: '14px', color: '#10b981' }} />
+                      <span>Copied!</span>
                     </>
                   ) : (
                     <>
-                      <Pin style={{ width: '14px', height: '14px', color: '#f59e0b' }} />
-                      <span>Pin</span>
+                      <Copy style={{ width: '14px', height: '14px', color: '#94a3b8' }} />
+                      <span>Copy Text</span>
                     </>
                   )}
                 </button>
-              )}
 
-              {/* Edit (if sent by me and is text) */}
-              {isMe && message.text && !isAudioMessage && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsEditing(true);
-                    setShowActionsMenu(false);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#ffffff',
-                    cursor: 'pointer',
-                    padding: '7px 10px',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    width: '100%',
-                    textAlign: 'left',
-                    transition: 'background 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-                >
-                  <Edit2 style={{ width: '14px', height: '14px', color: '#38bdf8' }} />
-                  <span>Edit</span>
-                </button>
-              )}
+                {/* Forward */}
+                {onForward && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      triggerHaptic('light');
+                      onForward(message);
+                      setShowActionsMenu(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      padding: '7px 10px',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      width: '100%',
+                      textAlign: 'left',
+                      transition: 'background 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                  >
+                    <Forward style={{ width: '14px', height: '14px', color: '#60a5fa' }} />
+                    <span>Forward</span>
+                  </button>
+                )}
 
-              {/* Unsend (if sent by me) */}
-              {isMe && onUnsend && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerHaptic('medium');
-                    onUnsend(message.id);
-                    setShowActionsMenu(false);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#f87171',
-                    cursor: 'pointer',
-                    padding: '7px 10px',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    width: '100%',
-                    textAlign: 'left',
-                    transition: 'background 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-                >
-                  <Trash2 style={{ width: '14px', height: '14px', color: '#ef4444' }} />
-                  <span>Unsend</span>
-                </button>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                {/* Pin / Unpin */}
+                {(onPin || onUnpin) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      triggerHaptic('light');
+                      if (message.pinnedAt) {
+                        onUnpin?.(message.id);
+                      } else {
+                        onPin?.(message.id);
+                      }
+                      setShowActionsMenu(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      padding: '7px 10px',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      width: '100%',
+                      textAlign: 'left',
+                      transition: 'background 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                  >
+                    {message.pinnedAt ? (
+                      <>
+                        <PinOff style={{ width: '14px', height: '14px', color: '#f59e0b' }} />
+                        <span>Unpin</span>
+                      </>
+                    ) : (
+                      <>
+                        <Pin style={{ width: '14px', height: '14px', color: '#f59e0b' }} />
+                        <span>Pin</span>
+                      </>
+                    )}
+                  </button>
+                )}
 
-        {/* Group Sender Name */}
-        {isGroup && !isMe && (
-          <div
-            style={{
-              fontSize: '0.74rem',
-              fontWeight: 800,
-              color: '#34d399',
-              marginBottom: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            @{message.sender}
-          </div>
-        )}
+                {/* Edit (if sent by me and is text) */}
+                {isMe && message.text && !isAudioMessage && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEditing(true);
+                      setShowActionsMenu(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      padding: '7px 10px',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      width: '100%',
+                      textAlign: 'left',
+                      transition: 'background 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                  >
+                    <Edit2 style={{ width: '14px', height: '14px', color: '#38bdf8' }} />
+                    <span>Edit</span>
+                  </button>
+                )}
 
-        {/* Reply Context Header (Click to jump to original message/image) */}
-        {message.replyTo && (
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              triggerHaptic('light');
-              const targetId = message.replyTo?.id;
-              if (targetId) {
-                onJumpToMessage?.(targetId);
-              }
-            }}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '8px',
-              borderLeft: isMe ? '3px solid rgba(255,255,255,0.8)' : '3px solid #10b981',
-              background: 'rgba(0, 0, 0, 0.25)',
-              fontSize: '0.75rem',
-              marginBottom: '8px',
-              cursor: 'pointer',
-              transition: 'background 0.15s ease',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.4)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.25)')}
-            title="Click to jump to original message"
-          >
-            <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-              <CornerDownRight style={{ width: '12px', height: '12px' }} />
-              {message.replyTo.sender}
-            </div>
-            <div style={{ opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {message.replyTo.attachment?.kind === 'image'
-                ? '📷 [Image]'
-                : message.replyTo.attachment?.kind === 'audio'
-                ? '🎤 [Voice Message]'
-                : message.replyTo.text || '[Attachment]'}
-            </div>
-          </div>
-        )}
+                {/* Unsend (if sent by me) */}
+                {isMe && onUnsend && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      triggerHaptic('medium');
+                      onUnsend(message.id);
+                      setShowActionsMenu(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#f87171',
+                      cursor: 'pointer',
+                      padding: '7px 10px',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      width: '100%',
+                      textAlign: 'left',
+                      transition: 'background 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                  >
+                    <Trash2 style={{ width: '14px', height: '14px', color: '#ef4444' }} />
+                    <span>Unsend</span>
+                  </button>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        {/* 1. Image Attachment */}
-        {message.attachment && (message.attachment.kind === 'image' || message.attachment.mime?.startsWith('image/')) && (
-          <div
-            style={{ marginBottom: '8px', borderRadius: '12px', overflow: 'hidden', cursor: 'pointer' }}
-            onClick={() => onMediaClick(message.attachment!.url)}
-          >
-            <img
-              src={message.attachment.url}
-              alt={message.attachment.name}
-              style={{ maxHeight: '240px', width: '100%', objectFit: 'cover', borderRadius: '12px' }}
-            />
-          </div>
-        )}
-
-        {/* 2. Built-in Voice Audio Player */}
-        {isAudioMessage && audioUrl && (
-          <VoicePlayer url={audioUrl} isMe={isMe} duration={message.voiceDuration} />
-        )}
-
-        {/* 3. Document / File Attachment (Non-audio) */}
-        {!isAudioMessage && message.attachment && (message.attachment.kind === 'file' || !message.attachment.mime?.startsWith('image/')) && (
-          <a
-            href={message.attachment.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '8px 12px',
-              borderRadius: '10px',
-              background: 'rgba(0,0,0,0.2)',
-              textDecoration: 'none',
-              color: '#ffffff',
-              fontSize: '0.8rem',
-              marginBottom: '6px',
-            }}
-          >
-            <FileText style={{ width: '20px', height: '20px', color: '#34d399' }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {message.attachment.name}
-            </span>
-          </a>
-        )}
-
-        {/* 4. Message Text / Inline Edit */}
-        {isEditing ? (
-          <div style={{ marginTop: '4px' }}>
-            <input
-              type="text"
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveEdit();
-                if (e.key === 'Escape') setIsEditing(false);
-              }}
-              autoFocus
+          {/* Group Sender Name */}
+          {isGroup && !isMe && (
+            <div
               style={{
-                width: '100%',
-                background: 'rgba(0,0,0,0.25)',
-                border: '1px solid rgba(255,255,255,0.4)',
-                borderRadius: '8px',
-                padding: '6px 8px',
-                color: '#ffffff',
-                fontSize: '0.85rem',
-                outline: 'none',
-                marginBottom: '6px',
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                color: '#34d399',
+                marginBottom: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
               }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => setIsEditing(false)}
-                style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '0.72rem', cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEdit}
-                style={{ background: '#10b981', border: 'none', color: '#ffffff', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}
-              >
-                Save
-              </button>
+            >
+              @{message.sender}
             </div>
-          </div>
-        ) : message.poll ? (
-          <PollMessageBubble
-            poll={message.poll}
-            messageId={message.id}
-            isMe={isMe}
-            currentUsername={currentUsername}
-            onVote={onVotePoll || (() => {})}
-          />
-        ) : (
-          message.text && (!isAudioMessage || message.text !== '[Voice Message]') && (
-            <div>
-              <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                <HighlightText text={message.text} query={searchQuery} />
+          )}
+
+          {/* Reply Context Header */}
+          {message.replyTo && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                triggerHaptic('light');
+                const targetId = message.replyTo?.id;
+                if (targetId) {
+                  onJumpToMessage?.(targetId);
+                }
+              }}
+              style={{
+                padding: '6px 10px',
+                borderRadius: '8px',
+                borderLeft: isMe ? '3px solid rgba(0,0,0,0.4)' : '3px solid #10b981',
+                background: isMe ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.25)',
+                fontSize: '0.75rem',
+                marginBottom: '8px',
+                cursor: 'pointer',
+                transition: 'background 0.15s ease',
+              }}
+              title="Click to jump to original message"
+            >
+              <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                <CornerDownRight style={{ width: '12px', height: '12px' }} />
+                {message.replyTo.sender}
               </div>
-              {extractFirstUrl(message.text) && (
-                <LinkPreviewCard url={extractFirstUrl(message.text)!} />
+              <div style={{ opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {message.replyTo.attachment?.kind === 'image'
+                  ? '📷 [Image]'
+                  : message.replyTo.attachment?.kind === 'audio'
+                  ? '🎤 [Voice Message]'
+                  : message.replyTo.text || '[Attachment]'}
+              </div>
+            </div>
+          )}
+
+          {/* 1. Image Attachment */}
+          {message.attachment && (message.attachment.kind === 'image' || message.attachment.mime?.startsWith('image/')) && (
+            <div
+              style={{ marginBottom: '6px', borderRadius: '12px', overflow: 'hidden', cursor: 'pointer' }}
+              onClick={() => onMediaClick(message.attachment!.url)}
+            >
+              <img
+                src={message.attachment.url}
+                alt={message.attachment.name}
+                style={{ maxHeight: '240px', width: '100%', objectFit: 'cover', borderRadius: '12px' }}
+              />
+            </div>
+          )}
+
+          {/* 2. Built-in Voice Audio Player */}
+          {isAudioMessage && audioUrl && (
+            <VoicePlayer url={audioUrl} isMe={isMe} duration={message.voiceDuration} />
+          )}
+
+          {/* 3. Document / File Attachment */}
+          {!isAudioMessage && message.attachment && (message.attachment.kind === 'file' || !message.attachment.mime?.startsWith('image/')) && (
+            <a
+              href={message.attachment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '8px 12px',
+                borderRadius: '10px',
+                background: isMe ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)',
+                textDecoration: 'none',
+                color: isMe ? '#022c22' : '#ffffff',
+                fontSize: '0.8rem',
+                marginBottom: '6px',
+                fontWeight: 600,
+              }}
+            >
+              <FileText style={{ width: '20px', height: '20px', color: isMe ? '#022c22' : '#34d399' }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {message.attachment.name}
+              </span>
+            </a>
+          )}
+
+          {/* 4. Message Text / Inline Edit */}
+          {isEditing ? (
+            <div style={{ marginTop: '4px' }}>
+              <input
+                type="text"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveEdit();
+                  if (e.key === 'Escape') setIsEditing(false);
+                }}
+                autoFocus
+                style={{
+                  width: '100%',
+                  background: isMe ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.25)',
+                  border: '1px solid rgba(255,255,255,0.4)',
+                  borderRadius: '8px',
+                  padding: '6px 8px',
+                  color: isMe ? '#022c22' : '#ffffff',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  marginBottom: '6px',
+                  fontWeight: 600,
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  style={{ background: 'none', border: 'none', color: isMe ? '#022c22' : '#cbd5e1', fontSize: '0.72rem', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  style={{ background: '#022c22', border: 'none', color: '#ffffff', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          ) : message.poll ? (
+            <PollMessageBubble
+              poll={message.poll}
+              messageId={message.id}
+              isMe={isMe}
+              currentUsername={currentUsername}
+              onVote={onVotePoll || (() => {})}
+            />
+          ) : (
+            message.text && (!isAudioMessage || message.text !== '[Voice Message]') && (
+              <div>
+                <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                  <HighlightText text={message.text} query={searchQuery} />
+                </div>
+                {extractFirstUrl(message.text) && (
+                  <LinkPreviewCard url={extractFirstUrl(message.text)!} />
+                )}
+              </div>
+            )
+          )}
+
+          {/* Reaction Badge Floating on Bottom Right Corner */}
+          {message.reactions && Object.keys(message.reactions).length > 0 && (
+            <div
+              className="bubble-reaction-badge"
+              onClick={(e) => {
+                e.stopPropagation();
+                triggerHaptic('light');
+                setShowReactions((prev) => !prev);
+              }}
+            >
+              {Object.entries(message.reactions).map(([emoji, users]) =>
+                users.length > 0 ? (
+                  <span key={emoji}>
+                    {emoji} {users.length > 1 ? users.length : ''}
+                  </span>
+                ) : null
               )}
             </div>
-          )
-        )}
+          )}
+        </motion.div>
 
-        {/* Footer */}
-        <div className="bubble-footer">
+        {/* Outer Timestamp & Status underneath the bubble (Image 1 style) */}
+        <div className="bubble-meta-outside">
           {message.pinnedAt && (
             <span title="Pinned message" style={{ display: 'flex', alignItems: 'center' }}>
               <Pin style={{ width: '11px', height: '11px', color: '#f59e0b', marginRight: '2px' }} />
             </span>
           )}
           <span>{formatTime(message.timestamp)}</span>
-          {renderStatus()}
+          {isMe && message.status === 'seen' && (
+            <span style={{ color: '#67e8f9', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
+              · seen
+            </span>
+          )}
+          {isMe && message.status !== 'seen' && renderStatus()}
         </div>
-
-        {/* Reaction Pill Badges */}
-        {message.reactions && Object.keys(message.reactions).length > 0 && (
-          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
-            {Object.entries(message.reactions).map(([emoji, users]) =>
-              users.length > 0 ? (
-                <span
-                  key={emoji}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onReaction(message.id, emoji);
-                  }}
-                  style={{
-                    background: 'rgba(0,0,0,0.3)',
-                    padding: '2px 6px',
-                    borderRadius: '12px',
-                    fontSize: '0.72rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '2px',
-                  }}
-                >
-                  {emoji} {users.length > 1 ? users.length : ''}
-                </span>
-              ) : null
-            )}
-          </div>
-        )}
-      </motion.div>
+      </div>
 
       {/* 3-Dots Action Trigger on Right of 'Other' message */}
       {!isMe && (
@@ -833,6 +831,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            marginBottom: '16px',
           }}
           title="Message actions (Reply, React)"
         >

@@ -7,6 +7,7 @@ interface AvatarProps {
   online?: boolean;
   presence?: 'online' | 'away' | 'dnd' | 'offline';
   className?: string;
+  isGroup?: boolean;
 }
 
 const sizeStyles = {
@@ -46,6 +47,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   size = 'md',
   online,
   presence,
+  isGroup,
 }) => {
   const [imgError, setImgError] = React.useState(false);
 
@@ -60,7 +62,7 @@ export const Avatar: React.FC<AvatarProps> = ({
 
   const showImage = Boolean(avatarUrl && !imgError);
 
-  const effectivePresence = presence || (online ? 'online' : online === false ? 'offline' : undefined);
+  const effectivePresence = isGroup ? undefined : (presence || (online ? 'online' : online === false ? 'offline' : undefined));
   const dotColor =
     effectivePresence === 'online'
       ? '#10b981'

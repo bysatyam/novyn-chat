@@ -46,6 +46,7 @@ export const ContactInfoModal: React.FC<ContactInfoModalProps> = ({
             name={contact.displayName || contact.username}
             avatarUrl={contact.avatarId}
             online={contact.online}
+            isGroup={contact.isGroup}
             size="xl"
           />
         </div>
@@ -62,14 +63,14 @@ export const ContactInfoModal: React.FC<ContactInfoModalProps> = ({
           style={{
             fontSize: '0.72rem',
             fontWeight: 700,
-            color: contact.online ? '#34d399' : '#64748b',
-            background: contact.online ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+            color: contact.isGroup ? '#38bdf8' : contact.online ? '#34d399' : '#64748b',
+            background: contact.isGroup ? 'rgba(56, 189, 248, 0.12)' : contact.online ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.05)',
             padding: '2px 10px',
             borderRadius: '9999px',
             marginBottom: '20px',
           }}
         >
-          {contact.online ? '● Online' : 'Offline'}
+          {contact.isGroup ? `👥 ${contact.memberCount || 2} members` : contact.online ? '● Online' : 'Offline'}
         </span>
 
         {/* Quick Call Actions */}
@@ -101,187 +102,278 @@ export const ContactInfoModal: React.FC<ContactInfoModalProps> = ({
           </button>
         </div>
 
-        {/* Settings & Danger List */}
-        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {/* Mute Notifications */}
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onToggleMute(contact.username, !isMuted);
-            }}
+        {/* Redesigned Settings & Danger Grouped Cards */}
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Card 1: Chat Preferences */}
+          <div
             style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 16px',
-              borderRadius: '14px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid var(--border)',
-              color: '#ffffff',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
+              background: 'rgba(255, 255, 255, 0.035)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '16px',
+              overflow: 'hidden',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {isMuted ? (
-                <BellOff style={{ width: '18px', height: '18px', color: '#f59e0b' }} />
-              ) : (
-                <Bell style={{ width: '18px', height: '18px', color: '#94a3b8' }} />
-              )}
-              <span>{isMuted ? 'Unmute Notifications' : 'Mute Notifications'}</span>
-            </div>
-            <span style={{ fontSize: '0.75rem', color: isMuted ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
-              {isMuted ? 'Muted' : 'Off'}
-            </span>
-          </button>
-
-          {/* Clear Chat */}
-          {showConfirmClear ? (
+            {/* Mute Notifications */}
             <div
+              onClick={() => {
+                triggerHaptic('light');
+                onToggleMute(contact.username, !isMuted);
+              }}
               style={{
-                padding: '12px',
-                borderRadius: '14px',
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                padding: '12px 14px',
+                cursor: 'pointer',
+                transition: 'background 0.15s ease',
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              <span style={{ fontSize: '0.78rem', color: '#f87171' }}>Clear all messages?</span>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmClear(false)}
-                  style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('medium');
-                    onClearChat(contact.username);
-                    setShowConfirmClear(false);
-                    onClose();
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    background: isMuted ? 'rgba(245, 158, 11, 0.18)' : 'rgba(255, 255, 255, 0.06)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: isMuted ? '#f59e0b' : '#94a3b8',
                   }}
-                  style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
                 >
-                  Confirm Clear
-                </button>
+                  {isMuted ? <BellOff style={{ width: '16px', height: '16px' }} /> : <Bell style={{ width: '16px', height: '16px' }} />}
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#ffffff' }}>Mute Notifications</div>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{isMuted ? 'Alerts are silenced' : 'Play sound on new messages'}</div>
+                </div>
+              </div>
+
+              {/* iOS style switch */}
+              <div
+                style={{
+                  width: '38px',
+                  height: '22px',
+                  borderRadius: '9999px',
+                  background: isMuted ? '#f59e0b' : 'rgba(255, 255, 255, 0.15)',
+                  position: 'relative',
+                  transition: 'background 0.2s ease',
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    background: '#ffffff',
+                    position: 'absolute',
+                    top: '2px',
+                    left: isMuted ? '18px' : '2px',
+                    transition: 'left 0.2s ease',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                  }}
+                />
               </div>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowConfirmClear(true)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '12px 16px',
-                borderRadius: '14px',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--border)',
-                color: '#ffffff',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-              }}
-            >
-              <Trash2 style={{ width: '18px', height: '18px', color: '#94a3b8' }} />
-              <span>Clear Chat History</span>
-            </button>
-          )}
+          </div>
 
-          {/* Block / Unblock */}
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('medium');
-              onToggleBlock(contact.username, !isBlocked);
-            }}
+          {/* Card 2: Danger Zone */}
+          <div
             style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 16px',
-              borderRadius: '14px',
-              background: isBlocked ? 'rgba(239, 68, 68, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-              border: isBlocked ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border)',
-              color: isBlocked ? '#f87171' : '#ffffff',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
+              background: 'rgba(239, 68, 68, 0.035)',
+              border: '1px solid rgba(239, 68, 68, 0.18)',
+              borderRadius: '16px',
+              overflow: 'hidden',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Ban style={{ width: '18px', height: '18px', color: isBlocked ? '#ef4444' : '#94a3b8' }} />
-              <span>{isBlocked ? 'Unblock User' : 'Block User'}</span>
-            </div>
-            {isBlocked && <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#ef4444' }}>Blocked</span>}
-          </button>
+            {/* Clear Chat */}
+            {showConfirmClear ? (
+              <div
+                style={{
+                  padding: '14px',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  borderBottom: '1px solid rgba(239, 68, 68, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span style={{ fontSize: '0.78rem', color: '#f87171', fontWeight: 600 }}>Clear all messages?</span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmClear(false)}
+                    style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('medium');
+                      onClearChat(contact.username);
+                      setShowConfirmClear(false);
+                      onClose();
+                    }}
+                    style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => setShowConfirmClear(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid rgba(239, 68, 68, 0.12)',
+                  transition: 'background 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ef4444',
+                    }}
+                  >
+                    <Trash2 style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#f87171' }}>Clear Chat History</div>
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Delete message stream locally</div>
+                  </div>
+                </div>
+              </div>
+            )}
 
-          {/* Unfriend */}
-          {showConfirmUnfriend ? (
+            {/* Block / Unblock */}
             <div
+              onClick={() => {
+                triggerHaptic('medium');
+                onToggleBlock(contact.username, !isBlocked);
+              }}
               style={{
-                padding: '12px',
-                borderRadius: '14px',
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-              }}
-            >
-              <span style={{ fontSize: '0.78rem', color: '#f87171' }}>Remove @{contact.username} from friends?</span>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmUnfriend(false)}
-                  style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('heavy');
-                    onUnfriend(contact.username);
-                    setShowConfirmUnfriend(false);
-                    onClose();
-                  }}
-                  style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
-                >
-                  Unfriend
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowConfirmUnfriend(true)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '12px 16px',
-                borderRadius: '14px',
-                background: 'rgba(239, 68, 68, 0.05)',
-                border: '1px solid rgba(239, 68, 68, 0.15)',
-                color: '#f87171',
-                fontSize: '0.85rem',
+                padding: '12px 14px',
                 cursor: 'pointer',
+                borderBottom: '1px solid rgba(239, 68, 68, 0.12)',
+                transition: 'background 0.15s ease',
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              <UserMinus style={{ width: '18px', height: '18px', color: '#ef4444' }} />
-              <span>Unfriend Contact</span>
-            </button>
-          )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ef4444',
+                  }}
+                >
+                  <Ban style={{ width: '16px', height: '16px' }} />
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#f87171' }}>{isBlocked ? 'Unblock User' : 'Block User'}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{isBlocked ? 'Allow messaging & calls' : 'Stop incoming messages & calls'}</div>
+                </div>
+              </div>
+              {isBlocked && <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239, 68, 68, 0.15)', padding: '2px 8px', borderRadius: '6px' }}>Blocked</span>}
+            </div>
+
+            {/* Unfriend */}
+            {showConfirmUnfriend ? (
+              <div
+                style={{
+                  padding: '14px',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span style={{ fontSize: '0.78rem', color: '#f87171', fontWeight: 600 }}>Remove @{contact.username}?</span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmUnfriend(false)}
+                    style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', padding: '4px 8px', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('heavy');
+                      onUnfriend(contact.username);
+                      setShowConfirmUnfriend(false);
+                      onClose();
+                    }}
+                    style={{ background: '#ef4444', border: 'none', color: '#ffffff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
+                  >
+                    Unfriend
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => setShowConfirmUnfriend(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ef4444',
+                    }}
+                  >
+                    <UserMinus style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#f87171' }}>Unfriend Contact</div>
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Remove from friends list</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Modal>

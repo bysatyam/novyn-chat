@@ -204,6 +204,7 @@ export const ForwardModal: React.FC<ForwardModalProps> = ({
                         avatarUrl={conv.avatarId}
                         online={conv.online}
                         presence={conv.presence}
+                        isGroup={conv.isGroup}
                         size="sm"
                       />
                       <div>

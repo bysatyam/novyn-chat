@@ -25,6 +25,8 @@ export const ContactsModal: React.FC<ContactsModalProps> = ({ isOpen, onClose })
   const [statusMessage, setStatusMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const friendsList = conversations.filter((c) => !c.isGroup);
+
   const handleSendRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     const target = targetUsername.trim();
@@ -97,7 +99,7 @@ export const ContactsModal: React.FC<ContactsModalProps> = ({ isOpen, onClose })
           className={`tab-btn ${activeTab === 'friends' ? 'active' : ''}`}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
         >
-          <Users style={{ width: '15px', height: '15px' }} /> Friends ({conversations.length})
+          <Users style={{ width: '15px', height: '15px' }} /> Friends ({friendsList.length})
         </button>
       </div>
 
@@ -242,12 +244,12 @@ export const ContactsModal: React.FC<ContactsModalProps> = ({ isOpen, onClose })
       {/* 3. All Friends Tab */}
       {activeTab === 'friends' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '280px', overflowY: 'auto' }}>
-          {conversations.length === 0 ? (
+          {friendsList.length === 0 ? (
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', padding: '32px 0' }}>
               No friends added yet.
             </p>
           ) : (
-            conversations.map((friend) => (
+            friendsList.map((friend) => (
               <div
                 key={friend.username}
                 onClick={() => {

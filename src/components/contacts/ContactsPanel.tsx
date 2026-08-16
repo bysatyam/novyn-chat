@@ -27,7 +27,9 @@ export const ContactsPanel: React.FC<ContactsPanelProps> = ({ isCompact = false 
   const [loading, setLoading] = useState(false);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
 
-  const filteredFriends = conversations.filter((c) => {
+  const friendsList = conversations.filter((c) => !c.isGroup);
+
+  const filteredFriends = friendsList.filter((c) => {
     const q = searchQuery.toLowerCase();
     return (
       (c.displayName && c.displayName.toLowerCase().includes(q)) ||
@@ -64,7 +66,7 @@ export const ContactsPanel: React.FC<ContactsPanelProps> = ({ isCompact = false 
         </div>
 
         <div className="conversations-scroll" style={{ width: '100%', alignItems: 'center', gap: '12px', padding: '0 8px' }}>
-          {conversations.map((friend) => (
+          {friendsList.map((friend) => (
             <div
               key={friend.username}
               onClick={() => {
@@ -109,7 +111,7 @@ export const ContactsPanel: React.FC<ContactsPanelProps> = ({ isCompact = false 
           <div>
             <h2 className="chat-list-title" style={{ fontSize: '1.2rem' }}>Contacts</h2>
             <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-              {conversations.length} {conversations.length === 1 ? 'Friend' : 'Friends'}
+              {friendsList.length} {friendsList.length === 1 ? 'Friend' : 'Friends'}
             </span>
           </div>
         </div>
@@ -155,7 +157,7 @@ export const ContactsPanel: React.FC<ContactsPanelProps> = ({ isCompact = false 
             className={`tab-btn ${activeSubTab === 'all' ? 'active' : ''}`}
             style={{ fontSize: '0.8rem', padding: '8px' }}
           >
-            Friends ({conversations.length})
+            Friends ({friendsList.length})
           </button>
 
           <button

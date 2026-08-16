@@ -312,6 +312,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 avatarUrl={activeContact?.avatarId}
                 online={activeContact?.online}
                 presence={activeContact?.presence}
+                isGroup={Boolean(activeContact?.isGroup)}
                 size="md"
               />
 
@@ -319,7 +320,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 <div className="chat-header-name">
                   {activeContact?.displayName || activeChat}
                 </div>
-                <div className={`chat-header-status ${activeContact?.online ? 'online' : ''}`}>
+                <div className={`chat-header-status ${activeContact?.online && !activeContact?.isGroup ? 'online' : ''}`}>
                   {isTyping ? (
                     <span style={{ color: '#10b981', fontWeight: 700 }}>typing...</span>
                   ) : activeContact?.isGroup ? (
