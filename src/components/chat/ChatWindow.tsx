@@ -10,6 +10,7 @@ import { PinnedMessageBanner } from './PinnedMessageBanner';
 import { InChatSearch } from './InChatSearch';
 import { DropZoneOverlay } from './DropZoneOverlay';
 import { WallpaperPickerModal } from './WallpaperPickerModal';
+import { GameLauncherModal } from './GameLauncherModal';
 import { CommandPaletteModal } from '../layout/CommandPaletteModal';
 import { Avatar } from '../ui/Avatar';
 import { Message } from '../../types';
@@ -40,6 +41,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     unpinMessage,
     createPoll,
     votePoll,
+    sendGameChallenge,
+    makeGameMove,
     chatWallpaper,
     setChatWallpaper,
     typingUsers,
@@ -60,6 +63,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isWallpaperModalOpen, setIsWallpaperModalOpen] = useState(false);
+  const [isGameLauncherOpen, setIsGameLauncherOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -464,6 +468,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onUnsend={(id) => unsendMessage(id)}
                 onEdit={(id, text) => editMessage(id, text)}
                 onVotePoll={votePoll}
+                onMoveGame={makeGameMove}
+                onRematchGame={(id) => {
+                  const target = messages.find((m) => m.id === id || m.game?.id === id);
+                  if (target?.game) {
+                    sendGameChallenge(target.game.gameType);
+                  }
+                }}
                 onJumpToMessage={handleJumpToMessage}
                 currentUsername={user?.username}
                 searchQuery={searchQuery}
@@ -494,6 +505,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             replyMessage={replyMessage}
             onCancelReply={() => setReplyMessage(null)}
             onCreatePoll={createPoll}
+            onOpenGames={() => setIsGameLauncherOpen(true)}
+            activeChatId={activeChat}
           />
         </div>
       </div>
@@ -513,6 +526,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onMediaClick={(url) => setSelectedMedia(url)}
         isMuted={isMuted}
         isBlocked={isBlocked}
+      />
+
+      {/* In-Chat Mini Games Launcher */}
+      <GameLauncherModal
+        isOpen={isGameLauncherOpen}
+        onClose={() => setIsGameLauncherOpen(false)}
+        onLaunchGame={(type) => sendGameChallenge(type)}
+        opponentName={activeContact?.displayName || activeChat || ''}
+        isGroup={Boolean(activeContact?.isGroup)}
       />
 
       {/* Media Lightbox */}

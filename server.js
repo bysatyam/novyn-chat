@@ -2088,6 +2088,8 @@ function hydrateMessage(rawMessage) {
     pinnedAt: toDisplayName(message.pinnedAt) || null,
     pinnedBy: toDisplayName(message.pinnedBy) || "",
     reactions: message.reactions || {},
+    poll: message.poll || null,
+    game: message.game || null,
   };
   if (toType === "group") {
     hydrated.seenBy = seenBy.length ? seenBy : (fromKey ? [fromKey] : []);
@@ -2326,6 +2328,8 @@ function toSerializedMessageEntry(doc) {
     reactions: doc?.reactions || {},
     replyTo: doc?.replyTo || undefined,
     attachment: doc?.attachment || undefined,
+    poll: doc?.poll || undefined,
+    game: doc?.game || undefined,
     seenBy: Array.isArray(doc?.seenBy) ? doc.seenBy : undefined,
   };
 }
@@ -2866,6 +2870,8 @@ function createStoredMessage(params = {}) {
   if (attachment) message.attachment = attachment;
   const replyTo = normalizeReplyPayload(params.replyTo);
   if (replyTo) message.replyTo = replyTo;
+  if (params.poll) message.poll = params.poll;
+  if (params.game) message.game = params.game;
   const temp = toDisplayName(params.clientTempId).slice(0, 64);
   if (temp) message.clientTempId = temp;
   return message;
@@ -2919,6 +2925,8 @@ function deliverFriendMessage(params = {}) {
     seenAt: recipientViewing ? timestamp : null,
     attachment: params.attachment,
     replyTo: params.replyTo,
+    poll: params.poll,
+    game: params.game,
     clientTempId,
   });
 
@@ -2993,6 +3001,8 @@ function deliverGroupMessage(params = {}) {
     seenBy: [fromKey],
     attachment: params.attachment,
     replyTo: params.replyTo,
+    poll: params.poll,
+    game: params.game,
     clientTempId,
   });
 
@@ -6309,6 +6319,62 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("game_move", (payload) => {
+    const userKey = socket.data.userKey;
+    if (!userKey) return;
+    const messageId = String(payload?.messageId || "");
+    const moveData = payload?.moveData || {};
+    const to = toDisplayName(payload?.to);
+    if (!messageId || !to) return;
+
+    const isGroup = groups.has(normalizeGroupId(to)) || to.startsWith("grp_");
+    const convKey = isGroup ? getGroupConversationKey(to) : getConversationKey(userKey, to);
+    const list = conversations.get(convKey);
+    let updatedGame = null;
+
+    if (list) {
+      const item = list.find((m) => String(m.id) === messageId || String(m.clientTempId) === messageId);
+      if (item && item.game) {
+        item.game = {
+          ...item.game,
+          state: moveData.state || item.game.state,
+          turn: moveData.turn !== undefined ? moveData.turn : item.game.turn,
+          winner: moveData.winner !== undefined ? moveData.winner : item.game.winner,
+          data: {
+            ...item.game.data,
+            ...moveData,
+          },
+          lastMoveBy: userKey,
+          updatedAt: Date.now(),
+        };
+        updatedGame = item.game;
+        schedulePersist();
+      }
+    }
+
+    if (updatedGame) {
+      const packet = { messageId, moveData, updatedBy: userKey, to, from: userKey };
+      socket.emit("game_move_updated", packet);
+      if (isGroup) {
+        const group = groups.get(normalizeGroupId(to));
+        if (group) {
+          for (const memberKey of group.members || []) {
+            const memberSocketId = onlineUsers.get(normalizeName(memberKey));
+            if (memberSocketId && normalizeName(memberKey) !== userKey) {
+              io.to(memberSocketId).emit("game_move_updated", packet);
+            }
+          }
+        }
+      } else {
+        const friendKey = normalizeName(to);
+        const friendSocket = onlineUsers.get(friendKey);
+        if (friendSocket) {
+          io.to(friendSocket).emit("game_move_updated", packet);
+        }
+      }
+    }
+  });
+
   socket.on("set_chat_wallpaper", (payload) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
@@ -6441,6 +6507,8 @@ io.on("connection", (socket) => {
     const to = toDisplayName(payload?.to);
     const toType = normalizeChatKind(payload?.toType || "friend");
     const replyTo = normalizeReplyPayload(payload?.replyTo);
+    const game = payload?.game || null;
+    const poll = payload?.poll || null;
 
     if (!text) return;
     if (text.length > MAX_MESSAGE_LENGTH) {
@@ -6455,6 +6523,8 @@ io.on("connection", (socket) => {
         text,
         attachment,
         replyTo,
+        game,
+        poll,
         clientTempId: safeClientTempId,
       });
       if (!result.ok) {
@@ -6473,6 +6543,8 @@ io.on("connection", (socket) => {
       text,
       attachment,
       replyTo,
+      game,
+      poll,
       clientTempId: safeClientTempId,
     });
     if (!result.ok) {

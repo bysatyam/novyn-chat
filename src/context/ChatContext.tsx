@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Message, MessageStatus, Conversation, FriendRequest, CallState, CallLog } from '../types';
+import { Message, MessageStatus, Conversation, FriendRequest, CallState, CallLog, GameType, GameData } from '../types';
 import { getSocket } from '../services/socket';
 import { useAuth } from './AuthContext';
 import { WebRTCManager, playRingtone, playCallRing, stopRingtone, playCallEndSound } from '../services/webrtc';
@@ -37,6 +37,8 @@ interface ChatContextType {
   unpinMessage: (messageId: string) => void;
   createPoll: (question: string, options: string[]) => void;
   votePoll: (messageId: string, optionId: string) => void;
+  sendGameChallenge: (gameType: GameType) => void;
+  makeGameMove: (messageId: string, moveData: any) => void;
   createGroup: (name: string, members: string[]) => void;
   addGroupMembers: (groupId: string, members: string[]) => void;
   removeGroupMember: (groupId: string, username: string) => void;
@@ -518,6 +520,33 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       triggerHaptic('light');
     });
 
+    socket.on('game_move_updated', ({ messageId, moveData, updatedBy }: any) => {
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id === messageId && m.game) {
+            const updatedGame: GameData = {
+              ...m.game,
+              state: moveData.state || m.game.state,
+              turn: moveData.turn !== undefined ? moveData.turn : m.game.turn,
+              winner: moveData.winner !== undefined ? moveData.winner : m.game.winner,
+              data: {
+                ...m.game.data,
+                ...moveData,
+              },
+              lastMoveBy: updatedBy,
+              updatedAt: Date.now(),
+            };
+            return { ...m, game: updatedGame };
+          }
+          return m;
+        })
+      );
+      if (updatedBy?.toLowerCase() !== user?.username.toLowerCase()) {
+        playMessageNotification();
+        triggerHaptic('light');
+      }
+    });
+
     socket.on('chat_wallpaper_updated', ({ to, from, wallpaper }: any) => {
       const currentActive = activeChatRef.current?.toLowerCase();
       const fromUser = (from || '').toLowerCase();
@@ -647,6 +676,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             pinnedAt: m.pinnedAt || null,
             pinnedBy: m.pinnedBy || '',
             poll: m.poll || null,
+            game: m.game || null,
           }))
         );
       }
@@ -686,6 +716,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         pinnedAt: rawMsg.pinnedAt || null,
         pinnedBy: rawMsg.pinnedBy || '',
         poll: rawMsg.poll || null,
+        game: rawMsg.game || null,
       };
 
       const current = activeChatRef.current?.toLowerCase();
@@ -1130,6 +1161,103 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [activeChat]
   );
 
+  const sendGameChallenge = useCallback(
+    (gameType: GameType) => {
+      if (!activeChat || !user) return;
+      const socket = getSocket();
+      if (!socket) return;
+
+      const activeConv = conversationsRef.current.find(
+        (c) => c.username.toLowerCase() === activeChat.toLowerCase()
+      );
+      const toType = activeConv?.isGroup ? 'group' : 'friend';
+      const clientTempId = `tmp_game_${Date.now()}`;
+
+      const titles: Record<GameType, string> = {
+        tictactoe: 'Tic-Tac-Toe',
+        rps: 'Rock • Paper • Scissors',
+        connect4: 'Connect 4',
+      };
+
+      const gameData: GameData = {
+        id: `game_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        gameType,
+        title: titles[gameType],
+        createdBy: user.username,
+        opponent: activeConv?.isGroup ? undefined : activeChat,
+        state: 'in_progress',
+        turn: user.username,
+        data: {
+          board: gameType === 'tictactoe' ? Array(9).fill(null) : gameType === 'connect4' ? Array(42).fill(null) : undefined,
+          playerX: user.username,
+          player1: user.username,
+        },
+      };
+
+      const payload = {
+        to: activeChat,
+        toType,
+        text: `🎮 Started a game of ${titles[gameType]}!`,
+        game: gameData,
+        clientTempId,
+      };
+
+      const optimisticMsg: Message = {
+        id: clientTempId,
+        sender: user.username,
+        receiver: activeChat,
+        text: `🎮 Started a game of ${titles[gameType]}!`,
+        timestamp: new Date().toISOString(),
+        status: 'sent',
+        game: gameData,
+      };
+
+      setMessages((prev) => [...prev, optimisticMsg]);
+      playMessageSentSound();
+      socket.emit('private_message', payload);
+      triggerHaptic('success');
+    },
+    [activeChat, user]
+  );
+
+  const makeGameMove = useCallback(
+    (messageId: string, moveData: any) => {
+      if (!activeChat || !user) return;
+      const socket = getSocket();
+      if (!socket) return;
+
+      // Update locally immediately for instant feedback
+      setMessages((prev) =>
+        prev.map((m) => {
+          if ((m.id === messageId || (m.game && m.game.id === messageId)) && m.game) {
+            const updatedGame: GameData = {
+              ...m.game,
+              state: moveData.state || m.game.state,
+              turn: moveData.turn !== undefined ? moveData.turn : m.game.turn,
+              winner: moveData.winner !== undefined ? moveData.winner : m.game.winner,
+              data: {
+                ...m.game.data,
+                ...moveData,
+              },
+              lastMoveBy: user.username,
+              updatedAt: Date.now(),
+            };
+            return { ...m, game: updatedGame };
+          }
+          return m;
+        })
+      );
+
+      socket.emit('game_move', {
+        messageId,
+        to: activeChat,
+        moveData,
+      });
+      triggerHaptic('medium');
+    },
+    [activeChat, user]
+  );
+
   const createGroup = useCallback(
     (name: string, members: string[]) => {
       const socket = getSocket();
@@ -1315,6 +1443,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         unpinMessage,
         createPoll,
         votePoll,
+        sendGameChallenge,
+        makeGameMove,
         createGroup,
         addGroupMembers,
         removeGroupMember,

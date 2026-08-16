@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Paperclip, Mic, X, Smile, Sparkles, BarChart3, Image as ImageIcon, FileText } from 'lucide-react';
+import { Send, Paperclip, Mic, X, Smile, Sparkles, BarChart3, Image as ImageIcon, FileText, Gamepad2 } from 'lucide-react';
 import { Message } from '../../types';
 import { VoiceRecorder } from './VoiceRecorder';
 import { GifPickerModal } from './GifPickerModal';
@@ -14,6 +14,8 @@ interface MessageInputProps {
   replyMessage: Message | null;
   onCancelReply: () => void;
   onCreatePoll?: (question: string, options: string[]) => void;
+  onOpenGames?: () => void;
+  activeChatId?: string | null;
 }
 
 const EMOJI_LIST = ['😀', '😂', '😍', '🔥', '👍', '🎉', '❤️', '🙌', '✨', '🚀'];
@@ -24,8 +26,15 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   replyMessage,
   onCancelReply,
   onCreatePoll,
+  onOpenGames,
+  activeChatId,
 }) => {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => {
+    if (activeChatId) {
+      return localStorage.getItem(`novyn_draft_${activeChatId.toLowerCase()}`) || '';
+    }
+    return '';
+  });
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -40,6 +49,16 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const emojiBtnRef = useRef<HTMLButtonElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Restore draft when activeChatId switches
+  useEffect(() => {
+    if (activeChatId) {
+      const saved = localStorage.getItem(`novyn_draft_${activeChatId.toLowerCase()}`) || '';
+      setText(saved);
+    } else {
+      setText('');
+    }
+  }, [activeChatId]);
 
   // Close emoji picker and attach menu on click outside
   useEffect(() => {
@@ -91,7 +110,18 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   }, [replyMessage]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
+    const val = e.target.value;
+    setText(val);
+
+    // Save draft per active conversation
+    if (activeChatId) {
+      if (val.trim()) {
+        localStorage.setItem(`novyn_draft_${activeChatId.toLowerCase()}`, val);
+      } else {
+        localStorage.removeItem(`novyn_draft_${activeChatId.toLowerCase()}`);
+      }
+    }
+
     onTyping(true);
 
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -116,6 +146,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     });
 
     setText('');
+    if (activeChatId) {
+      localStorage.removeItem(`novyn_draft_${activeChatId.toLowerCase()}`);
+    }
     onTyping(false);
     onCancelReply();
     setShowEmojiPicker(false);
@@ -374,6 +407,40 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                   <BarChart3 style={{ width: '15px', height: '15px' }} />
                 </div>
                 <span>Create Poll</span>
+              </button>
+            )}
+
+            {/* In-Chat Mini Games */}
+            {onOpenGames && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setShowAttachMenu(false);
+                  onOpenGames();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '10px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background 0.12s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(168, 85, 247, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7' }}>
+                  <Gamepad2 style={{ width: '15px', height: '15px' }} />
+                </div>
+                <span>Mini Games (Tic-Tac-Toe, RPS)</span>
               </button>
             )}
 

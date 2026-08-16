@@ -26,6 +26,32 @@ export interface Poll {
   totalVotes: number;
 }
 
+export type GameType = 'tictactoe' | 'rps' | 'connect4';
+
+export interface GameData {
+  id: string;
+  gameType: GameType;
+  title: string;
+  createdBy: string;
+  opponent?: string;
+  state: 'waiting' | 'in_progress' | 'finished';
+  turn: string;
+  winner?: string | 'draw';
+  data: {
+    board?: (string | null)[];
+    playerX?: string;
+    playerO?: string;
+    player1?: string;
+    player2?: string;
+    p1Move?: 'rock' | 'paper' | 'scissors';
+    p2Move?: 'rock' | 'paper' | 'scissors';
+    winningLine?: number[];
+    movesCount?: number;
+  };
+  lastMoveBy?: string;
+  updatedAt?: number;
+}
+
 export interface Message {
   id: string;
   sender: string;
@@ -47,6 +73,7 @@ export interface Message {
   pinnedBy?: string;
   expiresAt?: string | null;
   poll?: Poll | null;
+  game?: GameData | null;
 }
 
 export interface UserProfile {

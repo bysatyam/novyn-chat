@@ -19,6 +19,7 @@ import {
 import { VoicePlayer } from './VoicePlayer';
 import { LinkPreviewCard, extractFirstUrl } from './LinkPreviewCard';
 import { PollMessageBubble } from './PollMessageBubble';
+import { GameMessageBubble } from './GameMessageBubble';
 import { triggerHaptic } from '../../services/capacitor';
 
 interface MessageBubbleProps {
@@ -33,6 +34,8 @@ interface MessageBubbleProps {
   onUnsend?: (messageId: string) => void;
   onEdit?: (messageId: string, newText: string) => void;
   onVotePoll?: (messageId: string, optionId: string) => void;
+  onMoveGame?: (messageId: string, moveData: any) => void;
+  onRematchGame?: (messageId: string) => void;
   onJumpToMessage?: (messageId: string) => void;
   currentUsername?: string;
   searchQuery?: string;
@@ -67,7 +70,7 @@ const HighlightText: React.FC<{ text: string; query?: string }> = ({ text, query
   );
 };
 
-const COMMON_REACTIONS = ['❤️', '👍', '😂', '🔥', '🎉', '😮'];
+const COMMON_REACTIONS = ['❤️', '👍', '😂', '😭', '🔥', '🎉', '😮'];
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
@@ -81,6 +84,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onUnsend,
   onEdit,
   onVotePoll,
+  onMoveGame,
+  onRematchGame,
   onJumpToMessage,
   currentUsername,
   searchQuery,
@@ -784,6 +789,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               isMe={isMe}
               currentUsername={currentUsername}
               onVote={onVotePoll || (() => {})}
+            />
+          ) : message.game ? (
+            <GameMessageBubble
+              game={message.game}
+              messageId={message.id}
+              isMe={isMe}
+              currentUsername={currentUsername}
+              onMove={onMoveGame || (() => {})}
+              onRematch={onRematchGame}
             />
           ) : (
             message.text && (!isAudioMessage || message.text !== '[Voice Message]') && (

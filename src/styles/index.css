@@ -739,7 +739,6 @@ html, body {
 .bubble-reaction-badge {
   position: absolute;
   bottom: -9px;
-  right: 6px;
   background: #151d2c;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 9999px;
@@ -753,6 +752,19 @@ html, body {
   z-index: 10;
   transition: transform 0.12s ease;
 }
+
+/* Sender message (mine): reactions on the LEFT */
+.bubble.me .bubble-reaction-badge {
+  left: 6px;
+  right: auto;
+}
+
+/* Friend message: reactions on the RIGHT (as it is) */
+.bubble.other .bubble-reaction-badge {
+  right: 6px;
+  left: auto;
+}
+
 .bubble-reaction-badge:hover {
   transform: scale(1.18);
 }
