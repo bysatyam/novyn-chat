@@ -131,6 +131,8 @@ export const AppLayout: React.FC = () => {
 
   const showSubPanel = windowWidth >= 960 && !isCompact;
 
+  const [isMobileSettingsDetailOpen, setIsMobileSettingsDetailOpen] = useState(false);
+
   return (
     <div className="app-container">
       {/* 1. Desktop Sidebar Navigation (Column 1) */}
@@ -139,6 +141,7 @@ export const AppLayout: React.FC = () => {
         onSelectTab={(tab) => {
           setActiveTab(tab);
           setIsListCollapsed(false);
+          setIsMobileSettingsDetailOpen(false);
         }}
         onToggleList={() => setIsListCollapsed((prev) => !prev)}
         isListCollapsed={isListCollapsed}
@@ -148,7 +151,11 @@ export const AppLayout: React.FC = () => {
       {!isListCollapsed && (
         <div
           style={{
-            display: activeChat && activeTab !== 'settings' ? 'none' : 'flex',
+            display:
+              (activeChat && activeTab !== 'settings') ||
+              (activeTab === 'settings' && isMobileSettingsDetailOpen && windowWidth <= 768)
+                ? 'none'
+                : 'flex',
             height: '100%',
             width: windowWidth <= 768 ? '100%' : `${panelWidth}px`,
             minWidth: windowWidth <= 768 ? '100%' : `${panelWidth}px`,
@@ -173,6 +180,7 @@ export const AppLayout: React.FC = () => {
               onSelectCategory={(cat, defaultSub) => {
                 setSettingsCategory(cat);
                 setSettingsSubSection(defaultSub);
+                setIsMobileSettingsDetailOpen(true);
               }}
               isCompact={isCompact}
             />
@@ -195,7 +203,12 @@ export const AppLayout: React.FC = () => {
         style={{
           flex: 1,
           height: '100%',
-          display: activeChat || isListCollapsed || activeTab === 'settings' ? 'flex' : 'none',
+          display:
+            activeChat ||
+            isListCollapsed ||
+            (activeTab === 'settings' && (windowWidth > 768 || isMobileSettingsDetailOpen))
+              ? 'flex'
+              : 'none',
           minWidth: 0,
         }}
         className="sm-flex-always"
@@ -210,7 +223,10 @@ export const AppLayout: React.FC = () => {
                 blockedCount={blockedUsers.size}
               />
             )}
-            <SettingsDetailView activeSubSection={settingsSubSection} />
+            <SettingsDetailView
+              activeSubSection={settingsSubSection}
+              onBack={windowWidth <= 768 ? () => setIsMobileSettingsDetailOpen(false) : undefined}
+            />
           </div>
         ) : (
           <ChatWindow
@@ -226,6 +242,7 @@ export const AppLayout: React.FC = () => {
         onSelectTab={(tab) => {
           setActiveTab(tab);
           setIsListCollapsed(false);
+          setIsMobileSettingsDetailOpen(false);
         }}
       />
 

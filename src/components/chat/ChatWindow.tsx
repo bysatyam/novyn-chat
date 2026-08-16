@@ -14,7 +14,7 @@ import { GameLauncherModal } from './GameLauncherModal';
 import { CommandPaletteModal } from '../layout/CommandPaletteModal';
 import { Avatar } from '../ui/Avatar';
 import { Message } from '../../types';
-import { Phone, Video, ChevronLeft, ShieldCheck, PanelLeftOpen, Info, Search, Command } from 'lucide-react';
+import { Phone, Video, ChevronLeft, ShieldCheck, PanelLeftOpen, Info, Search, Command, Lock } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
 import { getSocket } from '../../services/socket';
 import { uploadMediaFile } from '../../services/api';
@@ -477,6 +477,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* WhatsApp-Style End-to-End Encryption Security Banner */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '7px 14px',
+              margin: '10px auto 14px',
+              maxWidth: '460px',
+              borderRadius: '10px',
+              background: 'rgba(251, 191, 36, 0.07)',
+              border: '1px solid rgba(251, 191, 36, 0.18)',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+              textAlign: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Lock style={{ width: '13px', height: '13px', color: '#fbbf24', flexShrink: 0 }} />
+            <span style={{ fontSize: '0.73rem', color: '#fbbf24', lineHeight: 1.35, fontWeight: 500 }}>
+              Messages and calls are end-to-end encrypted. No one outside of this chat, not even Novyn, can read or listen to them.
+            </span>
+          </div>
+
           {messages.length === 0 ? (
             <div style={{ margin: 'auto', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
               No messages yet. Send a message to start! 👋

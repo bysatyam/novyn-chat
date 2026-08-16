@@ -1386,6 +1386,7 @@ function createUserRecord(username) {
     createdAt: "",
     lastSeenAt: "",
     presenceMode: "online",
+    publicKey: "",
   };
 }
 
@@ -1414,6 +1415,7 @@ function serializeState() {
       createdAt: toDisplayName(user.createdAt),
       lastSeenAt: toDisplayName(user.lastSeenAt),
       presenceMode: normalizePresenceMode(user.presenceMode),
+      publicKey: toDisplayName(user.publicKey),
     })),
     conversations: Array.from(conversations.entries()).map(([key, messages]) => ({
       key,
@@ -2090,6 +2092,9 @@ function hydrateMessage(rawMessage) {
     reactions: message.reactions || {},
     poll: message.poll || null,
     game: message.game || null,
+    ciphertext: toDisplayName(message.ciphertext) || undefined,
+    iv: toDisplayName(message.iv) || undefined,
+    isEncrypted: Boolean(message.isEncrypted),
   };
   if (toType === "group") {
     hydrated.seenBy = seenBy.length ? seenBy : (fromKey ? [fromKey] : []);
@@ -2142,6 +2147,7 @@ function applyLoadedState(parsed) {
     user.createdAt = toDisplayName(entry.createdAt);
     user.lastSeenAt = toDisplayName(entry.lastSeenAt);
     user.presenceMode = normalizePresenceMode(entry.presenceMode);
+    user.publicKey = toDisplayName(entry.publicKey);
     user.pushSubs = Array.isArray(entry.pushSubs)
       ? entry.pushSubs.filter((sub) => sub && sub.endpoint && sub.keys)
       : [];
@@ -2302,6 +2308,7 @@ function toSerializedUserEntry(doc) {
     createdAt: toDisplayName(doc?.createdAt),
     lastSeenAt: toDisplayName(doc?.lastSeenAt),
     presenceMode: normalizePresenceMode(doc?.presenceMode),
+    publicKey: toDisplayName(doc?.publicKey),
   };
 }
 
@@ -2330,6 +2337,9 @@ function toSerializedMessageEntry(doc) {
     attachment: doc?.attachment || undefined,
     poll: doc?.poll || undefined,
     game: doc?.game || undefined,
+    ciphertext: toDisplayName(doc?.ciphertext) || undefined,
+    iv: toDisplayName(doc?.iv) || undefined,
+    isEncrypted: Boolean(doc?.isEncrypted),
     seenBy: Array.isArray(doc?.seenBy) ? doc.seenBy : undefined,
   };
 }
@@ -2872,6 +2882,9 @@ function createStoredMessage(params = {}) {
   if (replyTo) message.replyTo = replyTo;
   if (params.poll) message.poll = params.poll;
   if (params.game) message.game = params.game;
+  if (params.ciphertext) message.ciphertext = toDisplayName(params.ciphertext);
+  if (params.iv) message.iv = toDisplayName(params.iv);
+  if (params.isEncrypted) message.isEncrypted = Boolean(params.isEncrypted);
   const temp = toDisplayName(params.clientTempId).slice(0, 64);
   if (temp) message.clientTempId = temp;
   return message;
@@ -2927,6 +2940,9 @@ function deliverFriendMessage(params = {}) {
     replyTo: params.replyTo,
     poll: params.poll,
     game: params.game,
+    ciphertext: params.ciphertext,
+    iv: params.iv,
+    isEncrypted: params.isEncrypted,
     clientTempId,
   });
 
@@ -3575,6 +3591,7 @@ function buildFriendList(forUser) {
       displayName: friend?.displayName || "",
       bio: friend?.bio || "",
       lastSeenAt: friend?.lastSeenAt || "",
+      publicKey: friend?.publicKey || "",
       muted: isMutedBy(user, friendKey),
       blockedByMe: isBlockedBy(user, friendKey),
       blockedYou: isBlockedBy(friend, userKey),
@@ -6545,6 +6562,9 @@ io.on("connection", (socket) => {
       replyTo,
       game,
       poll,
+      ciphertext: payload?.ciphertext,
+      iv: payload?.iv,
+      isEncrypted: payload?.isEncrypted,
       clientTempId: safeClientTempId,
     });
     if (!result.ok) {
@@ -6562,6 +6582,45 @@ io.on("connection", (socket) => {
       socket.emit("private_message", result.message);
       emitMessageStatus(result.message);
     }
+  });
+
+  socket.on("register_public_key", (payload, callback) => {
+    const respond = typeof callback === "function" ? callback : (d) => socket.emit("public_key_registered", d);
+    const userKey = socket.data.userKey;
+    if (!userKey) {
+      respond({ ok: false, message: "Unauthorized" });
+      return;
+    }
+    const publicKey = toDisplayName(payload?.publicKey || payload);
+    if (!publicKey) {
+      respond({ ok: false, message: "Public key is required" });
+      return;
+    }
+    const user = users.get(userKey);
+    if (user) {
+      user.publicKey = publicKey;
+      schedulePersist();
+      // Notify friends of updated public key
+      for (const friendKey of user.friends || []) {
+        const friendSocket = onlineUsers.get(friendKey);
+        if (friendSocket) {
+          io.to(friendSocket).emit("peer_public_key_updated", {
+            username: user.username,
+            publicKey,
+          });
+        }
+      }
+      respond({ ok: true, publicKey });
+    }
+  });
+
+  socket.on("get_public_key", (payload, callback) => {
+    const respond = typeof callback === "function" ? callback : (d) => socket.emit("public_key_response", d);
+    const targetName = toDisplayName(payload?.username || payload?.target || payload);
+    const targetKey = normalizeName(targetName);
+    const target = users.get(targetKey);
+    const publicKey = target?.publicKey || "";
+    respond({ username: target?.username || targetName, publicKey });
   });
 
   socket.on("schedule_message", (payload) => {

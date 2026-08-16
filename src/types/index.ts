@@ -74,6 +74,9 @@ export interface Message {
   expiresAt?: string | null;
   poll?: Poll | null;
   game?: GameData | null;
+  ciphertext?: string;
+  iv?: string;
+  isEncrypted?: boolean;
 }
 
 export interface UserProfile {
@@ -87,6 +90,7 @@ export interface UserProfile {
   online?: boolean;
   lastSeenAt?: string;
   presenceMode?: 'online' | 'away' | 'dnd' | 'offline';
+  publicKey?: string;
 }
 
 export interface Conversation {
@@ -105,6 +109,7 @@ export interface Conversation {
   memberCount?: number;
   owner?: string;
   members?: string[];
+  publicKey?: string;
 }
 
 export interface FriendRequest {

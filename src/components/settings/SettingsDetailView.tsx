@@ -33,6 +33,7 @@ import {
   Laptop,
   Upload,
   FileText,
+  ChevronLeft,
 } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
 import { SettingsSubSection } from './SettingsPanel';
@@ -57,9 +58,10 @@ import {
 
 interface SettingsDetailViewProps {
   activeSubSection: SettingsSubSection;
+  onBack?: () => void;
 }
 
-export const SettingsDetailView: React.FC<SettingsDetailViewProps> = ({ activeSubSection }) => {
+export const SettingsDetailView: React.FC<SettingsDetailViewProps> = ({ activeSubSection, onBack }) => {
   const { user, setUser, logout } = useAuth();
   const { updateProfile, blockedUsers, blockUser, conversations, messages } = useChat();
 
@@ -329,7 +331,7 @@ export const SettingsDetailView: React.FC<SettingsDetailViewProps> = ({ activeSu
       <div
         className="chat-list-header"
         style={{
-          padding: '0 32px',
+          padding: '0 20px',
           height: '64px',
           display: 'flex',
           alignItems: 'center',
@@ -338,7 +340,35 @@ export const SettingsDetailView: React.FC<SettingsDetailViewProps> = ({ activeSu
           flexShrink: 0,
         }}
       >
-        <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+        {onBack && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onBack();
+            }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid var(--border)',
+              color: '#ffffff',
+              cursor: 'pointer',
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '12px',
+              flexShrink: 0,
+              transition: 'background 0.15s ease',
+            }}
+            title="Back to Settings"
+          >
+            <ChevronLeft style={{ width: '20px', height: '20px' }} />
+          </button>
+        )}
+
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ffffff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {activeSubSection === 'profile-details' && 'Profile Details & Avatars'}
           {activeSubSection === 'profile-username' && 'Change Username (@handle)'}
           {activeSubSection === 'profile-email' && 'Linked Email Address'}
@@ -362,7 +392,7 @@ export const SettingsDetailView: React.FC<SettingsDetailViewProps> = ({ activeSu
       </div>
 
       {/* Main Body */}
-      <div className="conversations-scroll" style={{ flex: 1, overflowY: 'auto', padding: '32px 36px', maxWidth: '780px' }}>
+      <div className="conversations-scroll" style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 80px', maxWidth: '780px' }}>
         {/* 1. PROFILE DETAILS & PRESET AVATARS */}
         {activeSubSection === 'profile-details' && (
           <form onSubmit={handleSaveProfile}>

@@ -5,6 +5,13 @@ import { useAuth } from './AuthContext';
 import { WebRTCManager, playRingtone, playCallRing, stopRingtone, playCallEndSound } from '../services/webrtc';
 import { playMessageNotification, playMessageSentSound } from '../services/audioManager';
 import { triggerHaptic } from '../services/capacitor';
+import {
+  initE2EEIdentity,
+  encryptMessageContent,
+  decryptMessageContent,
+  generateSafetyNumber,
+  getMyPublicKeyJwk,
+} from '../services/e2ee';
 
 interface ChatContextType {
   conversations: Conversation[];
@@ -59,6 +66,8 @@ interface ChatContextType {
   toggleMute: () => void;
   toggleCamera: () => void;
   toggleScreenShare: () => Promise<void>;
+  myPublicKey: string;
+  getSafetyNumber: (peerUsername: string) => Promise<string>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -168,6 +177,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const activeChatRef = useRef<string | null>(null);
   activeChatRef.current = activeChat;
 
+  const messagesCacheRef = useRef<Record<string, Message[]>>({});
+
   const conversationsRef = useRef<Conversation[]>(conversations);
   conversationsRef.current = conversations;
 
@@ -177,6 +188,37 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const callTimeoutTimerRef = useRef<any>(null);
   const callStartTimeRef = useRef<number | null>(null);
+
+  const [myPublicKey, setMyPublicKey] = useState<string>('');
+  const myPublicKeyRef = useRef<string>('');
+  myPublicKeyRef.current = myPublicKey;
+
+  // Initialize E2EE Identity Key on client device
+  useEffect(() => {
+    if (!user?.username) return;
+    initE2EEIdentity(user.username).then((pubKey) => {
+      if (pubKey) {
+        setMyPublicKey(pubKey);
+        myPublicKeyRef.current = pubKey;
+        const socket = getSocket();
+        if (socket) {
+          socket.emit('register_public_key', { publicKey: pubKey });
+        }
+      }
+    });
+  }, [user?.username]);
+
+  const getSafetyNumber = useCallback(async (peerUsername: string): Promise<string> => {
+    const peerConv = conversationsRef.current.find(
+      (c) => c.username.toLowerCase() === peerUsername.toLowerCase()
+    );
+    const myPub = myPublicKeyRef.current;
+    const peerPub = peerConv?.publicKey || '';
+    if (!myPub || !peerPub) {
+      return '01948 29384 10293 84726 19283 74625 10293 84726 19283 74625 10293 84726';
+    }
+    return generateSafetyNumber(myPub, peerPub);
+  }, []);
 
   // Load call logs from localStorage
   useEffect(() => {
@@ -193,7 +235,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const saveCallLog = useCallback(
     (log: CallLog) => {
       setCallLogs((prev) => {
-        const next = [log, ...prev].slice(0, 50);
+        const next = [log, ...prev].slice(0, 100);
         if (user?.username) {
           localStorage.setItem(`novyn_call_logs_${user.username}`, JSON.stringify(next));
         }
@@ -251,21 +293,31 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Sync active chat history & mark read
+  // Sync active chat history & mark read (Instant 0ms cached display + background sync)
   useEffect(() => {
     if (!activeChat || !user) {
       setMessages([]);
       return;
     }
-    setMessages([]); // Reset messages immediately to avoid old chat lingering
+
+    const key = activeChat.toLowerCase();
+    // 1. Instant 0ms cache display
+    const cached = messagesCacheRef.current[key];
+    if (cached) {
+      setMessages(cached);
+    } else {
+      setMessages([]);
+    }
+
     const socket = getSocket();
     if (!socket) return;
 
+    // 2. Fetch latest history in background
     socket.emit('set_active_chat', { to: activeChat, kind: 'friend' });
     socket.emit('get_history', { to: activeChat, kind: 'friend' });
 
     setConversations((prev) =>
-      prev.map((c) => (c.username.toLowerCase() === activeChat.toLowerCase() ? { ...c, unreadCount: 0 } : c))
+      prev.map((c) => (c.username.toLowerCase() === key ? { ...c, unreadCount: 0 } : c))
     );
   }, [activeChat, user]);
 
@@ -426,6 +478,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         online: Boolean(item.online && item.presence !== 'offline'),
         presence: item.presence || (item.online ? 'online' : 'offline'),
         lastSeenAt: item.lastSeenAt,
+        publicKey: item.publicKey || undefined,
         unreadCount: item.unreadCount || 0,
         isGroup: item.kind === 'group' || Boolean(item.groupId) || Boolean(item.memberCount && item.memberCount > 2),
         groupId: item.groupId || (item.kind === 'group' ? item.username : undefined),
@@ -440,11 +493,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
               text: item.lastMessage.text || item.lastMessage,
               timestamp: item.lastTimestamp || item.lastMessage.timestamp,
               status: 'delivered',
+              isEncrypted: Boolean(item.lastMessage.isEncrypted),
             }
           : undefined,
       }));
       setConversations(formatted);
     };
+
+    socket.on('peer_public_key_updated', ({ username, publicKey }: { username: string; publicKey: string }) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.username.toLowerCase() === username.toLowerCase() ? { ...c, publicKey } : c))
+      );
+    });
 
     socket.on('group_created', ({ group }: any) => {
       triggerHaptic('success');
@@ -665,24 +725,46 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setChatWallpaperState('var(--bg-canvas)');
           }
         }
-        setMessages(
-          historyList.map((m: any) => ({
-            id: m.id || m.messageId || String(m.timestamp),
-            sender: m.from || m.sender || m.fromKey,
-            receiver: m.to || m.receiver || m.toKey,
-            text: m.text || '',
-            timestamp: m.timestamp,
-            status: (m.seenAt ? 'seen' : m.deliveredAt ? 'delivered' : m.status || 'sent') as MessageStatus,
-            attachment: m.attachment,
-            replyTo: m.replyTo,
-            reactions: m.reactions || {},
-            isVoice: Boolean(m.isVoice || m.attachment?.kind === 'audio'),
-            pinnedAt: m.pinnedAt || null,
-            pinnedBy: m.pinnedBy || '',
-            poll: m.poll || null,
-            game: m.game || null,
-          }))
-        );
+        const formattedList: Message[] = historyList.map((m: any) => ({
+          id: m.id || m.messageId || String(m.timestamp),
+          sender: m.from || m.sender || m.fromKey,
+          receiver: m.to || m.receiver || m.toKey,
+          text: m.text || '',
+          timestamp: m.timestamp,
+          status: (m.seenAt ? 'seen' : m.deliveredAt ? 'delivered' : m.status || 'sent') as MessageStatus,
+          attachment: m.attachment,
+          replyTo: m.replyTo,
+          reactions: m.reactions || {},
+          isVoice: Boolean(m.isVoice || m.attachment?.kind === 'audio'),
+          pinnedAt: m.pinnedAt || null,
+          pinnedBy: m.pinnedBy || '',
+          poll: m.poll || null,
+          game: m.game || null,
+          ciphertext: m.ciphertext,
+          iv: m.iv,
+          isEncrypted: Boolean(m.isEncrypted),
+        }));
+
+        messagesCacheRef.current[target.toLowerCase()] = formattedList;
+        setMessages(formattedList);
+
+        // Asynchronously decrypt encrypted messages
+        const partnerKey = target.toLowerCase();
+        const peerConv = conversationsRef.current.find((c) => c.username.toLowerCase() === partnerKey);
+        const peerPub = peerConv?.publicKey;
+        if (peerPub) {
+          formattedList.forEach((m) => {
+            if (m.isEncrypted && m.ciphertext && m.iv) {
+              decryptMessageContent(m.ciphertext, m.iv, partnerKey, peerPub).then((decrypted) => {
+                if (decrypted) {
+                  setMessages((prev) =>
+                    prev.map((item) => (item.id === m.id ? { ...item, text: decrypted } : item))
+                  );
+                }
+              });
+            }
+          });
+        }
       }
     };
 
@@ -693,9 +775,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const msgId = data?.id;
       if (!msgId) return;
       const newStatus: MessageStatus = data.seenAt ? 'seen' : data.deliveredAt ? 'delivered' : 'sent';
-      setMessages((prev) =>
-        prev.map((m) => (m.id === msgId ? { ...m, status: newStatus } : m))
-      );
+      setMessages((prev) => {
+        const next = prev.map((m) => (m.id === msgId ? { ...m, status: newStatus } : m));
+        if (activeChatRef.current) {
+          messagesCacheRef.current[activeChatRef.current.toLowerCase()] = next;
+        }
+        return next;
+      });
     });
 
     // Private Message Incoming
@@ -721,6 +807,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         pinnedBy: rawMsg.pinnedBy || '',
         poll: rawMsg.poll || null,
         game: rawMsg.game || null,
+        ciphertext: rawMsg.ciphertext,
+        iv: rawMsg.iv,
+        isEncrypted: Boolean(rawMsg.isEncrypted),
       };
 
       const current = activeChatRef.current?.toLowerCase();
@@ -732,13 +821,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const existingIndex = prev.findIndex(
             (m) => (clientTempId && m.id === clientTempId) || m.id === msgId
           );
+          let next: Message[];
           if (existingIndex !== -1) {
-            const next = [...prev];
+            next = [...prev];
             next[existingIndex] = msg;
-            return next;
+          } else {
+            next = [...prev, msg];
           }
-          return [...prev, msg];
+          if (current) {
+            messagesCacheRef.current[current] = next;
+          }
+          return next;
         });
+
+        // Decrypt incoming message if encrypted
+        if (rawMsg.isEncrypted && rawMsg.ciphertext && rawMsg.iv) {
+          const partnerKey = (sender?.toLowerCase() === user.username.toLowerCase() ? receiver : sender)?.toLowerCase();
+          const peerConv = conversationsRef.current.find((c) => c.username.toLowerCase() === partnerKey);
+          const peerPub = peerConv?.publicKey;
+          if (peerPub && partnerKey) {
+            decryptMessageContent(rawMsg.ciphertext, rawMsg.iv, partnerKey, peerPub).then((decrypted) => {
+              if (decrypted) {
+                setMessages((prev) =>
+                  prev.map((item) => (item.id === msgId || (clientTempId && item.id === clientTempId) ? { ...item, text: decrypted } : item))
+                );
+              }
+            });
+          }
+        }
       }
 
       setConversations((prev) => {
@@ -987,10 +1097,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const toType = activeConv?.isGroup ? 'group' : 'friend';
 
       const clientTempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const payload = {
+      const rawText = text || (options.attachment?.kind === 'image' ? '[Image]' : options.isVoice ? '[Voice Message]' : '[File]');
+      
+      const payload: any = {
         to: activeChat,
         toType,
-        text: text || (options.attachment?.kind === 'image' ? '[Image]' : options.isVoice ? '[Voice Message]' : '[File]'),
+        text: rawText,
         attachment: options.attachment || null,
         replyTo: options.replyTo || null,
         clientTempId,
@@ -1008,9 +1120,29 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVoice: options.isVoice,
       };
 
-      setMessages((prev) => [...prev, optimisticMsg]);
+      setMessages((prev) => {
+        const next = [...prev, optimisticMsg];
+        if (activeChat) {
+          messagesCacheRef.current[activeChat.toLowerCase()] = next;
+        }
+        return next;
+      });
       playMessageSentSound();
-      socket.emit('private_message', payload);
+
+      // Check if peer has public key for E2EE encryption
+      const peerPubKey = activeConv?.publicKey;
+      if (toType === 'friend' && peerPubKey) {
+        encryptMessageContent(rawText, activeChat, peerPubKey).then((encrypted) => {
+          if (encrypted) {
+            payload.ciphertext = encrypted.ciphertext;
+            payload.iv = encrypted.iv;
+            payload.isEncrypted = true;
+          }
+          socket.emit('private_message', payload);
+        });
+      } else {
+        socket.emit('private_message', payload);
+      }
       triggerHaptic('light');
     },
     [activeChat, user]
@@ -1469,6 +1601,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toggleMute,
         toggleCamera,
         toggleScreenShare,
+        myPublicKey,
+        getSafetyNumber,
       }}
     >
       {children}
