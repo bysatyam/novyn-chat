@@ -1191,6 +1191,75 @@ html, body {
   }
 }
 
+/* Mobile Bottom Navigation Bar */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100vw;
+  height: calc(60px + max(4px, env(safe-area-inset-bottom, 0px)));
+  padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+  background: rgba(9, 13, 22, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  align-items: center;
+  justify-content: space-around;
+  z-index: 999;
+  box-shadow: 0 -4px 25px rgba(0, 0, 0, 0.6);
+}
+
+.nav-tab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+  border: none;
+  color: #8592a6;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: all 0.18s ease;
+  position: relative;
+  flex: 1;
+  max-width: 72px;
+}
+
+.nav-tab-btn span {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.nav-tab-btn svg {
+  transition: transform 0.18s ease, color 0.18s ease;
+}
+
+.nav-tab-btn:hover {
+  color: #e2e8f0;
+}
+
+.nav-tab-btn.active {
+  color: #10b981;
+}
+
+.nav-tab-btn.active svg {
+  transform: translateY(-2px) scale(1.08);
+  color: #10b981;
+  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.5));
+}
+
+.nav-tab-btn.active span {
+  font-weight: 700;
+  color: #10b981;
+}
+
 .mobile-only-btn {
   display: none !important;
 }
@@ -1199,14 +1268,19 @@ html, body {
   display: inline-flex !important;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .desktop-sidebar {
     display: none !important;
   }
-  .chat-list-panel {
+  .chat-list-panel,
+  .calls-panel,
+  .contacts-panel,
+  .discover-panel,
+  .settings-panel {
     width: 100% !important;
     max-width: 100% !important;
     border-right: none !important;
+    padding-bottom: 70px !important;
   }
   .mobile-bottom-nav {
     display: flex !important;
@@ -1237,7 +1311,13 @@ html, body {
   }
 }
 
-@media (min-width: 641px) {
+@media (min-width: 769px) {
+  .mobile-bottom-nav {
+    display: none !important;
+  }
+  .desktop-sidebar {
+    display: flex !important;
+  }
   .sm-flex-always {
     display: flex !important;
   }

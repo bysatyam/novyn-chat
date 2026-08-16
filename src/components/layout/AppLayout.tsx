@@ -150,9 +150,9 @@ export const AppLayout: React.FC = () => {
           style={{
             display: activeChat && activeTab !== 'settings' ? 'none' : 'flex',
             height: '100%',
-            width: windowWidth <= 640 ? '100%' : `${panelWidth}px`,
-            minWidth: windowWidth <= 640 ? '100%' : `${panelWidth}px`,
-            maxWidth: windowWidth <= 640 ? '100%' : `${panelWidth}px`,
+            width: windowWidth <= 768 ? '100%' : `${panelWidth}px`,
+            minWidth: windowWidth <= 768 ? '100%' : `${panelWidth}px`,
+            maxWidth: windowWidth <= 768 ? '100%' : `${panelWidth}px`,
             transition: isDragging ? 'none' : 'width 0.15s ease',
             overflow: 'hidden',
           }}
@@ -181,7 +181,7 @@ export const AppLayout: React.FC = () => {
       )}
 
       {/* Draggable Resizer Bar (Desktop only) */}
-      {!isListCollapsed && windowWidth > 640 && (
+      {!isListCollapsed && windowWidth > 768 && (
         <div
           onMouseDown={handleMouseDown}
           onDoubleClick={handleDoubleClickResizer}
