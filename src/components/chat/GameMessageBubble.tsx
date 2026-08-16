@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GameData, GameType } from '../../types';
-import { Swords, RotateCcw, Trophy, Sparkles, User, Users } from 'lucide-react';
+import { Swords, RotateCcw, Trophy, Sparkles, User, Users, Gamepad2 } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
 
 interface GameMessageBubbleProps {
@@ -110,17 +110,36 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
     const pO = data.playerO || opponent || 'Waiting...';
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-        {/* Player Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', fontSize: '0.75rem', fontWeight: 600 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981' }}>
-            <span style={{ fontWeight: 800, fontSize: '0.85rem' }}>✕</span>
-            <span>@{pX === currentUsername ? 'You' : pX}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
+        {/* Player Matchup Header */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            background: 'rgba(0, 0, 0, 0.35)',
+            padding: '6px 10px',
+            borderRadius: '10px',
+            fontSize: '0.76rem',
+            fontWeight: 700,
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981' }}>
+            <span style={{ background: 'rgba(16, 185, 129, 0.2)', padding: '2px 6px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 900 }}>✕</span>
+            <span style={{ maxWidth: '75px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              @{pX === currentUsername ? 'You' : pX}
+            </span>
           </div>
-          <span style={{ color: '#64748b', fontSize: '0.7rem' }}>vs</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#38bdf8' }}>
-            <span>@{pO === currentUsername ? 'You' : pO}</span>
-            <span style={{ fontWeight: 800, fontSize: '0.85rem' }}>◯</span>
+
+          <span style={{ color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.68rem', fontWeight: 800 }}>VS</span>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#38bdf8' }}>
+            <span style={{ maxWidth: '75px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              @{pO === currentUsername ? 'You' : pO}
+            </span>
+            <span style={{ background: 'rgba(56, 189, 248, 0.2)', padding: '2px 6px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 900 }}>◯</span>
           </div>
         </div>
 
@@ -130,12 +149,12 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
             gap: '6px',
-            background: 'rgba(0, 0, 0, 0.4)',
+            background: '#090d16',
             padding: '8px',
             borderRadius: '14px',
             border: '1px solid rgba(255, 255, 255, 0.1)',
-            width: '200px',
-            height: '200px',
+            width: '216px',
+            height: '216px',
           }}
         >
           {board.map((cell, idx) => {
@@ -146,8 +165,8 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
               <motion.button
                 key={idx}
                 type="button"
-                whileTap={isClickable ? { scale: 0.9 } : undefined}
-                whileHover={isClickable ? { scale: 1.05 } : undefined}
+                whileTap={isClickable ? { scale: 0.92 } : undefined}
+                whileHover={isClickable ? { scale: 1.04, backgroundColor: 'rgba(255, 255, 255, 0.08)' } : undefined}
                 onClick={() => handleTicTacToeCellClick(idx)}
                 style={{
                   background: isWinningCell
@@ -155,20 +174,21 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
                       ? 'rgba(16, 185, 129, 0.35)'
                       : 'rgba(56, 189, 248, 0.35)'
                     : cell
-                    ? 'rgba(255, 255, 255, 0.05)'
+                    ? 'rgba(255, 255, 255, 0.06)'
                     : 'rgba(255, 255, 255, 0.02)',
                   border: isWinningCell
                     ? cell === 'X'
-                      ? '1.5px solid #10b981'
-                      : '1.5px solid #38bdf8'
-                    : '1px solid rgba(255, 255, 255, 0.08)',
+                      ? '2px solid #10b981'
+                      : '2px solid #38bdf8'
+                    : '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: '10px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '1.5rem',
+                  fontSize: '1.6rem',
                   fontWeight: 900,
                   color: cell === 'X' ? '#10b981' : cell === 'O' ? '#38bdf8' : 'transparent',
+                  textShadow: cell === 'X' ? '0 0 10px rgba(16, 185, 129, 0.6)' : cell === 'O' ? '0 0 10px rgba(56, 189, 248, 0.6)' : 'none',
                   cursor: isClickable ? 'pointer' : 'default',
                   transition: 'background 0.15s ease',
                   padding: 0,
@@ -205,7 +225,6 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
     } else if (currentUsername === p2) {
       p2Move = move;
     } else {
-      // Third party user joining as player 2
       p2 = currentUsername;
       p2Move = move;
     }
@@ -213,7 +232,6 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
     let gameWinner: string | 'draw' | undefined;
     let newState: 'in_progress' | 'finished' = 'in_progress';
 
-    // If both players have picked, calculate outcome
     if (p1Move && p2Move) {
       newState = 'finished';
       if (p1Move === p2Move) {
@@ -255,8 +273,7 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
     };
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-        {/* Reveal Card or Choice Pickers */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%' }}>
         {bothPicked ? (
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -265,38 +282,36 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-around',
-              width: '210px',
+              width: '100%',
               padding: '16px 12px',
               borderRadius: '16px',
-              background: 'rgba(0, 0, 0, 0.4)',
+              background: '#090d16',
               border: '1px solid rgba(255, 255, 255, 0.1)',
             }}
           >
-            {/* Player 1 Choice */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '2.4rem' }}>{emojiMap[data.p1Move!]}</span>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>
+              <span style={{ fontSize: '2.5rem' }}>{emojiMap[data.p1Move!]}</span>
+              <span style={{ fontSize: '0.74rem', color: '#94a3b8', fontWeight: 600 }}>
                 @{p1 === currentUsername ? 'You' : p1}
               </span>
             </div>
 
-            <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#f59e0b' }}>VS</span>
+            <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#f59e0b' }}>VS</span>
 
-            {/* Player 2 Choice */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '2.4rem' }}>{emojiMap[data.p2Move!]}</span>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>
+              <span style={{ fontSize: '2.5rem' }}>{emojiMap[data.p2Move!]}</span>
+              <span style={{ fontSize: '0.74rem', color: '#94a3b8', fontWeight: 600 }}>
                 @{p2 === currentUsername ? 'You' : p2}
               </span>
             </div>
           </motion.div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '0.76rem', color: '#cbd5e1', fontWeight: 600 }}>
-              {myMove ? 'Choice locked! Waiting for opponent...' : 'Secretly tap your choice:'}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
+            <span style={{ fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, textAlign: 'center' }}>
+              {myMove ? 'Choice locked! 🔒 Waiting for opponent...' : 'Secretly tap your choice:'}
             </span>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
               {(['rock', 'paper', 'scissors'] as const).map((choice) => {
                 const isSelected = myMove === choice;
                 return (
@@ -304,18 +319,18 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
                     key={choice}
                     type="button"
                     whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
+                    whileTap={{ scale: 0.92 }}
                     onClick={() => handleRPSPick(choice)}
                     disabled={Boolean(myMove)}
                     style={{
-                      background: isSelected ? 'rgba(245, 158, 11, 0.25)' : 'rgba(0, 0, 0, 0.35)',
+                      background: isSelected ? 'rgba(245, 158, 11, 0.25)' : '#090d16',
                       border: isSelected ? '2px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.12)',
                       borderRadius: '14px',
-                      padding: '10px 14px',
-                      fontSize: '1.8rem',
+                      padding: '12px 16px',
+                      fontSize: '2rem',
                       cursor: myMove ? 'default' : 'pointer',
-                      opacity: myMove && !isSelected ? 0.4 : 1,
-                      transition: 'border-color 0.15s ease, background 0.15s ease',
+                      opacity: myMove && !isSelected ? 0.35 : 1,
+                      transition: 'all 0.15s ease',
                     }}
                   >
                     {emojiMap[choice]}
@@ -334,7 +349,7 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
   // ----------------------------------------------------
   const handleConnect4ColClick = (col: number) => {
     if (state === 'finished') return;
-    const board = [...(data.board || Array(42).fill(null))]; // 6 rows x 7 cols
+    const board = [...(data.board || Array(42).fill(null))];
     let pR = data.player1 || createdBy;
     let pY = data.player2 || (currentUsername !== pR ? currentUsername : opponent || '');
 
@@ -349,7 +364,6 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
       return;
     }
 
-    // Find lowest empty slot in column
     let targetRow = -1;
     for (let row = 5; row >= 0; row--) {
       const idx = row * 7 + col;
@@ -359,12 +373,11 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
       }
     }
 
-    if (targetRow === -1) return; // Column full!
+    if (targetRow === -1) return;
 
     const placedIdx = targetRow * 7 + col;
     board[placedIdx] = currentChip;
 
-    // Check 4-in-a-row
     const checkLine = (r: number, c: number, dr: number, dc: number) => {
       const line: number[] = [];
       for (let i = 0; i < 4; i++) {
@@ -382,7 +395,6 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
     let gameWinner: string | 'draw' | undefined;
     let newState: 'in_progress' | 'finished' = 'in_progress';
 
-    // Scan all cells
     for (let r = 0; r < 6; r++) {
       for (let c = 0; c < 7; c++) {
         const h = checkLine(r, c, 0, 1);
@@ -426,16 +438,35 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
     const pY = data.player2 || opponent || 'Waiting...';
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', fontSize: '0.75rem', fontWeight: 600 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
+        {/* Matchup Header */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            background: 'rgba(0, 0, 0, 0.35)',
+            padding: '6px 10px',
+            borderRadius: '10px',
+            fontSize: '0.76rem',
+            fontWeight: 700,
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444' }}>
             <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }} />
-            <span>@{pR === currentUsername ? 'You' : pR}</span>
+            <span style={{ maxWidth: '75px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              @{pR === currentUsername ? 'You' : pR}
+            </span>
           </div>
-          <span style={{ color: '#64748b', fontSize: '0.7rem' }}>vs</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#facc15' }}>
-            <span>@{pY === currentUsername ? 'You' : pY}</span>
+
+          <span style={{ color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.68rem', fontWeight: 800 }}>VS</span>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#facc15' }}>
+            <span style={{ maxWidth: '75px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              @{pY === currentUsername ? 'You' : pY}
+            </span>
             <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#facc15' }} />
           </div>
         </div>
@@ -445,9 +476,9 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(7, 1fr)',
-            gap: '4px',
-            background: '#0f172a',
-            padding: '6px',
+            gap: '5px',
+            background: '#090d16',
+            padding: '8px',
             borderRadius: '12px',
             border: '2px solid rgba(56, 189, 248, 0.4)',
             boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
@@ -461,11 +492,11 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
               <motion.button
                 key={idx}
                 type="button"
-                whileTap={state !== 'finished' ? { scale: 0.9 } : undefined}
+                whileTap={state !== 'finished' ? { scale: 0.88 } : undefined}
                 onClick={() => handleConnect4ColClick(col)}
                 style={{
-                  width: '24px',
-                  height: '24px',
+                  width: '25px',
+                  height: '25px',
                   borderRadius: '50%',
                   background:
                     chip === 'R'
@@ -496,39 +527,88 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
   };
 
   // ----------------------------------------------------
-  // STATUS BANNER & REMATCH BUTTON
+  // STATUS PILL BADGE
   // ----------------------------------------------------
   const renderBanner = () => {
     if (state === 'finished') {
       if (winner === 'draw') {
         return (
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            🤝 Game Draw!
-          </div>
+          <span
+            style={{
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              color: '#f59e0b',
+              background: 'rgba(245, 158, 11, 0.15)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              padding: '2px 8px',
+              borderRadius: '9999px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            🤝 Draw
+          </span>
         );
       }
       const isWinnerMe = winner === currentUsername;
       return (
-        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: isWinnerMe ? '#10b981' : '#f87171', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <Trophy style={{ width: '14px', height: '14px' }} />
-          <span>{isWinnerMe ? 'You Won! 🎉' : `@${winner} Won!`}</span>
-        </div>
+        <span
+          style={{
+            fontSize: '0.72rem',
+            fontWeight: 800,
+            color: isWinnerMe ? '#10b981' : '#f87171',
+            background: isWinnerMe ? 'rgba(16, 185, 129, 0.15)' : 'rgba(248, 113, 113, 0.15)',
+            border: isWinnerMe ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(248, 113, 113, 0.35)',
+            padding: '2px 8px',
+            borderRadius: '9999px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+          }}
+        >
+          <Trophy style={{ width: '12px', height: '12px' }} />
+          <span>{isWinnerMe ? 'You Won! 🎉' : `@${winner} Won`}</span>
+        </span>
       );
     }
 
     if (isMyTurn) {
       return (
-        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <Sparkles style={{ width: '13px', height: '13px' }} />
+        <span
+          style={{
+            fontSize: '0.72rem',
+            fontWeight: 800,
+            color: '#10b981',
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            padding: '2px 8px',
+            borderRadius: '9999px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+          }}
+        >
+          <Sparkles style={{ width: '11px', height: '11px' }} />
           <span>Your turn!</span>
-        </div>
+        </span>
       );
     }
 
     return (
-      <div style={{ fontSize: '0.74rem', color: '#94a3b8', fontWeight: 600 }}>
-        Waiting for @{turn === currentUsername ? 'you' : turn || 'opponent'}...
-      </div>
+      <span
+        style={{
+          fontSize: '0.72rem',
+          color: '#94a3b8',
+          background: 'rgba(255, 255, 255, 0.06)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          padding: '2px 8px',
+          borderRadius: '9999px',
+          fontWeight: 600,
+        }}
+      >
+        Waiting for @{turn === currentUsername ? 'you' : turn || 'opponent'}
+      </span>
     );
   };
 
@@ -539,14 +619,23 @@ export const GameMessageBubble: React.FC<GameMessageBubbleProps> = ({
         flexDirection: 'column',
         alignItems: 'center',
         gap: '10px',
-        padding: '10px 6px 4px',
-        minWidth: '220px',
+        width: '230px',
+        padding: '2px 0',
       }}
     >
-      {/* Game Title Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingBottom: '6px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 700, color: '#ffffff' }}>
-          <Swords style={{ width: '15px', height: '15px', color: '#10b981' }} />
+      {/* Game Title & Status Bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          paddingBottom: '6px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#ffffff' }}>
+          <Gamepad2 style={{ width: '15px', height: '15px', color: '#10b981' }} />
           <span>{game.title}</span>
         </div>
         {renderBanner()}

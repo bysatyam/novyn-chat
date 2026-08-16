@@ -713,6 +713,23 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
+/* Dedicated Game Bubble Styling */
+.bubble.game-bubble {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55) !important;
+  padding: 10px 14px !important;
+}
+.bubble.me.game-bubble {
+  border-left: 3px solid #10b981 !important;
+  border-radius: 18px 18px 4px 18px !important;
+}
+.bubble.other.game-bubble {
+  border-left: 3px solid #38bdf8 !important;
+  border-radius: 18px 18px 18px 4px !important;
+}
+
 .msg-action-trigger {
   opacity: 0;
   transition: opacity 0.15s ease, background 0.15s ease;
@@ -749,7 +766,7 @@ html, body {
   gap: 3px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
   cursor: pointer;
-  z-index: 10;
+  z-index: 2;
   transition: transform 0.12s ease;
 }
 
@@ -775,6 +792,8 @@ html, body {
   background: rgba(11, 15, 25, 0.9);
   backdrop-filter: blur(16px);
   border-top: 1px solid var(--border);
+  position: relative;
+  z-index: 60;
 }
 
 .input-bar-container {

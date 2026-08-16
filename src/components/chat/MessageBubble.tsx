@@ -294,7 +294,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           transition={{ duration: 0.2 }}
           onDoubleClick={handleDoubleClick}
           onTouchEnd={handleTouchEnd}
-          className={`bubble ${isMe ? 'me' : 'other'}`}
+          className={`bubble ${isMe ? 'me' : 'other'} ${message.game ? 'game-bubble' : ''}`}
           style={{ position: 'relative', cursor: 'default' }}
           title="Double-tap for emoji reactions"
         >

@@ -307,9 +307,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
               display: 'flex',
               flexDirection: 'column',
               gap: '2px',
-              boxShadow: '0 15px 35px rgba(0, 0, 0, 0.65)',
-              zIndex: 40,
-              minWidth: '200px',
+              boxShadow: '0 20px 45px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08)',
+              zIndex: 1000,
+              backdropFilter: 'blur(16px)',
+              minWidth: '220px',
             }}
           >
             {/* Photos & Videos */}
