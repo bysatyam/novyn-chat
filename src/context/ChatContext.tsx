@@ -253,7 +253,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Sync active chat history & mark read
   useEffect(() => {
-    if (!activeChat || !user) return;
+    if (!activeChat || !user) {
+      setMessages([]);
+      return;
+    }
+    setMessages([]); // Reset messages immediately to avoid old chat lingering
     const socket = getSocket();
     if (!socket) return;
 

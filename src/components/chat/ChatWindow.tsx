@@ -80,37 +80,50 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const isMuted = activeChat ? mutedUsers.has(activeChat.toLowerCase()) : false;
   const isBlocked = activeChat ? blockedUsers.has(activeChat.toLowerCase()) : false;
 
-  // Reset ready state when chat conversation switches
-  useEffect(() => {
-    if (prevChatIdRef.current !== activeChat) {
-      isChatReadyRef.current = false;
-      prevChatIdRef.current = activeChat;
-      prevMessagesCountRef.current = 0;
-    }
-  }, [activeChat]);
-
   // Instant scroll on initial load / chat switch, smooth scroll ONLY for single new live messages
   useLayoutEffect(() => {
     if (!messagesContainerRef.current) return;
     const container = messagesContainerRef.current;
 
+    // Detect chat conversation switch synchronously
+    if (prevChatIdRef.current !== activeChat) {
+      prevChatIdRef.current = activeChat;
+      isChatReadyRef.current = false;
+      prevMessagesCountRef.current = 0;
+    }
+
     if (!isChatReadyRef.current) {
-      // Instant snap to bottom - absolutely zero animation
+      // Instant snap to bottom - multi-stage to account for image/bubble layout updates
       container.scrollTop = container.scrollHeight;
-      requestAnimationFrame(() => {
+      
+      const rafId = requestAnimationFrame(() => {
+        if (container) container.scrollTop = container.scrollHeight;
+      });
+
+      const timer1 = setTimeout(() => {
+        if (container) container.scrollTop = container.scrollHeight;
+      }, 50);
+
+      const timer2 = setTimeout(() => {
         if (container) {
           container.scrollTop = container.scrollHeight;
+          if (messages.length > 0) {
+            isChatReadyRef.current = true;
+          }
         }
-      });
-      if (messages.length > 0) {
-        isChatReadyRef.current = true;
-      }
+      }, 150);
+
+      return () => {
+        cancelAnimationFrame(rafId);
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      };
     } else {
       const isNewLiveMessage = messages.length > prevMessagesCountRef.current;
       if (isNewLiveMessage) {
         const lastMsg = messages[messages.length - 1];
         const isSentByMe = lastMsg?.sender?.toLowerCase() === user?.username?.toLowerCase();
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 220;
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 240;
         if (isSentByMe || isNearBottom) {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
@@ -118,13 +131,28 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     prevMessagesCountRef.current = messages.length;
-  }, [messages, activeChat]);
+  }, [messages, activeChat, user?.username]);
+
+  // Keep scroll pinned to bottom as media or fonts load when first entering a chat
+  useEffect(() => {
+    if (!messagesContainerRef.current) return;
+    const container = messagesContainerRef.current;
+    
+    const resizeObserver = new ResizeObserver(() => {
+      if (!isChatReadyRef.current && container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, [activeChat]);
 
   // Keep bottom in view when typing indicator toggles
   useEffect(() => {
     if (isTyping && messagesContainerRef.current) {
       const container = messagesContainerRef.current;
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 160;
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 180;
       if (isNearBottom) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
