@@ -182,12 +182,33 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const renderStatus = () => {
     if (!isMe) return null;
     if (message.status === 'seen') {
-      return <CheckCheck style={{ width: '14px', height: '14px', color: '#67e8f9', display: 'inline' }} />;
+      return (
+        <span title="Seen" style={{ display: 'inline-flex', alignItems: 'center', marginLeft: '2px' }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </span>
+      );
     }
     if (message.status === 'delivered') {
-      return <CheckCheck style={{ width: '14px', height: '14px', color: 'rgba(255,255,255,0.7)', display: 'inline' }} />;
+      return (
+        <span title="Delivered" style={{ display: 'inline-flex', alignItems: 'center', marginLeft: '2px' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 8h14M14 4l4 4-4 4" />
+            <path d="M20 16H6M10 12l-4 4 4 4" />
+          </svg>
+        </span>
+      );
     }
-    return <Check style={{ width: '14px', height: '14px', color: 'rgba(255,255,255,0.5)', display: 'inline' }} />;
+    return (
+      <span title="Sent" style={{ display: 'inline-flex', alignItems: 'center', marginLeft: '2px' }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <polyline points="12 5 19 12 12 19"></polyline>
+        </svg>
+      </span>
+    );
   };
 
   const isAudioMessage = Boolean(
@@ -798,7 +819,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
         </motion.div>
 
-        {/* Outer Timestamp & Status underneath the bubble (Image 1 style) */}
+        {/* Outer Timestamp & Status underneath the bubble */}
         <div className="bubble-meta-outside">
           {message.pinnedAt && (
             <span title="Pinned message" style={{ display: 'flex', alignItems: 'center' }}>
@@ -806,12 +827,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </span>
           )}
           <span>{formatTime(message.timestamp)}</span>
-          {isMe && message.status === 'seen' && (
-            <span style={{ color: '#67e8f9', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
-              · seen
-            </span>
-          )}
-          {isMe && message.status !== 'seen' && renderStatus()}
+          {renderStatus()}
         </div>
       </div>
 
