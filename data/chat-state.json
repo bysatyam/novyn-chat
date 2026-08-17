@@ -22,7 +22,8 @@
       "bio": "",
       "createdAt": "2026-08-15T12:34:06.845Z",
       "lastSeenAt": "2026-08-16T05:38:49.124Z",
-      "presenceMode": "online"
+      "presenceMode": "online",
+      "publicKey": ""
     },
     {
       "key": "voteto5861",
@@ -45,8 +46,34 @@
       "displayName": "qweqwe",
       "bio": "",
       "createdAt": "2026-08-15T14:02:05.940Z",
-      "lastSeenAt": "2026-08-16T09:21:23.721Z",
-      "presenceMode": "away"
+      "lastSeenAt": "",
+      "presenceMode": "away",
+      "publicKey": "{\"crv\":\"P-256\",\"ext\":true,\"key_ops\":[],\"kty\":\"EC\",\"x\":\"LKzUXFUWFOVyXL37NItscFZy-rKk91hPvIfVk5M4OvY\",\"y\":\"emhId06TOiXEcmQVJJOkBDpbWVJGa70seupTJsFHATA\"}"
+    },
+    {
+      "key": "testuser",
+      "username": "testuser",
+      "email": "test@example.com",
+      "googleUid": "",
+      "friends": [],
+      "groups": [],
+      "requests": [],
+      "unread": [],
+      "blockedUsers": [],
+      "mutedUsers": [],
+      "pushSubs": [],
+      "isRegistered": true,
+      "passwordSalt": "a1cc62066bc7c1d18b177f6204877310",
+      "passwordHash": "0cbbf893701abdb3fd73e6fbd057a8a7864dbcb201ebdc43901c92cf9627a7c7b9379d374e5795b4be4fc4461c63d700ae76aa8d1cd43a6049008eeb3fc2d72a",
+      "avatarId": "",
+      "age": "",
+      "gender": "",
+      "displayName": "Test User",
+      "bio": "",
+      "createdAt": "2026-08-17T03:12:45.460Z",
+      "lastSeenAt": "2026-08-17T03:15:00.420Z",
+      "presenceMode": "online",
+      "publicKey": "{\"crv\":\"P-256\",\"ext\":true,\"key_ops\":[],\"kty\":\"EC\",\"x\":\"iD6x0QiBe6ud-MXNQjJROTyxRHBg6EOjPb9lTTdxIKY\",\"y\":\"fLssvyUjGTcE_z2sAcq3FHZ1NMcGNv1TOgO5S7oT1a0\"}"
     }
   ],
   "conversations": [],

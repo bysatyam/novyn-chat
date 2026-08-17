@@ -30,6 +30,7 @@ export const AppLayout: React.FC = () => {
   const [isListCollapsed, setIsListCollapsed] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [isMobileSettingsDetailOpen, setIsMobileSettingsDetailOpen] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
 
   useEffect(() => {
@@ -130,8 +131,6 @@ export const AppLayout: React.FC = () => {
   }
 
   const showSubPanel = windowWidth >= 960 && !isCompact;
-
-  const [isMobileSettingsDetailOpen, setIsMobileSettingsDetailOpen] = useState(false);
 
   return (
     <div className="app-container">
