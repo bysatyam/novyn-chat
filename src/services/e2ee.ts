@@ -100,68 +100,46 @@ async function loadKeyPairFromDB(username: string): Promise<CryptoKeyPair | null
   }
 }
 
-export function isCryptoSubtleAvailable(): boolean {
-  try {
-    return Boolean(
-      typeof window !== 'undefined' &&
-        window.crypto &&
-        window.crypto.subtle &&
-        typeof window.crypto.subtle.generateKey === 'function'
-    );
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Initialize or load this device's ECDH P-256 Identity KeyPair for the given username.
  */
 export async function initE2EEIdentity(username: string): Promise<string> {
-  if (!username || !isCryptoSubtleAvailable()) return '';
+  if (!username) return '';
   const userKey = username.toLowerCase();
 
   if (cachedKeyPair && currentUsernameKey === userKey) {
     return getMyPublicKeyJwk();
   }
 
-  try {
-    // 1. Try to load from IndexedDB
-    let keyPair = await loadKeyPairFromDB(userKey);
+  // 1. Try to load from IndexedDB
+  let keyPair = await loadKeyPairFromDB(userKey);
 
-    // 2. Generate new ECDH P-256 keypair if not present
-    if (!keyPair) {
-      keyPair = await window.crypto.subtle.generateKey(
-        {
-          name: 'ECDH',
-          namedCurve: 'P-256',
-        },
-        true,
-        ['deriveKey', 'deriveBits']
-      );
-      await saveKeyPairToDB(userKey, keyPair);
-    }
-
-    cachedKeyPair = keyPair;
-    currentUsernameKey = userKey;
-
-    return getMyPublicKeyJwk();
-  } catch (err) {
-    console.warn('E2EE identity initialization skipped:', err);
-    return '';
+  // 2. Generate new ECDH P-256 keypair if not present
+  if (!keyPair) {
+    keyPair = await window.crypto.subtle.generateKey(
+      {
+        name: 'ECDH',
+        namedCurve: 'P-256',
+      },
+      true,
+      ['deriveKey', 'deriveBits']
+    );
+    await saveKeyPairToDB(userKey, keyPair);
   }
+
+  cachedKeyPair = keyPair;
+  currentUsernameKey = userKey;
+
+  return getMyPublicKeyJwk();
 }
 
 /**
  * Export this device's public key as JSON string for server registration.
  */
 export async function getMyPublicKeyJwk(): Promise<string> {
-  if (!cachedKeyPair || !isCryptoSubtleAvailable()) return '';
-  try {
-    const exported = await window.crypto.subtle.exportKey('jwk', cachedKeyPair.publicKey);
-    return JSON.stringify(exported);
-  } catch {
-    return '';
-  }
+  if (!cachedKeyPair) return '';
+  const exported = await window.crypto.subtle.exportKey('jwk', cachedKeyPair.publicKey);
+  return JSON.stringify(exported);
 }
 
 /**

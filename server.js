@@ -101,22 +101,6 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get(["/download/android", "/download/apk", "/downloads/Novyn-Chat-v1.0.apk", "/downloads/novyn-chat.apk"], (req, res) => {
-  const possiblePaths = [
-    path.join(__dirname, "android", "app", "build", "outputs", "apk", "release", "Novyn-Chat-v1.0.apk"),
-    path.join(__dirname, "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk"),
-    path.join(__dirname, "public", "downloads", "Novyn-Chat-v1.0.apk"),
-  ];
-  for (const apkPath of possiblePaths) {
-    if (fs.existsSync(apkPath)) {
-      return res.download(apkPath, "Novyn-Chat-v1.0.apk");
-    }
-  }
-  res.status(200).send(
-    `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#090d16;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><div style="text-align:center;padding:32px;background:rgba(255,255,255,0.05);border-radius:20px;border:1px solid rgba(16,185,129,0.3);box-shadow:0 10px 40px rgba(0,0,0,0.5);"><h2 style="color:#10b981;margin-top:0;font-size:1.6rem;">⚡ Novyn Android APK</h2><p style="color:#94a3b8;max-width:400px;line-height:1.5;">The production APK filename has been set to <strong>Novyn-Chat-v1.0.apk</strong>. Once built in Android Studio, your direct download will start automatically here.</p><a href="/" style="display:inline-block;margin-top:16px;padding:10px 20px;background:#10b981;color:#fff;border-radius:10px;text-decoration:none;font-weight:bold;">← Launch Web App</a></div></body></html>`
-  );
-});
-
 const defaultUploadsDir = path.join(__dirname, "uploads");
 const configuredUploadsDir = String(process.env.UPLOADS_DIR || "").trim();
 let uploadsDir = configuredUploadsDir ? path.resolve(configuredUploadsDir) : defaultUploadsDir;
