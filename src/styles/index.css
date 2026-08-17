@@ -50,6 +50,17 @@ html, body {
   overflow: hidden;
 }
 
+.app-container {
+  display: flex;
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background-color: var(--bg-main);
+  position: relative;
+}
+
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 5px;

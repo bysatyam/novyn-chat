@@ -204,9 +204,10 @@ export const AppLayout: React.FC = () => {
           flex: 1,
           height: '100%',
           display:
+            windowWidth > 768 ||
             activeChat ||
             isListCollapsed ||
-            (activeTab === 'settings' && (windowWidth > 768 || isMobileSettingsDetailOpen))
+            (activeTab === 'settings' && isMobileSettingsDetailOpen)
               ? 'flex'
               : 'none',
           minWidth: 0,
