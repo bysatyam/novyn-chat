@@ -302,6 +302,26 @@ function sanitizeMessageAttachment(rawAttachment, fallbackUrl = "") {
   };
 }
 
+// ── APK Download Route ────────────────────────────────────────────────────
+// Serves the Android APK from public/downloads/ with the correct headers
+// so the browser triggers a download instead of trying to render it.
+app.get("/downloads/:filename", (req, res) => {
+  const filename = path.basename(req.params.filename || "");
+  if (!filename.endsWith(".apk")) {
+    res.status(400).json({ error: "Invalid file type." });
+    return;
+  }
+  const filePath = path.join(__dirname, "public", "downloads", filename);
+  if (!fs.existsSync(filePath)) {
+    res.status(404).json({ error: "APK not found. Check back soon." });
+    return;
+  }
+  res.setHeader("Content-Type", "application/vnd.android.package-archive");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.sendFile(filePath);
+});
+
 app.get("/uploads/:file", (req, res) => {
   const filename = path.basename(req.params.file || "");
   const token = String(req.query.token || "");

@@ -15,8 +15,24 @@ import {
   CheckCircle2,
   X,
   BellRing,
+  Download,
 } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
+
+// Path to the APK served from the public/downloads/ folder.
+// Replace with your deployed CDN/storage URL if you host it externally.
+const APK_DOWNLOAD_URL = '/downloads/novyn.apk';
+const APK_FILENAME = 'novyn.apk';
+
+function triggerApkDownload() {
+  triggerHaptic('medium');
+  const a = document.createElement('a');
+  a.href = APK_DOWNLOAD_URL;
+  a.download = APK_FILENAME;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
 
 interface LandingPageProps {
   onOpenAuth: (mode?: 'signin' | 'signup') => void;
@@ -132,36 +148,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                 gap: '6px',
                 padding: '6px 14px',
                 borderRadius: '12px',
-                background: 'rgba(255, 255, 255, 0.02)',
-                border: '1px solid var(--border)',
+                background: 'rgba(56, 189, 248, 0.06)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
                 fontSize: '0.84rem',
                 fontWeight: 600,
-                color: '#cbd5e1',
+                color: '#38bdf8',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
-              onClick={() =>
-                handleOpenComingSoon({
-                  name: 'Novyn Mobile App',
-                  type: 'Android & iOS',
-                  icon: Smartphone,
-                })
-              }
+              onClick={triggerApkDownload}
             >
               <Smartphone style={{ width: '15px', height: '15px', color: '#38bdf8' }} />
               <span>App</span>
               <span
                 style={{
                   fontSize: '0.65rem',
-                  color: '#38bdf8',
-                  background: 'rgba(56, 189, 248, 0.12)',
+                  color: '#34d399',
+                  background: 'rgba(52, 211, 153, 0.12)',
                   padding: '2px 6px',
                   borderRadius: '6px',
                   fontWeight: 700,
                   marginLeft: '2px',
                 }}
               >
-                Coming Soon
+                APK
               </span>
             </div>
 
@@ -499,8 +509,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
             style={{
               padding: '28px',
               borderRadius: '24px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid var(--border)',
+              background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%)',
+              border: '1px solid rgba(56, 189, 248, 0.2)',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
@@ -511,31 +521,38 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                 <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Smartphone style={{ width: '24px', height: '24px' }} />
                 </div>
-                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.25)', padding: '4px 10px', borderRadius: '9999px' }}>
-                  COMING SOON
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#34d399', background: 'rgba(52, 211, 153, 0.12)', border: '1px solid rgba(52, 211, 153, 0.3)', padding: '4px 10px', borderRadius: '9999px' }}>
+                  ↓ DOWNLOAD
                 </span>
               </div>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', marginBottom: '8px' }}>
                 Novyn for Mobile
               </h3>
               <p style={{ color: '#94a3b8', fontSize: '0.88rem', lineHeight: 1.55, margin: '0 0 20px' }}>
-                Native Android APK & iOS build with hardware haptics, push notifications, and background call ringing.
+                Native Android APK with hardware haptics, push notifications, and background call ringing. Direct install — no Play Store needed.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() =>
-                handleOpenComingSoon({
-                  name: 'Novyn Mobile App',
-                  type: 'Android (APK) & iOS',
-                  icon: Smartphone,
-                })
-              }
+              onClick={triggerApkDownload}
               className="btn btn-secondary"
-              style={{ width: '100%', padding: '12px', borderRadius: '14px', fontSize: '0.9rem', fontWeight: 700, color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)' }}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '14px',
+                fontSize: '0.9rem',
+                fontWeight: 700,
+                color: '#38bdf8',
+                border: '1px solid rgba(56, 189, 248, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
             >
-              Get Notified (Mobile) <BellRing style={{ width: '15px', height: '15px' }} />
+              <Download style={{ width: '16px', height: '16px' }} />
+              Download APK (Android)
             </button>
           </div>
 

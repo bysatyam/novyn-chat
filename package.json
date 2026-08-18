@@ -15,7 +15,17 @@
     "cap:sync": "npm run build && npx cap sync",
     "cap:sync:android": "npm run build && npx cap sync android",
     "cap:android": "npx cap open android",
-    "cap:run:android": "npx cap run android"
+    "cap:run:android": "npx cap run android",
+    "flutter:get": "cd flutter && flutter pub get",
+    "flutter:run": "cd flutter && flutter run",
+    "flutter:run:android": "cd flutter && flutter run -d android",
+    "flutter:run:ios": "cd flutter && flutter run -d ios",
+    "flutter:build:android": "cd flutter && flutter build apk --release",
+    "flutter:build:ios": "cd flutter && flutter build ios --release",
+    "flutter:build:appbundle": "cd flutter && flutter build appbundle --release",
+    "flutter:codegen": "cd flutter && flutter pub run build_runner build --delete-conflicting-outputs",
+    "flutter:clean": "cd flutter && flutter clean",
+    "dev:all": "concurrently -n \"backend,web,flutter\" -c \"blue,green,magenta\" \"node server.js\" \"vite\" \"cd flutter && flutter run\""
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
