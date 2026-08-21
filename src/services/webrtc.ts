@@ -97,41 +97,51 @@ export class WebRTCManager {
   public async initLocalMedia(isVideo: boolean): Promise<MediaStream> {
     this.stopLocalMedia();
     this.isVideoCall = isVideo;
+
+    // Try with video first (if video call), fall back to audio-only, then throw with real reason
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
+
+    if (isVideo) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints,
+          video: {
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            facingMode: 'user',
+            frameRate: { ideal: 30 },
+          },
+        });
+        this.localStream = stream;
+        if (this.onLocalStreamCallback) this.onLocalStreamCallback(stream);
+        return stream;
+      } catch (videoErr: any) {
+        const name = videoErr?.name || 'UnknownError';
+        // A denied/busy device must be reported as-is. Retrying immediately with
+        // different constraints causes browsers to show a misleading second prompt.
+        if (!['NotFoundError', 'OverconstrainedError'].includes(name)) {
+          throw Object.assign(new Error(videoErr?.message || 'Camera or microphone access failed'), { name });
+        }
+        console.warn('[WebRTC] Camera unavailable, trying audio-only:', name, videoErr?.message);
+      }
+    }
+
+    // Audio-only attempt
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: isVideo
-          ? {
-              width: { ideal: 1280, max: 1920 },
-              height: { ideal: 720, max: 1080 },
-              facingMode: 'user',
-              frameRate: { ideal: 30 },
-            }
-          : false,
-      });
-      this.localStream = stream;
-      if (this.onLocalStreamCallback) {
-        this.onLocalStreamCallback(stream);
-      }
-      return stream;
-    } catch (err) {
-      console.warn('Could not get video, falling back to audio only:', err);
-      const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
       this.localStream = audioStream;
-      if (this.onLocalStreamCallback) {
-        this.onLocalStreamCallback(audioStream);
-      }
+      if (this.onLocalStreamCallback) this.onLocalStreamCallback(audioStream);
       return audioStream;
+    } catch (audioErr: any) {
+      // Surface real error name so callers can show a useful message
+      const name = audioErr?.name || 'UnknownError';
+      const message = audioErr?.message || 'Unknown error';
+      console.error('[WebRTC] Media access failed:', name, message);
+      throw Object.assign(new Error(message), { name });
     }
   }
 

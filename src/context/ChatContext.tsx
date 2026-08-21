@@ -163,6 +163,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user?.username]);
 
   const [callState, setCallState] = useState<CallState>({
+    callId: '',
     isActive: false,
     status: 'idle',
     remoteUser: '',
@@ -274,8 +275,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const handleSignal = (signal: any) => {
       const socket = getSocket();
-      if (socket && callStateRef.current.remoteUser) {
-        socket.emit('webrtc_signal', { to: callStateRef.current.remoteUser, signal });
+      const current = callStateRef.current;
+      if (socket && current.remoteUser && current.callId) {
+        socket.emit('webrtc_signal', { to: current.remoteUser, callId: current.callId, signal });
       }
     };
 
@@ -402,7 +404,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // End Call Helper
   const endCall = useCallback(
-    (reason?: string) => {
+    (reason?: string, notifyPeer = true) => {
       const socket = getSocket();
       stopRingtone();
       playCallEndSound();
@@ -413,8 +415,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const current = callStateRef.current;
-      if (socket && current.remoteUser) {
-        socket.emit('call_end', { to: current.remoteUser, reason });
+      if (notifyPeer && socket && current.remoteUser && current.callId) {
+        socket.emit('call_end', { to: current.remoteUser, callId: current.callId, reason });
       }
 
       webrtcManagerRef.current?.cleanup();
@@ -445,6 +447,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       callStartTimeRef.current = null;
 
       setCallState({
+        callId: '',
         isActive: false,
         status: 'ended',
         remoteUser: '',
@@ -941,8 +944,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     // WebRTC Calling Signaling Listeners
-    socket.on('call_incoming', ({ from, fromDisplayName, isVideo }: { from: string; fromDisplayName: string; isVideo: boolean }) => {
+    socket.on('call_incoming', ({ from, fromDisplayName, isVideo, callId }: { from: string; fromDisplayName: string; isVideo: boolean; callId?: string }) => {
+      if (!callId) return;
+      if (callStateRef.current.isActive) {
+        socket.emit('call_end', { to: from, callId, reason: 'User is busy' });
+        return;
+      }
       setCallState({
+        callId,
         isActive: true,
         status: 'ringing',
         remoteUser: from,
@@ -965,7 +974,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }, 30000);
     });
 
-    socket.on('call_accepted', async () => {
+    socket.on('call_accepted', async ({ callId }: { callId?: string }) => {
+      if (!callId || callStateRef.current.callId !== callId) return;
       stopRingtone();
       if (callTimeoutTimerRef.current) {
         clearTimeout(callTimeoutTimerRef.current);
@@ -981,6 +991,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const offer = await webrtcManagerRef.current.createOffer();
           socket.emit('webrtc_signal', {
             to: callStateRef.current.remoteUser,
+            callId,
             signal: { type: 'offer', sdp: offer },
           });
         } catch (err) {
@@ -989,8 +1000,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    socket.on('webrtc_signal', async ({ from, signal }: { from: string; signal: any }) => {
+    socket.on('webrtc_signal', async ({ from, callId, signal }: { from: string; callId?: string; signal: any }) => {
       if (!webrtcManagerRef.current || !signal) return;
+      if (!callId || callStateRef.current.callId !== callId) return;
 
       const targetUser = callStateRef.current.remoteUser || from;
       try {
@@ -998,6 +1010,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const answer = await webrtcManagerRef.current.handleOffer(signal.sdp);
           socket.emit('webrtc_signal', {
             to: targetUser,
+            callId,
             signal: { type: 'answer', sdp: answer },
           });
         } else if (signal.type === 'answer') {
@@ -1010,8 +1023,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    socket.on('call_ended', ({ reason }: { reason?: string }) => {
-      endCall(reason || 'Call ended');
+    socket.on('call_ended', ({ reason, callId }: { reason?: string; callId?: string }) => {
+      if (!callId || callStateRef.current.callId !== callId) return;
+      endCall(reason || 'Call ended', false);
     });
 
     return () => {
@@ -1472,8 +1486,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!socket || !webrtcManagerRef.current) return;
 
     try {
+      const callId = typeof window.crypto?.randomUUID === 'function'
+        ? window.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const localStream = await webrtcManagerRef.current.initLocalMedia(isVideo);
       setCallState({
+        callId,
         isActive: true,
         status: 'calling',
         remoteUser,
@@ -1487,23 +1505,40 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       playCallRing();
-      socket.emit('call_start', { to: remoteUser, isVideo });
+      socket.emit('call_start', { to: remoteUser, isVideo, callId });
       triggerHaptic('medium');
 
-      // Auto-cut caller after 30s if recipient does not pick up
       if (callTimeoutTimerRef.current) clearTimeout(callTimeoutTimerRef.current);
       callTimeoutTimerRef.current = setTimeout(() => {
         endCall('No answer (Timed out)');
       }, 30000);
-    } catch (err) {
-      console.error('Failed to start call:', err);
-      alert('Could not access microphone/camera. Please allow permissions in your browser.');
+    } catch (err: any) {
+      const name = err?.name || '';
+      console.error('[Call] startCall media error:', name, err?.message);
+
+      let msg = 'Could not access your microphone. ';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        msg += 'Permission was denied. Click the camera/mic icon in your browser address bar and allow access, then try again.';
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        msg += 'Your microphone is already in use by another app (Zoom, Teams, etc.). Close it and try again.';
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        msg += 'No microphone was found. Please plug one in and try again.';
+      } else if (name === 'OverconstrainedError') {
+        msg += 'Camera resolution not supported. Try a voice-only call instead.';
+      } else {
+        msg += `(${name}: ${err?.message || 'Unknown error'})`;
+      }
+      alert(msg);
     }
   }, [endCall]);
 
   const answerCall = useCallback(async () => {
     const socket = getSocket();
     if (!socket || !webrtcManagerRef.current) return;
+
+    // Use callStateRef.current to avoid stale closure on isVideo/remoteUser
+    const { isVideo, remoteUser, callId } = callStateRef.current;
+    if (!callId || !remoteUser) return;
 
     stopRingtone();
     if (callTimeoutTimerRef.current) {
@@ -1513,16 +1548,27 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     callStartTimeRef.current = Date.now();
 
     try {
-      const localStream = await webrtcManagerRef.current.initLocalMedia(callState.isVideo);
+      const localStream = await webrtcManagerRef.current.initLocalMedia(isVideo);
       setCallState((prev) => ({ ...prev, status: 'connected', localStream }));
-
-      socket.emit('call_accept', { to: callState.remoteUser });
+      socket.emit('call_accept', { to: remoteUser, callId });
       triggerHaptic('success');
-    } catch (err) {
-      console.error('Failed to answer call:', err);
+    } catch (err: any) {
+      const name = err?.name || '';
+      console.error('[Call] answerCall media error:', name, err?.message);
+      let msg = 'Could not access your microphone. ';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        msg += 'Permission denied — click the mic icon in your address bar and allow, then try again.';
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        msg += 'Microphone is in use by another app. Close it and try again.';
+      } else if (name === 'NotFoundError') {
+        msg += 'No microphone found.';
+      } else {
+        msg += `(${name}: ${err?.message || 'Unknown'})`;
+      }
+      alert(msg);
       endCall('Media error');
     }
-  }, [callState.isVideo, callState.remoteUser, endCall]);
+  }, [endCall]);
 
   const toggleMute = useCallback(() => {
     const nextMuted = !callState.isMuted;

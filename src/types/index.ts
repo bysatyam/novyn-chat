@@ -121,6 +121,7 @@ export interface FriendRequest {
 export type ActiveTab = 'chats' | 'calls' | 'contacts' | 'settings';
 
 export interface CallState {
+  callId?: string;
   isActive: boolean;
   isIncoming: boolean;
   remoteUser: string;

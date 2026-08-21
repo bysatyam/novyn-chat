@@ -3098,9 +3098,9 @@ function deliverGroupMessage(params = {}) {
   return { ok: true, existing: false, message, me, group };
 }
 
-function setCallPair(userKey, peerKey, status) {
-  activeCalls.set(userKey, { peerKey, status });
-  activeCalls.set(peerKey, { peerKey: userKey, status });
+function setCallPair(userKey, peerKey, status, callId) {
+  activeCalls.set(userKey, { peerKey, status, callId });
+  activeCalls.set(peerKey, { peerKey: userKey, status, callId });
 }
 
 function clearCallPair(userKey) {
@@ -5679,9 +5679,9 @@ io.on("connection", (socket) => {
         clearCallPair(userKey);
         const targetSocketId = onlineUsers.get(targetKey);
         if (targetSocketId) {
-          io.to(targetSocketId).emit("call_ended", { from: me.username || userKey, reason: "Call ended" });
+          io.to(targetSocketId).emit("call_ended", { from: me.username || userKey, callId: active.callId, reason: "Call ended" });
         }
-        socket.emit("call_ended", { from: target.username || targetKey, reason: "Call ended" });
+        socket.emit("call_ended", { from: target.username || targetKey, callId: active.callId, reason: "Call ended" });
       }
     } else {
       if (me.blockedUsers.delete(targetKey)) changed = true;
@@ -6558,7 +6558,8 @@ io.on("connection", (socket) => {
     if (!userKey) return;
     const to = toDisplayName(payload?.to);
     const isVideo = Boolean(payload?.isVideo);
-    if (!to) return;
+    const callId = toDisplayName(payload?.callId).slice(0, 128);
+    if (!to || !callId) return;
 
     const me = users.get(userKey);
     const friendKey = normalizeName(to);
@@ -6567,13 +6568,19 @@ io.on("connection", (socket) => {
     console.log(`[Call] Call started from ${userKey} to ${friendKey} (socket: ${friendSocketId})`);
 
     if (friendSocketId) {
+      if (activeCalls.has(userKey) || activeCalls.has(friendKey)) {
+        socket.emit("call_ended", { callId, reason: "User is busy" });
+        return;
+      }
+      setCallPair(userKey, friendKey, "ringing", callId);
       io.to(friendSocketId).emit("call_incoming", {
         from: me?.username || userKey,
         fromDisplayName: me?.displayName || me?.username || userKey,
         isVideo,
+        callId,
       });
     } else {
-      socket.emit("call_ended", { reason: "User is offline" });
+      socket.emit("call_ended", { callId, reason: "User is offline" });
     }
   });
 
@@ -6581,13 +6588,17 @@ io.on("connection", (socket) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
     const to = toDisplayName(payload?.to);
-    if (!to) return;
+    const callId = toDisplayName(payload?.callId).slice(0, 128);
+    if (!to || !callId) return;
 
     const friendKey = normalizeName(to);
     const friendSocketId = onlineUsers.get(friendKey);
+    const active = activeCalls.get(userKey);
+    if (!active || active.peerKey !== friendKey || active.callId !== callId) return;
+    setCallPair(userKey, friendKey, "connected", callId);
     console.log(`[Call] Call accepted by ${userKey} for ${friendKey} (socket: ${friendSocketId})`);
     if (friendSocketId) {
-      io.to(friendSocketId).emit("call_accepted", { from: userKey });
+      io.to(friendSocketId).emit("call_accepted", { from: userKey, callId });
     }
   });
 
@@ -6595,29 +6606,35 @@ io.on("connection", (socket) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
     const to = toDisplayName(payload?.to);
+    const callId = toDisplayName(payload?.callId).slice(0, 128);
     const reason = payload?.reason || "Call ended";
 
-    if (to) {
+    if (to && callId) {
       const friendKey = normalizeName(to);
+      const active = activeCalls.get(userKey);
+      if (!active || active.peerKey !== friendKey || active.callId !== callId) return;
+      clearCallPair(userKey);
       const friendSocketId = onlineUsers.get(friendKey);
       if (friendSocketId) {
-        io.to(friendSocketId).emit("call_ended", { from: userKey, reason });
+        io.to(friendSocketId).emit("call_ended", { from: userKey, callId, reason });
       }
     }
-    socket.emit("call_ended", { from: userKey, reason });
   });
 
   socket.on("webrtc_signal", (payload) => {
     const userKey = socket.data.userKey;
     if (!userKey) return;
     const to = toDisplayName(payload?.to);
+    const callId = toDisplayName(payload?.callId).slice(0, 128);
     const signal = payload?.signal;
-    if (!to || !signal) return;
+    if (!to || !callId || !signal) return;
 
     const friendKey = normalizeName(to);
+    const active = activeCalls.get(userKey);
+    if (!active || active.peerKey !== friendKey || active.callId !== callId) return;
     const friendSocketId = onlineUsers.get(friendKey);
     if (friendSocketId) {
-      io.to(friendSocketId).emit("webrtc_signal", { from: userKey, signal });
+      io.to(friendSocketId).emit("webrtc_signal", { from: userKey, callId, signal });
     }
   });
 
@@ -7672,12 +7689,14 @@ io.on("connection", (socket) => {
         user.lastSeenAt = nowIso();
       }
 
+      const activeCall = activeCalls.get(userKey);
       const callPeerKey = clearCallPair(userKey);
       if (callPeerKey) {
         const peerSocketId = onlineUsers.get(callPeerKey);
         if (peerSocketId) {
           io.to(peerSocketId).emit("call_ended", {
             from: user?.username || userKey,
+            callId: activeCall?.callId,
             reason: "Connection lost",
           });
         }
