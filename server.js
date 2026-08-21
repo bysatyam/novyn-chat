@@ -5679,9 +5679,9 @@ io.on("connection", (socket) => {
         clearCallPair(userKey);
         const targetSocketId = onlineUsers.get(targetKey);
         if (targetSocketId) {
-          io.to(targetSocketId).emit("call_end", { from: me.username || userKey });
+          io.to(targetSocketId).emit("call_ended", { from: me.username || userKey, reason: "Call ended" });
         }
-        socket.emit("call_end", { from: target.username || targetKey });
+        socket.emit("call_ended", { from: target.username || targetKey, reason: "Call ended" });
       }
     } else {
       if (me.blockedUsers.delete(targetKey)) changed = true;
@@ -7676,8 +7676,9 @@ io.on("connection", (socket) => {
       if (callPeerKey) {
         const peerSocketId = onlineUsers.get(callPeerKey);
         if (peerSocketId) {
-          io.to(peerSocketId).emit("call_end", {
+          io.to(peerSocketId).emit("call_ended", {
             from: user?.username || userKey,
+            reason: "Connection lost",
           });
         }
       }

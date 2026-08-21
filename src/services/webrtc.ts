@@ -1,14 +1,38 @@
 // WebRTC Service for Novyn Chat Call Management
 
+// ── ICE / STUN / TURN configuration ──────────────────────────────────────────
+// STUN-only works for ~80% of users. The TURN relays below handle the remaining
+// ~20% who are behind symmetric NAT (corporate networks, some mobile carriers).
+// Using Metered's free open relay as a fallback — no key needed for the open tier.
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
+    // Google STUN (fast, public)
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.services.mozilla.com' },
+    // Metered open STUN
     { urls: 'stun:stun.relay.metered.ca:80' },
+    // Metered open TURN relays — required for symmetric NAT / corporate firewalls
+    {
+      urls: 'turn:global.relay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:global.relay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ],
   iceCandidatePoolSize: 10,
 };
