@@ -1,12 +1,38 @@
 node_modules/
 .envdata/
 uploads/
-data/chat-state.json
-data/auth-state.json
+data/
 .env
 novynchat-firebase-adminsdk.json
 
-# Android / Capacitor build artifacts
+# ── Secrets & API keys ────────────────────────────────────────────────────────
+.env.local
+.env.production
+.env.staging
+*.env
+
+# Firebase service account keys (never commit these)
+*firebase-adminsdk*.json
+*service-account*.json
+*serviceaccount*.json
+
+# Flutter Firebase config files (contain API keys — regenerate with flutterfire configure)
+flutter/android/app/google-services.json
+flutter/ios/Runner/GoogleService-Info.plist
+flutter/lib/firebase_options.dart
+
+# Web Firebase config (keep src/services/firebase.ts out if it has hardcoded keys)
+# Uncomment the line below if you move keys to .env instead:
+# src/services/firebase.ts
+
+# Android keystores / signing
+*.jks
+*.keystore
+*.p12
+key.properties
+flutter/android/key.properties
+
+# ── Android / Capacitor build artifacts ──────────────────────────────────────
 *.apk
 *.aab
 *.aar
@@ -32,3 +58,13 @@ android/app/src/main/assets/public/
 android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json
 android/app/src/main/res/xml/config.xml
+
+# ── Flutter build artifacts ───────────────────────────────────────────────────
+flutter/build/
+flutter/.dart_tool/
+flutter/.flutter-plugins-dependencies
+flutter/pubspec.lock
+
+# ── Public downloads (APK served to users — not source) ──────────────────────
+public/downloads/*.apk
+public/downloads/*.aab

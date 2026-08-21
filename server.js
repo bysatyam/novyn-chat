@@ -322,6 +322,8 @@ app.get("/downloads/:filename", (req, res) => {
   res.sendFile(filePath);
 });
 
+// ── Feedback Endpoint ─────────────────────────────────────────────────────
+
 app.get("/uploads/:file", (req, res) => {
   const filename = path.basename(req.params.file || "");
   const token = String(req.query.token || "");
@@ -4701,6 +4703,96 @@ app.post("/api/import-wallpaper-url", async (req, res) => {
     res.json({ url: targetUrl });
   }
 });
+
+// ── Feedback Endpoint ─────────────────────────────────────────────────────
+// Accepts feedback from any visitor (auth optional).
+// Persists to MongoDB feedback collection + emails admin via SMTP.
+{
+  const FEEDBACK_TO_EMAIL = toDisplayName(process.env.FEEDBACK_TO_EMAIL || "");
+
+  app.post("/api/feedback", createIpRateLimiter("feedback", 5, 60 * 60 * 1000), async (req, res) => {
+    const type    = toDisplayName(req.body?.type    || "general").slice(0, 50);
+    const message = toDisplayName(req.body?.message || "").slice(0, 2000);
+    const email   = toDisplayName(req.body?.email   || "").slice(0, 200);
+    const rating  = Number.isFinite(Number(req.body?.rating))
+      ? Math.min(5, Math.max(1, Math.floor(Number(req.body.rating))))
+      : null;
+
+    if (!message || message.length < 5) {
+      res.status(400).json({ error: "Message is too short." });
+      return;
+    }
+
+    // Resolve sender — logged-in user or anonymous
+    const cookieAuth = resolveUserFromAuthCookies(
+      getAuthCookiesFromHeader(req.headers.cookie),
+      { allowRefreshFallback: true }
+    );
+    const userKey  = cookieAuth.userKey || null;
+    const user     = userKey ? users.get(userKey) : null;
+    const fromUser = user ? (user.username || userKey) : "anonymous";
+
+    const entry = {
+      id:        `fb_${Date.now().toString(36)}_${crypto.randomBytes(3).toString("hex")}`,
+      type,
+      message,
+      rating,
+      email:     email || user?.email || "",
+      fromUser,
+      userKey,
+      ip:        req.ip || "",
+      createdAt: nowIso(),
+    };
+
+    // 1. Persist to MongoDB or flat-file fallback
+    try {
+      if (hasMongoStorage() && mongoClient) {
+        const db = mongoClient.db(MONGODB_DB);
+        await db.collection("feedback").insertOne(entry);
+      } else {
+        const feedbackFile = path.join(DATA_DIR, "feedback.log");
+        await fsp.mkdir(DATA_DIR, { recursive: true });
+        await fsp.appendFile(feedbackFile, `${JSON.stringify(entry)}\n`, "utf8");
+      }
+    } catch (err) {
+      console.warn("Failed to save feedback:", err?.message || err);
+    }
+
+    // 2. Email notification to admin
+    if (passwordResetMailer && FEEDBACK_TO_EMAIL) {
+      const stars    = rating ? `${"★".repeat(rating)}${"☆".repeat(5 - rating)} (${rating}/5)` : "Not rated";
+      const replyTo  = entry.email || null;
+      const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+      try {
+        await passwordResetMailer.sendMail({
+          from:    process.env.SMTP_FROM,
+          to:      FEEDBACK_TO_EMAIL,
+          replyTo: replyTo || undefined,
+          subject: `[Novyn Feedback] ${typeLabel} from ${fromUser}`,
+          html: `
+            <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#0d1117;color:#e2e8f0;border-radius:12px;">
+              <h2 style="color:#10b981;margin:0 0 20px;font-size:1.3rem;">📬 New Feedback — Novyn</h2>
+              <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+                <tr><td style="padding:6px 0;color:#94a3b8;width:110px;">Type</td><td style="padding:6px 0;font-weight:700;color:#38bdf8;text-transform:capitalize;">${typeLabel}</td></tr>
+                <tr><td style="padding:6px 0;color:#94a3b8;">From</td><td style="padding:6px 0;">${fromUser}${entry.email ? ` &lt;${entry.email}&gt;` : ""}</td></tr>
+                <tr><td style="padding:6px 0;color:#94a3b8;">Rating</td><td style="padding:6px 0;">${stars}</td></tr>
+                <tr><td style="padding:6px 0;color:#94a3b8;">Time</td><td style="padding:6px 0;">${entry.createdAt}</td></tr>
+              </table>
+              <div style="padding:16px 20px;background:#1e293b;border-radius:10px;border-left:4px solid #10b981;">
+                <p style="margin:0;line-height:1.7;white-space:pre-wrap;font-size:14px;">${message.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>
+              </div>
+              <p style="margin-top:20px;font-size:11px;color:#475569;">ID: ${entry.id}</p>
+            </div>
+          `,
+        });
+      } catch (err) {
+        console.warn("Failed to email feedback:", err?.message || err);
+      }
+    }
+
+    res.json({ ok: true, id: entry.id });
+  });
+}
 
 const distDir = path.join(__dirname, "dist");
 const publicDir = path.join(__dirname, "public");
