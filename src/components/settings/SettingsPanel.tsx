@@ -10,10 +10,11 @@ import {
   LogOut,
   ChevronRight,
   Settings,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
 
-export type SettingsMainCategory = 'profile' | 'privacy' | 'notifications' | 'appearance' | 'storage';
+export type SettingsMainCategory = 'profile' | 'privacy' | 'notifications' | 'appearance' | 'storage' | 'feedback';
 export type SettingsSubSection =
   // Profile
   | 'profile-details'
@@ -38,7 +39,11 @@ export type SettingsSubSection =
   // Storage
   | 'storage-cache'
   | 'storage-export'
-  | 'storage-security';
+  | 'storage-security'
+  // Feedback
+  | 'feedback-send'
+  | 'feedback-bug'
+  | 'feedback-feature';
 
 interface SettingsPanelProps {
   activeCategory: SettingsMainCategory;
@@ -93,6 +98,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       description: 'Cache, export & encryption info',
       icon: HardDrive,
       color: '#ec4899',
+    },
+    {
+      id: 'feedback' as const,
+      defaultSub: 'feedback-send' as const,
+      label: 'Feedback',
+      description: 'Suggestions, bugs & feature requests',
+      icon: MessageSquarePlus,
+      color: '#06b6d4',
     },
   ];
 

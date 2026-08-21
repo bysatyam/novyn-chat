@@ -17,6 +17,9 @@ import {
   Mail,
   Download,
   AlertTriangle,
+  MessageSquarePlus,
+  Bug,
+  Lightbulb,
 } from 'lucide-react';
 import { SettingsMainCategory, SettingsSubSection } from './SettingsPanel';
 import { triggerHaptic } from '../../services/capacitor';
@@ -64,6 +67,12 @@ export const SettingsSubPanel: React.FC<SettingsSubPanelProps> = ({
       subtitle: 'Storage & Encryption',
       icon: HardDrive,
       color: '#ec4899',
+    },
+    feedback: {
+      title: 'Feedback',
+      subtitle: 'Help us improve Novyn',
+      icon: MessageSquarePlus,
+      color: '#06b6d4',
     },
   };
 
@@ -195,6 +204,26 @@ export const SettingsSubPanel: React.FC<SettingsSubPanelProps> = ({
         label: 'Encryption Status',
         desc: 'WebRTC P2P & TLS security',
         icon: Shield,
+      },
+    ],
+    feedback: [
+      {
+        id: 'feedback-send',
+        label: 'General Feedback',
+        desc: 'Share thoughts or suggestions',
+        icon: MessageSquarePlus,
+      },
+      {
+        id: 'feedback-bug',
+        label: 'Report a Bug',
+        desc: 'Tell us what broke',
+        icon: Bug,
+      },
+      {
+        id: 'feedback-feature',
+        label: 'Request a Feature',
+        desc: 'What should we build next?',
+        icon: Lightbulb,
       },
     ],
   };

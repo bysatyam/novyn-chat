@@ -34,6 +34,11 @@ import {
   Upload,
   FileText,
   ChevronLeft,
+  MessageSquarePlus,
+  Bug,
+  Lightbulb,
+  Star,
+  Send,
 } from 'lucide-react';
 import { triggerHaptic } from '../../services/capacitor';
 import { SettingsSubSection } from './SettingsPanel';
@@ -1665,7 +1670,273 @@ export const SettingsDetailView: React.FC<SettingsDetailViewProps> = ({ activeSu
             </div>
           </div>
         )}
+
+        {/* 19-21. FEEDBACK PANELS */}
+        {(activeSubSection === 'feedback-send' || activeSubSection === 'feedback-bug' || activeSubSection === 'feedback-feature') && (
+          <FeedbackSettingsPanel type={
+            activeSubSection === 'feedback-bug' ? 'bug' :
+            activeSubSection === 'feedback-feature' ? 'feature' : 'general'
+          } />
+        )}
       </div>
+    </div>
+  );
+};
+
+// ── FeedbackSettingsPanel ─────────────────────────────────────────────────
+// Inline feedback form rendered inside the Settings detail column.
+type FeedbackPanelType = 'general' | 'bug' | 'feature';
+
+const PANEL_META: Record<FeedbackPanelType, { icon: any; color: string; title: string; placeholder: string }> = {
+  general: {
+    icon: MessageSquarePlus,
+    color: '#06b6d4',
+    title: 'Share Your Thoughts',
+    placeholder: "What's on your mind? We read every message…",
+  },
+  bug: {
+    icon: Bug,
+    color: '#f87171',
+    title: 'Report a Bug',
+    placeholder: 'Describe what happened, what you expected, and steps to reproduce…',
+  },
+  feature: {
+    icon: Lightbulb,
+    color: '#f59e0b',
+    title: 'Request a Feature',
+    placeholder: 'What would you like to see in Novyn? Describe the use case…',
+  },
+};
+
+const FeedbackSettingsPanel: React.FC<{ type: FeedbackPanelType }> = ({ type }) => {
+  const { user } = useAuth();
+  const meta = PANEL_META[type];
+  const Icon = meta.icon;
+
+  const [message, setMessage]         = useState('');
+  const [email, setEmail]             = useState(user?.email || '');
+  const [rating, setRating]           = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [loading, setLoading]         = useState(false);
+  const [success, setSuccess]         = useState(false);
+  const [error, setError]             = useState('');
+
+  // Reset when switching panel type
+  useEffect(() => {
+    setMessage(''); setRating(0); setHoverRating(0); setError(''); setSuccess(false);
+  }, [type]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() || message.trim().length < 5) {
+      setError('Please write at least a few words.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          type,
+          message: message.trim(),
+          email: email.trim() || undefined,
+          rating: rating || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Submission failed.');
+      setSuccess(true);
+      setMessage(''); setRating(0);
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const charLimit = 2000;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+      {/* Header card */}
+      <div style={{
+        padding: '20px 22px',
+        borderRadius: '20px',
+        background: `linear-gradient(135deg, ${meta.color}14 0%, rgba(255,255,255,0.02) 100%)`,
+        border: `1px solid ${meta.color}30`,
+        display: 'flex', alignItems: 'center', gap: '14px',
+      }}>
+        <div style={{
+          width: '46px', height: '46px', borderRadius: '14px', flexShrink: 0,
+          background: `${meta.color}1a`, color: meta.color,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon style={{ width: '22px', height: '22px' }} />
+        </div>
+        <div>
+          <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>{meta.title}</h3>
+          <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.4 }}>
+            {user ? `Sending as ${user.username}` : 'You\'re not logged in — add your email to get a reply'}
+          </p>
+        </div>
+      </div>
+
+      {success ? (
+        /* Success state */
+        <div style={{
+          padding: '32px 24px', borderRadius: '20px', textAlign: 'center',
+          background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.25)',
+        }}>
+          <div style={{
+            width: '56px', height: '56px', borderRadius: '50%', margin: '0 auto 14px',
+            background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <CheckCircle2 style={{ width: '28px', height: '28px', color: '#10b981' }} />
+          </div>
+          <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', margin: '0 0 6px' }}>Thanks for the feedback!</h4>
+          <p style={{ fontSize: '0.84rem', color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
+            We read every submission and use it to make Novyn better.
+          </p>
+          <button
+            type="button"
+            onClick={() => setSuccess(false)}
+            style={{
+              marginTop: '16px', padding: '8px 20px', borderRadius: '10px',
+              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+              color: '#94a3b8', fontSize: '0.84rem', cursor: 'pointer',
+            }}
+          >
+            Send another
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          {/* Star rating */}
+          <div style={{
+            padding: '16px 18px', borderRadius: '14px',
+            background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+          }}>
+            <p style={{ margin: '0 0 10px', fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8' }}>
+              Rate your overall experience (optional)
+            </p>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {[1, 2, 3, 4, 5].map(star => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRating(star === rating ? 0 : star)}
+                  onMouseEnter={() => setHoverRating(star)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}
+                  aria-label={`${star} star`}
+                >
+                  <Star
+                    style={{
+                      width: '24px', height: '24px',
+                      transform: (hoverRating || rating) >= star ? 'scale(1.2)' : 'scale(1)',
+                      transition: 'all 0.15s ease',
+                    }}
+                    fill={(hoverRating || rating) >= star ? '#f59e0b' : 'transparent'}
+                    stroke={(hoverRating || rating) >= star ? '#f59e0b' : '#475569'}
+                    strokeWidth={1.5}
+                  />
+                </button>
+              ))}
+              {rating > 0 && (
+                <span style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 700, marginLeft: '4px' }}>
+                  {['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent'][rating]}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Message */}
+          <div style={{ position: 'relative' }}>
+            <textarea
+              value={message}
+              onChange={e => { setMessage(e.target.value.slice(0, charLimit)); setError(''); }}
+              placeholder={meta.placeholder}
+              rows={5}
+              style={{
+                width: '100%', resize: 'none', padding: '14px 16px',
+                borderRadius: '14px', fontSize: '0.88rem', lineHeight: 1.6,
+                background: 'rgba(255,255,255,0.04)',
+                border: `1px solid ${error ? '#f87171' : 'var(--border)'}`,
+                color: '#e2e8f0', outline: 'none', boxSizing: 'border-box',
+                fontFamily: 'inherit', transition: 'border-color 0.15s',
+              }}
+              onFocus={e => { if (!error) e.target.style.borderColor = 'var(--border-focus)'; }}
+              onBlur={e => { if (!error) e.target.style.borderColor = 'var(--border)'; }}
+            />
+            <span style={{
+              position: 'absolute', bottom: '10px', right: '14px',
+              fontSize: '0.7rem',
+              color: message.length > charLimit * 0.9 ? '#f87171' : '#475569',
+            }}>
+              {message.length}/{charLimit}
+            </span>
+          </div>
+
+          {/* Email (for anonymous users) */}
+          {!user && (
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="Your email (optional — so we can reply)"
+              style={{
+                width: '100%', padding: '12px 14px', borderRadius: '12px',
+                fontSize: '0.87rem', background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--border)', color: '#e2e8f0',
+                outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+              }}
+            />
+          )}
+
+          {/* Error */}
+          {error && (
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#f87171', fontWeight: 600 }}>{error}</p>
+          )}
+
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={loading || !message.trim()}
+            style={{
+              padding: '13px 20px', borderRadius: '14px', fontWeight: 700,
+              fontSize: '0.9rem', border: 'none', cursor: loading || !message.trim() ? 'not-allowed' : 'pointer',
+              background: loading || !message.trim()
+                ? 'rgba(255,255,255,0.06)'
+                : `linear-gradient(135deg, ${meta.color} 0%, ${meta.color}bb 100%)`,
+              color: loading || !message.trim() ? '#475569' : '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              transition: 'all 0.2s ease',
+              boxShadow: loading || !message.trim() ? 'none' : `0 4px 14px ${meta.color}40`,
+            }}
+          >
+            {loading ? (
+              <>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                  style={{ animation: 'spin 0.8s linear infinite' }}>
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                </svg>
+                Sending…
+              </>
+            ) : (
+              <>
+                <Send style={{ width: '15px', height: '15px' }} />
+                Send Feedback
+              </>
+            )}
+          </button>
+
+        </form>
+      )}
     </div>
   );
 };
