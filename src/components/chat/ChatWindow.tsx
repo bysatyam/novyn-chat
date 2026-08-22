@@ -477,7 +477,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {/* WhatsApp-Style End-to-End Encryption Security Banner */}
+          {/* Encryption scope banner */}
           <div
             style={{
               display: 'flex',
@@ -497,7 +497,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           >
             <Lock style={{ width: '13px', height: '13px', color: '#fbbf24', flexShrink: 0 }} />
             <span style={{ fontSize: '0.73rem', color: '#fbbf24', lineHeight: 1.35, fontWeight: 500 }}>
-              Messages and calls are end-to-end encrypted. No one outside of this chat, not even Novyn, can read or listen to them.
+              {activeContact?.isGroup
+                ? 'Group messages are not end-to-end encrypted yet.'
+                : activeContact?.publicKey
+                  ? 'Text message bodies in this direct chat are end-to-end encrypted. Attachments and calls use separate security controls.'
+                  : 'Encryption is unavailable until both contacts have registered device keys.'}
             </span>
           </div>
 

@@ -13,6 +13,10 @@ import {
   getMyPublicKeyJwk,
 } from '../services/e2ee';
 
+// The relay may retain this value for conversation ordering and notification-safe UI,
+// but it must never receive the actual body of an encrypted direct message.
+const ENCRYPTED_MESSAGE_PLACEHOLDER = '🔒 Encrypted message';
+
 interface ChatContextType {
   conversations: Conversation[];
   activeChat: string | null;
@@ -281,12 +285,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    webrtcManagerRef.current = new WebRTCManager(
+    const manager = new WebRTCManager(
       handleRemoteStream,
       handleSignal,
       handleLocalStream,
       handleScreenShareEnded
     );
+    webrtcManagerRef.current = manager;
+    // Fetch TURN credentials as soon as an authenticated chat session is available.
+    void manager.ensureIceServers();
 
     return () => {
       webrtcManagerRef.current?.cleanup();
@@ -1092,6 +1099,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const editMessage = useCallback((messageId: string, newText: string) => {
     if (!activeChat) return;
+    // Editing would require re-encrypting and replacing the ciphertext. Until that
+    // protocol exists, never fall back to submitting an encrypted message as plaintext.
+    if (messagesCacheRef.current[activeChat.toLowerCase()]?.some((m) => m.id === messageId && m.isEncrypted)) {
+      return;
+    }
     const socket = getSocket();
     if (!socket) return;
     socket.emit('edit_message', { messageId, text: newText, to: activeChat });
@@ -1148,6 +1160,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (toType === 'friend' && peerPubKey) {
         encryptMessageContent(rawText, activeChat, peerPubKey).then((encrypted) => {
           if (encrypted) {
+            // Keep message bodies and quoted message bodies off the relay. The UI
+            // retains the local plaintext until it receives and decrypts the echo.
+            payload.text = ENCRYPTED_MESSAGE_PLACEHOLDER;
+            if (payload.replyTo) {
+              payload.replyTo = { ...payload.replyTo, text: ENCRYPTED_MESSAGE_PLACEHOLDER };
+            }
             payload.ciphertext = encrypted.ciphertext;
             payload.iv = encrypted.iv;
             payload.isEncrypted = true;
@@ -1489,7 +1507,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const callId = typeof window.crypto?.randomUUID === 'function'
         ? window.crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const localStream = await webrtcManagerRef.current.initLocalMedia(isVideo);
+      const manager = webrtcManagerRef.current;
+      const [, localStream] = await Promise.all([
+        manager.ensureIceServers(),
+        manager.initLocalMedia(isVideo),
+      ]);
       setCallState({
         callId,
         isActive: true,
@@ -1548,7 +1570,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     callStartTimeRef.current = Date.now();
 
     try {
-      const localStream = await webrtcManagerRef.current.initLocalMedia(isVideo);
+      const manager = webrtcManagerRef.current;
+      const [, localStream] = await Promise.all([
+        manager.ensureIceServers(),
+        manager.initLocalMedia(isVideo),
+      ]);
       setCallState((prev) => ({ ...prev, status: 'connected', localStream }));
       socket.emit('call_accept', { to: remoteUser, callId });
       triggerHaptic('success');

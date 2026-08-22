@@ -577,6 +577,7 @@ const PASSWORD_KEY_LENGTH = 64;
 const PASSWORD_DIGEST = "sha512";
 const DELETED_MESSAGE_TEXT = "This message was deleted.";
 const CALL_LOG_PREFIX = "__call_log__:";
+const ENCRYPTED_MESSAGE_PLACEHOLDER = "🔒 Encrypted message";
 const PASSWORD_RESET_CODE_TTL_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 const PASSWORD_RESET_WINDOW_MS = 15 * 60 * 1000;
@@ -2273,6 +2274,27 @@ function applyLoadedState(parsed) {
   }
 }
 
+// Older encrypted messages were stored with both ciphertext and the original body.
+// The ciphertext is sufficient for clients to decrypt, so scrub only the redundant
+// plaintext when both cryptographic fields are present.
+function scrubEncryptedMessagePlaintext() {
+  let scrubbed = 0;
+  for (const conversation of conversations.values()) {
+    for (const message of conversation) {
+      if (!message?.isEncrypted || !message.ciphertext || !message.iv) continue;
+      if (message.text !== ENCRYPTED_MESSAGE_PLACEHOLDER) {
+        message.text = ENCRYPTED_MESSAGE_PLACEHOLDER;
+        scrubbed += 1;
+      }
+      if (message.replyTo?.text && message.replyTo.text !== ENCRYPTED_MESSAGE_PLACEHOLDER) {
+        message.replyTo.text = ENCRYPTED_MESSAGE_PLACEHOLDER;
+        scrubbed += 1;
+      }
+    }
+  }
+  return scrubbed;
+}
+
 async function loadStateFromFile() {
   if (!fs.existsSync(DATA_FILE)) {
     return false;
@@ -2502,9 +2524,15 @@ async function loadState() {
 
   if (loaded) {
     const pruned = pruneExpiredMessages();
-    if (pruned) {
+    const scrubbed = scrubEncryptedMessagePlaintext();
+    if (pruned || scrubbed) {
       await persistNow();
-      console.log(`Pruned expired messages older than ${CHAT_RETENTION_DAYS} day(s).`);
+      if (pruned) {
+        console.log(`Pruned expired messages older than ${CHAT_RETENTION_DAYS} day(s).`);
+      }
+      if (scrubbed) {
+        console.log(`Removed plaintext from ${scrubbed} encrypted message field(s).`);
+      }
     }
   }
 
@@ -6246,6 +6274,10 @@ io.on("connection", (socket) => {
       const idx = list.findIndex((m) => String(m.id) === messageId || String(m.clientTempId) === messageId);
       if (idx !== -1) {
         const item = list[idx];
+        if (item.isEncrypted) {
+          socket.emit("error_message", { message: "Encrypted messages cannot be edited yet." });
+          return;
+        }
         item.text = newText;
         item.editedAt = editedAt;
         schedulePersist();
@@ -6646,13 +6678,22 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const text = withUploadToken(payload?.text);
+    const isEncrypted = Boolean(payload?.isEncrypted);
+    const ciphertext = toDisplayName(payload?.ciphertext);
+    const iv = toDisplayName(payload?.iv);
+    if (isEncrypted && (!ciphertext || !iv)) {
+      socket.emit("error_message", { message: "Invalid encrypted message payload." });
+      return;
+    }
+    // Never store a client-supplied plaintext body for an encrypted message.
+    const text = isEncrypted ? ENCRYPTED_MESSAGE_PLACEHOLDER : withUploadToken(payload?.text);
     const attachment = sanitizeMessageAttachment(payload?.attachment, text);
     const clientTempId = String(payload?.clientTempId || "").trim();
     const safeClientTempId = clientTempId.slice(0, 64);
     const to = toDisplayName(payload?.to);
     const toType = normalizeChatKind(payload?.toType || "friend");
     const replyTo = normalizeReplyPayload(payload?.replyTo);
+    if (isEncrypted && replyTo) replyTo.text = ENCRYPTED_MESSAGE_PLACEHOLDER;
     const game = payload?.game || null;
     const poll = payload?.poll || null;
 
@@ -6691,9 +6732,9 @@ io.on("connection", (socket) => {
       replyTo,
       game,
       poll,
-      ciphertext: payload?.ciphertext,
-      iv: payload?.iv,
-      isEncrypted: payload?.isEncrypted,
+      ciphertext,
+      iv,
+      isEncrypted,
       clientTempId: safeClientTempId,
     });
     if (!result.ok) {
@@ -7436,6 +7477,10 @@ io.on("connection", (socket) => {
     }
     if (message.attachment) {
       socket.emit("error_message", { message: "Attachment messages cannot be edited." });
+      return;
+    }
+    if (message.isEncrypted) {
+      socket.emit("error_message", { message: "Encrypted messages cannot be edited yet." });
       return;
     }
     if (String(message.text || "").startsWith(CALL_LOG_PREFIX)) {

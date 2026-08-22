@@ -571,7 +571,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 )}
 
                 {/* Edit (if sent by me and is text) */}
-                {isMe && message.text && !isAudioMessage && (
+                {isMe && message.text && !isAudioMessage && !message.isEncrypted && (
                   <button
                     type="button"
                     onClick={(e) => {

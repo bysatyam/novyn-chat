@@ -37,6 +37,22 @@ const ICE_SERVERS: RTCConfiguration = {
   iceCandidatePoolSize: 10,
 };
 
+function normalizeIceServers(value: unknown): RTCIceServer[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry: any) => {
+    const rawUrls: unknown[] = Array.isArray(entry?.urls) ? entry.urls : [entry?.urls];
+    const urls: string[] = rawUrls
+      .filter((url: unknown): url is string => typeof url === 'string')
+      .map((url: string) => url.trim())
+      .filter((url: string) => /^(stun|turn|turns):/i.test(url));
+    if (!urls.length) return [];
+    const server: RTCIceServer = { urls };
+    if (typeof entry.username === 'string') server.username = entry.username;
+    if (typeof entry.credential === 'string') server.credential = entry.credential;
+    return [server];
+  });
+}
+
 import {
   playIncomingRingtone,
   playOutgoingCallRing,
@@ -81,6 +97,8 @@ export class WebRTCManager {
   private onSignalCallback: ((signal: any) => void) | null = null;
   private onScreenShareEndedCallback: (() => void) | null = null;
   private isVideoCall = false;
+  private rtcConfiguration: RTCConfiguration = ICE_SERVERS;
+  private iceConfigurationPromise: Promise<void> | null = null;
 
   constructor(
     onRemoteStream: (stream: MediaStream) => void,
@@ -92,6 +110,35 @@ export class WebRTCManager {
     this.onSignalCallback = onSignal;
     this.onLocalStreamCallback = onLocalStream || null;
     this.onScreenShareEndedCallback = onScreenShareEnded || null;
+  }
+
+  public ensureIceServers(): Promise<void> {
+    if (this.iceConfigurationPromise) return this.iceConfigurationPromise;
+
+    this.iceConfigurationPromise = (async () => {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeout = controller ? window.setTimeout(() => controller.abort(), 3500) : null;
+      try {
+        const response = await fetch('/api/rtc/ice', {
+          credentials: 'include',
+          signal: controller?.signal,
+        });
+        const payload = await response.json().catch(() => null);
+        const iceServers = normalizeIceServers(payload?.iceServers);
+        if (response.ok && payload?.authenticated && iceServers.length) {
+          this.rtcConfiguration = { iceServers, iceCandidatePoolSize: 2 };
+          console.info('[WebRTC] Loaded authenticated ICE configuration.');
+        } else {
+          console.warn('[WebRTC] Authenticated ICE configuration unavailable; using fallback.');
+        }
+      } catch (err) {
+        console.warn('[WebRTC] Could not load ICE configuration; using fallback.', err);
+      } finally {
+        if (timeout) window.clearTimeout(timeout);
+      }
+    })();
+
+    return this.iceConfigurationPromise;
   }
 
   public async initLocalMedia(isVideo: boolean): Promise<MediaStream> {
@@ -154,7 +201,7 @@ export class WebRTCManager {
     this.remoteStream = new MediaStream();
     this.pendingCandidates = [];
 
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection(this.rtcConfiguration);
     this.pc = pc;
 
     pc.onicecandidate = (event) => {
